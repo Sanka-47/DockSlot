@@ -1,0 +1,338 @@
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import { UserRole, OrganizationType } from '@prisma/client';
+import { prisma } from '../config/db.config';
+import { securityConfig } from '../config/security.config';
+
+export interface RegisterInput {
+  email: string;
+  password: string;
+  organizationName?: string;
+  organizationType?: OrganizationType | 'warehouse' | 'carrier' | 'WAREHOUSE_OPERATOR' | 'CARRIER';
+  role?: UserRole;
+  organizationId?: number;
+}
+
+export interface LoginInput {
+  email: string;
+  password: string;
+}
+
+export interface ResetPasswordInput {
+  email?: string;
+  userId?: number;
+  oldPassword?: string;
+  newPassword: string;
+}
+
+export interface AuthResponse {
+  token: string;
+  user: {
+    id: number;
+    email: string;
+    role: UserRole;
+    organizationId: number;
+    organization?: {
+      id: number;
+      name: string;
+      type: OrganizationType;
+    };
+  };
+}
+
+export class AuthService {
+  /**
+   * Helper to issue a signed JWT token containing user ID, organization ID, and role.
+   */
+  public generateToken(user: { id: number; organizationId: number; role: UserRole; email: string }): string {
+    return jwt.sign(
+      {
+        userId: user.id,
+        organizationId: user.organizationId,
+        role: user.role,
+        email: user.email,
+      },
+      securityConfig.jwtSecret,
+      { expiresIn: securityConfig.jwtExpiresIn as any }
+    );
+  }
+
+  /**
+   * Parse and normalize organization type string to Prisma OrganizationType enum.
+   */
+  private normalizeOrganizationType(type?: string): OrganizationType {
+    if (!type) {
+      throw {
+        status: 400,
+        message: 'organizationType is required and must be either "WAREHOUSE_OPERATOR" (warehouse) or "CARRIER" (carrier).',
+      };
+    }
+
+    const upper = type.toUpperCase().trim();
+    if (upper === 'WAREHOUSE' || upper === 'WAREHOUSE_OPERATOR') {
+      return OrganizationType.WAREHOUSE_OPERATOR;
+    }
+    if (upper === 'CARRIER') {
+      return OrganizationType.CARRIER;
+    }
+
+    throw {
+      status: 400,
+      message: 'Invalid organizationType. Must be either "WAREHOUSE_OPERATOR" (warehouse) or "CARRIER" (carrier).',
+    };
+  }
+
+  /**
+   * Register a new user.
+   * Requirement: Creating an account creates a new organization (warehouse or carrier)
+   * and that user automatically becomes its Admin.
+   */
+  public async register(input: RegisterInput): Promise<AuthResponse> {
+    const { email, password, organizationName, organizationType, organizationId, role } = input;
+
+    if (!email || !password) {
+      throw { status: 400, message: 'Email and password are required.' };
+    }
+
+    if (password.length < 6) {
+      throw { status: 400, message: 'Password must be at least 6 characters long.' };
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // Check if email already exists
+    const existingUser = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
+
+    if (existingUser) {
+      throw { status: 409, message: 'A user with this email already exists.' };
+    }
+
+    // Hash password before transaction
+    const passwordHash = await bcrypt.hash(password, securityConfig.saltRounds);
+
+    // Scenario A: Standard Sign Up (Creates a new Organization & designates user as its Admin)
+    if (!organizationId) {
+      const orgType = this.normalizeOrganizationType(organizationType);
+
+      // Automatically assign the user as Admin based on organization type
+      const adminRole =
+        orgType === OrganizationType.WAREHOUSE_OPERATOR
+          ? UserRole.WAREHOUSE_ADMIN
+          : UserRole.CARRIER_ADMIN;
+
+      const orgName =
+        organizationName?.trim() ||
+        `${normalizedEmail.split('@')[0]} ${orgType === OrganizationType.WAREHOUSE_OPERATOR ? 'Warehouse' : 'Fleet'}`;
+
+      // Execute atomically in a transaction
+      const { user, organization } = await prisma.$transaction(async (tx) => {
+        const newOrg = await tx.organization.create({
+          data: {
+            name: orgName,
+            type: orgType,
+          },
+        });
+
+        const newUser = await tx.user.create({
+          data: {
+            email: normalizedEmail,
+            passwordHash,
+            role: adminRole,
+            organizationId: newOrg.id,
+            isActive: true,
+          },
+        });
+
+        return { user: newUser, organization: newOrg };
+      });
+
+      const token = this.generateToken(user);
+
+      return {
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          organizationId: user.organizationId,
+          organization: {
+            id: organization.id,
+            name: organization.name,
+            type: organization.type,
+          },
+        },
+      };
+    }
+
+    // Scenario B: Joining an existing Organization (e.g., invited employee/dispatcher)
+    const existingOrg = await prisma.organization.findUnique({
+      where: { id: organizationId },
+    });
+
+    if (!existingOrg) {
+      throw { status: 404, message: `Organization with ID ${organizationId} not found.` };
+    }
+
+    // If role not specified when joining, default based on org type
+    const assignedRole =
+      role ||
+      (existingOrg.type === OrganizationType.WAREHOUSE_OPERATOR
+        ? UserRole.DOCK_MANAGER
+        : UserRole.DISPATCHER);
+
+    const user = await prisma.user.create({
+      data: {
+        email: normalizedEmail,
+        passwordHash,
+        role: assignedRole,
+        organizationId: existingOrg.id,
+        isActive: true,
+      },
+    });
+
+    const token = this.generateToken(user);
+
+    return {
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        organizationId: user.organizationId,
+        organization: {
+          id: existingOrg.id,
+          name: existingOrg.name,
+          type: existingOrg.type,
+        },
+      },
+    };
+  }
+
+  /**
+   * Login an existing user and issue a JWT token.
+   */
+  public async login(input: LoginInput): Promise<AuthResponse> {
+    const { email, password } = input;
+
+    if (!email || !password) {
+      throw { status: 400, message: 'Email and password are required.' };
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase().trim() },
+      include: {
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw { status: 401, message: 'Invalid email or password.' };
+    }
+
+    if (!user.isActive) {
+      throw { status: 403, message: 'Account is deactivated. Please contact support.' };
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+    if (!isPasswordValid) {
+      throw { status: 401, message: 'Invalid email or password.' };
+    }
+
+    const token = this.generateToken(user);
+
+    return {
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        organizationId: user.organizationId,
+        organization: user.organization,
+      },
+    };
+  }
+
+  /**
+   * Reset user password.
+   */
+  public async resetPassword(input: ResetPasswordInput): Promise<{ message: string }> {
+    const { email, userId, oldPassword, newPassword } = input;
+
+    if (!newPassword || newPassword.length < 6) {
+      throw { status: 400, message: 'New password must be at least 6 characters long.' };
+    }
+
+    let user;
+
+    if (userId) {
+      user = await prisma.user.findUnique({ where: { id: userId } });
+    } else if (email) {
+      user = await prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } });
+    } else {
+      throw { status: 400, message: 'Either email or authenticated user ID must be provided.' };
+    }
+
+    if (!user) {
+      throw { status: 404, message: 'User not found.' };
+    }
+
+    // If oldPassword is provided, verify it
+    if (oldPassword) {
+      const isMatch = await bcrypt.compare(oldPassword, user.passwordHash);
+      if (!isMatch) {
+        throw { status: 401, message: 'Current password does not match.' };
+      }
+    }
+
+    // Hash the new password and update
+    const passwordHash = await bcrypt.hash(newPassword, securityConfig.saltRounds);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash },
+    });
+
+    return { message: 'Password has been reset successfully.' };
+  }
+
+  /**
+   * Get user profile by ID.
+   */
+  public async getUserById(userId: number) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        organizationId: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw { status: 404, message: 'User not found.' };
+    }
+
+    return user;
+  }
+}
+
+export const authService = new AuthService();

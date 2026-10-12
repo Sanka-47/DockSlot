@@ -1,0 +1,153 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrganizationType {
+  WAREHOUSE_OPERATOR
+  CARRIER
+}
+
+enum UserRole {
+  WAREHOUSE_ADMIN
+  DOCK_MANAGER
+  CARRIER_ADMIN
+  DISPATCHER
+}
+
+enum DockStatus {
+  ACTIVE
+  MAINTENANCE
+}
+
+enum BookingStatus {
+  BOOKED
+  CANCELLED
+  ARRIVED
+  NO_SHOW
+}
+
+enum OutboxStatus {
+  PENDING
+  SENT
+}
+
+model Organization {
+  id        Int              @id @default(autoincrement())
+  name      String
+  type      OrganizationType
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  users      User[]
+  warehouses Warehouse[]
+  bookings   Booking[]   @relation("CarrierBookings")
+
+  @@map("organizations")
+}
+
+model User {
+  id             Int      @id @default(autoincrement())
+  organizationId Int
+  email          String   @unique
+  passwordHash   String
+  role           UserRole
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("users")
+}
+
+model Warehouse {
+  id             Int      @id @default(autoincrement())
+  organizationId Int
+  name           String
+  address        String
+  timezone       String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  docks          Dock[]
+  operatingHours OperatingHour[]
+
+  @@index([organizationId])
+  @@map("warehouses")
+}
+
+model Dock {
+  id          Int        @id @default(autoincrement())
+  warehouseId Int
+  name        String
+  status      DockStatus @default(ACTIVE)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  bookings  Booking[]
+
+  @@index([warehouseId])
+  @@map("docks")
+}
+
+model OperatingHour {
+  id                Int      @id @default(autoincrement())
+  warehouseId       Int
+  dayOfWeek         Int
+  openTime          String
+  closeTime         String
+  slotLengthMinutes Int
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@index([warehouseId])
+  @@map("operating_hours")
+}
+
+model Booking {
+  id            Int           @id @default(autoincrement())
+  dockId        Int
+  carrierOrgId  Int
+  slotStartTime DateTime
+  slotEndTime   DateTime
+  truckPlate    String?
+  driverName    String?
+  driverPhone   String?
+  cargoNote     String?       @db.Text
+  status        BookingStatus @default(BOOKED)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  dock       Dock         @relation(fields: [dockId], references: [id], onDelete: Cascade)
+  carrierOrg Organization @relation("CarrierBookings", fields: [carrierOrgId], references: [id], onDelete: Cascade)
+
+  @@unique([dockId, slotStartTime])
+  @@index([dockId])
+  @@index([carrierOrgId])
+  @@map("bookings")
+}
+
+model OutboxEvent {
+  id            Int          @id @default(autoincrement())
+  aggregateType String
+  aggregateId   String
+  payload       Json
+  status        OutboxStatus @default(PENDING)
+  retries       Int          @default(0)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([status])
+  @@index([aggregateType, aggregateId])
+  @@map("outbox_events")
+}
