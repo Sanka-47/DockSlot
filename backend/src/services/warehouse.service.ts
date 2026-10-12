@@ -1,5 +1,13 @@
-import { DockStatus } from '@prisma/client';
+import { DockStatus, BookingStatus } from '@prisma/client';
 import { prisma } from '../config/db.config';
+import {
+  isValidIanaTimeZone,
+  isValidDateString,
+  getDayOfWeekInTimeZone,
+  generateTimeIntervals,
+  zonedDateAndTimeToUtc,
+  getZonedDayBounds,
+} from '../utils/time.utils';
 
 export interface CreateWarehouseInput {
   name: string;
@@ -18,21 +26,20 @@ export interface CreateDockInput {
   status?: DockStatus;
 }
 
-/**
- * Validates whether a given string is a valid IANA time zone.
- * Uses Intl.DateTimeFormat which throws a RangeError for invalid time zone identifiers.
- */
-export function isValidIanaTimeZone(timeZone: string): boolean {
-  if (!timeZone || typeof timeZone !== 'string' || timeZone.trim() === '') {
-    return false;
-  }
-  try {
-    Intl.DateTimeFormat(undefined, { timeZone: timeZone.trim() });
-    return true;
-  } catch {
-    return false;
-  }
+export interface AvailableSlot {
+  slotStartTime: string;
+  slotEndTime: string;
+  localStartTime: string;
+  localEndTime: string;
 }
+
+export interface AvailableDockSlots {
+  dockId: number;
+  dockName: string;
+  slots: AvailableSlot[];
+}
+
+export { isValidIanaTimeZone };
 
 export class WarehouseService {
   /**
@@ -274,6 +281,138 @@ export class WarehouseService {
     });
 
     return updatedDock;
+  }
+
+  /**
+   * Generates and returns available time slots for all active docks of a warehouse on targetDate,
+   * strictly adhering to the warehouse's IANA timezone and operating hours,
+   * and filtering out existing active bookings (BOOKED or ARRIVED).
+   */
+  async getAvailableSlots(warehouseId: number, targetDate: string): Promise<AvailableDockSlots[]> {
+    if (!warehouseId || isNaN(warehouseId)) {
+      throw { status: 400, message: 'Invalid warehouse ID.' };
+    }
+
+    if (!targetDate || typeof targetDate !== 'string') {
+      throw { status: 400, message: 'Missing targetDate parameter.' };
+    }
+
+    const trimmedDate = targetDate.trim();
+    if (!isValidDateString(trimmedDate)) {
+      throw { status: 400, message: 'Invalid date format. Expected a valid calendar date in YYYY-MM-DD format.' };
+    }
+
+    // a. Fetch the warehouse record to obtain its timezone and context
+    const warehouse = await prisma.warehouse.findUnique({
+      where: { id: warehouseId },
+      select: {
+        id: true,
+        name: true,
+        timezone: true,
+        organizationId: true,
+      },
+    });
+
+    if (!warehouse) {
+      throw { status: 404, message: 'Warehouse not found.' };
+    }
+
+    // b. Fetch all active docks for this warehouse (ignoring docks whose status is MAINTENANCE)
+    const activeDocks = await prisma.dock.findMany({
+      where: {
+        warehouseId,
+        status: DockStatus.ACTIVE,
+      },
+      orderBy: { id: 'asc' },
+    });
+
+    if (activeDocks.length === 0) {
+      return [];
+    }
+
+    // c. Determine the day of the week for targetDate in the warehouse's timezone
+    const dayOfWeek = getDayOfWeekInTimeZone(trimmedDate, warehouse.timezone);
+
+    // Query operating_hours for this day of week
+    const operatingHour = await prisma.operatingHour.findFirst({
+      where: {
+        warehouseId,
+        dayOfWeek,
+      },
+    });
+
+    // If closed or no operating hours exist, return an empty array
+    if (!operatingHour) {
+      return [];
+    }
+
+    // d. Generate all possible time slot intervals between openTime and closeTime
+    const intervals = generateTimeIntervals(
+      operatingHour.openTime,
+      operatingHour.closeTime,
+      operatingHour.slotLengthMinutes
+    );
+
+    if (intervals.length === 0) {
+      return [];
+    }
+
+    // e. Query existing bookings for all active docks on targetDate (localized to warehouse timezone)
+    const { startOfDayUtc, endOfDayUtc } = getZonedDayBounds(trimmedDate, warehouse.timezone);
+
+    const bookings = await prisma.booking.findMany({
+      where: {
+        dockId: { in: activeDocks.map((d) => d.id) },
+        status: { in: [BookingStatus.BOOKED, BookingStatus.ARRIVED] },
+        slotStartTime: {
+          gte: startOfDayUtc,
+          lte: endOfDayUtc,
+        },
+      },
+      select: {
+        id: true,
+        dockId: true,
+        slotStartTime: true,
+        slotEndTime: true,
+        status: true,
+      },
+    });
+
+    // f. Filter out any slots that are already booked for a dock, returning clean mapping
+    const dockSlotMappings: AvailableDockSlots[] = activeDocks.map((dock) => {
+      const freeSlots: AvailableSlot[] = [];
+
+      for (const interval of intervals) {
+        const slotStartTime = zonedDateAndTimeToUtc(trimmedDate, interval.start, warehouse.timezone);
+        const slotEndTime = zonedDateAndTimeToUtc(trimmedDate, interval.end, warehouse.timezone);
+        const slotStartMs = slotStartTime.getTime();
+        const slotEndMs = slotEndTime.getTime();
+
+        const isBooked = bookings.some((b) => {
+          if (b.dockId !== dock.id) return false;
+          const bStart = b.slotStartTime.getTime();
+          const bEnd = b.slotEndTime.getTime();
+          return bStart === slotStartMs || (bStart < slotEndMs && bEnd > slotStartMs);
+        });
+
+        if (!isBooked) {
+          freeSlots.push({
+            slotStartTime: slotStartTime.toISOString(),
+            slotEndTime: slotEndTime.toISOString(),
+            localStartTime: interval.start,
+            localEndTime: interval.end,
+          });
+        }
+      }
+
+      return {
+        dockId: dock.id,
+        dockName: dock.name,
+        slots: freeSlots,
+      };
+    });
+
+    return dockSlotMappings;
   }
 }
 

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { warehouseService } from '../services/warehouse.service';
+import { isValidDateString } from '../utils/time.utils';
 
 /**
  * Safely parses numeric route parameters.
@@ -275,3 +276,52 @@ export const updateDockStatus = async (req: Request, res: Response): Promise<voi
     });
   }
 };
+
+/**
+ * Retrieves available time slots for a warehouse on a given date.
+ * GET /api/warehouses/:warehouseId/slots?date=YYYY-MM-DD
+ */
+export const getAvailableSlots = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const rawId = req.params.warehouseId;
+    const warehouseId = parseParamId(rawId);
+    if (isNaN(warehouseId)) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid warehouse ID.',
+      });
+      return;
+    }
+
+    const dateQuery = (req.query.date || req.query.targetDate) as string;
+    if (!dateQuery || typeof dateQuery !== 'string' || !dateQuery.trim()) {
+      res.status(400).json({
+        success: false,
+        message: 'Missing required query parameter: date (expected format: YYYY-MM-DD).',
+      });
+      return;
+    }
+
+    const trimmedDate = dateQuery.trim();
+    if (!isValidDateString(trimmedDate)) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid date format. Expected a valid calendar date in YYYY-MM-DD format.',
+      });
+      return;
+    }
+
+    const slots = await warehouseService.getAvailableSlots(warehouseId, trimmedDate);
+    res.status(200).json({
+      success: true,
+      data: slots,
+    });
+  } catch (error: any) {
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Internal server error while fetching available slots.',
+    });
+  }
+};
+

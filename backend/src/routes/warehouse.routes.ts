@@ -7,6 +7,7 @@ import {
   createDock,
   getDocks,
   updateDockStatus,
+  getAvailableSlots,
 } from '../controllers/warehouse.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { requireVerifiedEmail } from '../middleware/verification.middleware';
@@ -46,6 +47,14 @@ router.patch(
   requireVerifiedEmail,
   authorize(['WAREHOUSE_ADMIN', 'DOCK_MANAGER']),
   updateDockStatus
+);
+
+// 5. Slot Search API (Carrier Dispatchers & Warehouse Operators)
+router.get(
+  '/:warehouseId/slots',
+  authMiddleware,
+  authorize(['WAREHOUSE_ADMIN', 'DOCK_MANAGER', 'CARRIER_ADMIN', 'DISPATCHER']),
+  getAvailableSlots
 );
 
 export default router;
