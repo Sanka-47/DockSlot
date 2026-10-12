@@ -1,8 +1,10 @@
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { UserRole, OrganizationType } from '@prisma/client';
 import { prisma } from '../config/db.config';
 import { securityConfig } from '../config/security.config';
+import { emailService } from './email.service';
 
 export interface RegisterInput {
   email: string;
@@ -25,6 +27,11 @@ export interface ResetPasswordInput {
   newPassword: string;
 }
 
+export interface ResendVerificationInput {
+  email?: string;
+  userId?: number;
+}
+
 export interface AuthResponse {
   token: string;
   user: {
@@ -32,6 +39,7 @@ export interface AuthResponse {
     email: string;
     role: UserRole;
     organizationId: number;
+    isEmailVerified: boolean;
     organization?: {
       id: number;
       name: string;
@@ -86,6 +94,7 @@ export class AuthService {
    * Register a new user.
    * Requirement: Creating an account creates a new organization (warehouse or carrier)
    * and that user automatically becomes its Admin.
+   * Also generates verificationToken and sends a verification email.
    */
   public async register(input: RegisterInput): Promise<AuthResponse> {
     const { email, password, organizationName, organizationType, organizationId, role } = input;
@@ -111,6 +120,9 @@ export class AuthService {
 
     // Hash password before transaction
     const passwordHash = await bcrypt.hash(password, securityConfig.saltRounds);
+
+    // Generate secure email verification token
+    const verificationToken = crypto.randomBytes(32).toString('hex');
 
     // Scenario A: Standard Sign Up (Creates a new Organization & designates user as its Admin)
     if (!organizationId) {
@@ -142,10 +154,17 @@ export class AuthService {
             role: adminRole,
             organizationId: newOrg.id,
             isActive: true,
+            isEmailVerified: false,
+            verificationToken,
           },
         });
 
         return { user: newUser, organization: newOrg };
+      });
+
+      // Send verification email asynchronously
+      emailService.sendVerificationEmail(user.email, verificationToken).catch((err) => {
+        console.error('[AuthService] Error dispatching verification email:', err);
       });
 
       const token = this.generateToken(user);
@@ -157,6 +176,7 @@ export class AuthService {
           email: user.email,
           role: user.role,
           organizationId: user.organizationId,
+          isEmailVerified: user.isEmailVerified,
           organization: {
             id: organization.id,
             name: organization.name,
@@ -175,7 +195,6 @@ export class AuthService {
       throw { status: 404, message: `Organization with ID ${organizationId} not found.` };
     }
 
-    // If role not specified when joining, default based on org type
     const assignedRole =
       role ||
       (existingOrg.type === OrganizationType.WAREHOUSE_OPERATOR
@@ -189,7 +208,14 @@ export class AuthService {
         role: assignedRole,
         organizationId: existingOrg.id,
         isActive: true,
+        isEmailVerified: false,
+        verificationToken,
       },
+    });
+
+    // Send verification email asynchronously
+    emailService.sendVerificationEmail(user.email, verificationToken).catch((err) => {
+      console.error('[AuthService] Error dispatching verification email:', err);
     });
 
     const token = this.generateToken(user);
@@ -201,6 +227,7 @@ export class AuthService {
         email: user.email,
         role: user.role,
         organizationId: user.organizationId,
+        isEmailVerified: user.isEmailVerified,
         organization: {
           id: existingOrg.id,
           name: existingOrg.name,
@@ -208,6 +235,73 @@ export class AuthService {
         },
       },
     };
+  }
+
+  /**
+   * Verify a user's email using the verification token.
+   */
+  public async verifyEmail(token: string): Promise<{ message: string; email: string }> {
+    if (!token || typeof token !== 'string') {
+      throw { status: 400, message: 'Verification token is required.' };
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { verificationToken: token.trim() },
+    });
+
+    if (!user) {
+      throw { status: 400, message: 'Invalid or expired verification token.' };
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        isEmailVerified: true,
+        verificationToken: null,
+      },
+    });
+
+    return {
+      message: 'Email verified successfully. Your account is now fully active.',
+      email: user.email,
+    };
+  }
+
+  /**
+   * Resend a verification email.
+   */
+  public async resendVerification(input: ResendVerificationInput): Promise<{ message: string }> {
+    const { email, userId } = input;
+
+    let user;
+    if (userId) {
+      user = await prisma.user.findUnique({ where: { id: userId } });
+    } else if (email) {
+      user = await prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } });
+    } else {
+      throw { status: 400, message: 'Either email or authenticated user ID is required.' };
+    }
+
+    if (!user) {
+      throw { status: 404, message: 'User not found.' };
+    }
+
+    if (user.isEmailVerified) {
+      return { message: 'Email is already verified.' };
+    }
+
+    // Generate a fresh token
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { verificationToken },
+    });
+
+    // Send verification email
+    await emailService.sendVerificationEmail(user.email, verificationToken);
+
+    return { message: 'A new verification email has been sent to your email address.' };
   }
 
   /**
@@ -255,6 +349,7 @@ export class AuthService {
         email: user.email,
         role: user.role,
         organizationId: user.organizationId,
+        isEmailVerified: user.isEmailVerified,
         organization: user.organization,
       },
     };
@@ -315,6 +410,7 @@ export class AuthService {
         role: true,
         organizationId: true,
         isActive: true,
+        isEmailVerified: true,
         createdAt: true,
         updatedAt: true,
         organization: {
