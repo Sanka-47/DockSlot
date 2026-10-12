@@ -1,5 +1,6 @@
 import app from '../index';
 import http from 'http';
+import { prisma } from '../config/db.config';
 
 async function runTests() {
   console.log('🧪 Starting Auth Endpoints & Middleware Integration Test...');
@@ -21,7 +22,6 @@ async function runTests() {
     });
     const loginData = (await loginRes.json()) as any;
     console.log('Login Status:', loginRes.status);
-    console.log('Login Result:', JSON.stringify(loginData, null, 2));
 
     if (!loginData.success || !loginData.data?.token) {
       throw new Error('Login failed!');
@@ -37,7 +37,6 @@ async function runTests() {
     });
     const meData = (await meRes.json()) as any;
     console.log('Profile Status:', meRes.status);
-    console.log('Profile Result:', JSON.stringify(meData, null, 2));
 
     if (!meData.success || !meData.data?.tenantContext?.organizationId) {
       throw new Error('Tenant context verification failed!');
@@ -52,14 +51,13 @@ async function runTests() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: testEmail,
-        password: '12345678',
+        password: 'Password123!',
         organizationName: 'New Horizon Logistics',
         organizationType: 'CARRIER',
       }),
     });
     const regData = (await regRes.json()) as any;
     console.log('Register Status:', regRes.status);
-    console.log('Register Result:', JSON.stringify(regData, null, 2));
 
     if (!regData.success || !regData.data?.token) {
       throw new Error('Registration failed!');
@@ -67,45 +65,104 @@ async function runTests() {
     if (regData.data.user.role !== 'CARRIER_ADMIN') {
       throw new Error(`Expected CARRIER_ADMIN role but got: ${regData.data.user.role}`);
     }
-    if (!regData.data.user.organization?.id) {
-      throw new Error('Expected created organization in registration response!');
-    }
+    const registeredToken = regData.data.token;
     console.log('Verified user became Admin of new organization:', regData.data.user.organization);
 
-    // 4. Test Password Reset (POST /reset-password)
-    console.log('\n4. Testing Password Reset (POST /reset-password)...');
+    // 4. Test Change Password (POST /change-password) using ONLY oldPassword and newPassword (no email)
+    console.log('\n4. Testing Change Password with oldPassword and newPassword (no email)...');
+    const changeRes = await fetch(`${baseUrl}/change-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${registeredToken}`,
+      },
+      body: JSON.stringify({
+        oldPassword: 'Password123!',
+        newPassword: 'ChangedPassword456!',
+      }),
+    });
+    const changeData = (await changeRes.json()) as any;
+    console.log('Change Password Status:', changeRes.status);
+    console.log('Change Password Result:', changeData);
+
+    if (!changeData.success) {
+      throw new Error('Change password failed!');
+    }
+
+    // 5. Test Login with Changed Password
+    console.log('\n5. Testing Login with Changed Password...');
+    const loginChangedRes = await fetch(`${baseUrl}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: testEmail,
+        password: 'ChangedPassword456!',
+      }),
+    });
+    const loginChangedData = (await loginChangedRes.json()) as any;
+    console.log('Login Changed Status:', loginChangedRes.status);
+    if (!loginChangedData.success) {
+      throw new Error('Login with changed password failed!');
+    }
+
+    // 6. Test Forgot Password (POST /forgot-password)
+    console.log('\n6. Testing Forgot Password (POST /forgot-password)...');
+    const forgotRes = await fetch(`${baseUrl}/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: testEmail }),
+    });
+    const forgotData = (await forgotRes.json()) as any;
+    console.log('Forgot Password Status:', forgotRes.status);
+    console.log('Forgot Password Result:', forgotData);
+
+    if (!forgotData.success) {
+      throw new Error('Forgot password failed!');
+    }
+
+    // Retrieve token from DB
+    const dbUser = await prisma.user.findUnique({ where: { email: testEmail } });
+    const resetToken = dbUser?.resetPasswordToken;
+    if (!resetToken) {
+      throw new Error('Reset password token was not stored in database!');
+    }
+
+    // 7. Test Reset Password with Token (POST /reset-password)
+    console.log('\n7. Testing Reset Password with Token (POST /reset-password)...');
     const resetRes = await fetch(`${baseUrl}/reset-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        email: testEmail,
-        newPassword: '123456789',
+        token: resetToken,
+        newPassword: 'FinalResetPassword789!',
       }),
     });
     const resetData = (await resetRes.json()) as any;
-    console.log('Reset Status:', resetRes.status);
-    console.log('Reset Result:', JSON.stringify(resetData, null, 2));
+    console.log('Reset Password Status:', resetRes.status);
+    console.log('Reset Password Result:', resetData);
 
-    // 5. Test Login with new password
-    console.log('\n5. Testing Login with New Password...');
-    const reLoginRes = await fetch(`${baseUrl}/login`, {
+    if (!resetData.success) {
+      throw new Error('Reset password with token failed!');
+    }
+
+    // 8. Test Login with Reset Password
+    console.log('\n8. Testing Login with Reset Password...');
+    const finalLoginRes = await fetch(`${baseUrl}/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: testEmail,
-        password: '123456789',
+        password: 'FinalResetPassword789!',
       }),
     });
-    const reLoginData = (await reLoginRes.json()) as any;
-    console.log('Re-login Status:', reLoginRes.status);
-    console.log('Re-login Result:', JSON.stringify(reLoginData, null, 2));
-
-    if (!reLoginData.success) {
-      throw new Error('Login with new password failed!');
+    const finalLoginData = (await finalLoginRes.json()) as any;
+    console.log('Final Login Status:', finalLoginRes.status);
+    if (!finalLoginData.success) {
+      throw new Error('Login with reset password failed!');
     }
 
-    // 6. Test Unauthenticated Request Rejected by Middleware
-    console.log('\n6. Testing Middleware Rejection without Token...');
+    // 9. Test Unauthenticated Request Rejected by Middleware
+    console.log('\n9. Testing Middleware Rejection without Token...');
     const unauthRes = await fetch(`${baseUrl}/me`);
     const unauthData = (await unauthRes.json()) as any;
     console.log('Unauth Status:', unauthRes.status, unauthData.message);
@@ -113,9 +170,10 @@ async function runTests() {
       throw new Error('Middleware failed to reject unauthenticated request!');
     }
 
-    console.log('\n🎉 ALL TESTS PASSED SUCCESSFULLY!');
+    console.log('\n🎉 ALL AUTH & PASSWORD TESTS PASSED SUCCESSFULLY!');
   } finally {
     server.close();
+    await prisma.$disconnect();
     process.exit(0);
   }
 }

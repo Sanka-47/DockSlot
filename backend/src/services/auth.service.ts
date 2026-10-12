@@ -20,10 +20,18 @@ export interface LoginInput {
   password: string;
 }
 
+export interface ForgotPasswordInput {
+  email: string;
+}
+
 export interface ResetPasswordInput {
-  email?: string;
-  userId?: number;
-  oldPassword?: string;
+  token: string;
+  newPassword: string;
+}
+
+export interface ChangePasswordInput {
+  userId: number;
+  oldPassword: string;
   newPassword: string;
 }
 
@@ -356,38 +364,113 @@ export class AuthService {
   }
 
   /**
-   * Reset user password.
+   * Forgot password: Sends a password reset link to the user's email.
+   * Mitigates user enumeration by always returning a generic success message.
    */
-  public async resetPassword(input: ResetPasswordInput): Promise<{ message: string }> {
-    const { email, userId, oldPassword, newPassword } = input;
+  public async forgotPassword(email: string): Promise<{ message: string }> {
+    const genericSuccess = {
+      message: 'If an account with that email exists, a password reset link has been sent.',
+    };
+
+    if (!email || typeof email !== 'string') {
+      return genericSuccess;
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
+
+    if (!user) {
+      return genericSuccess;
+    }
+
+    // Generate secure random reset token and set expiration (1 hour from now)
+    const resetPasswordToken = crypto.randomBytes(32).toString('hex');
+    const resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        resetPasswordToken,
+        resetPasswordExpires,
+      },
+    });
+
+    // Send reset email via Nodemailer
+    emailService.sendPasswordResetEmail(user.email, resetPasswordToken).catch((err) => {
+      console.error('[AuthService] Error dispatching password reset email:', err);
+    });
+
+    return genericSuccess;
+  }
+
+  /**
+   * Reset password using a reset token.
+   */
+  public async resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
+    if (!token || typeof token !== 'string') {
+      throw { status: 400, message: 'Password reset token is required.' };
+    }
 
     if (!newPassword || newPassword.length < 6) {
       throw { status: 400, message: 'New password must be at least 6 characters long.' };
     }
 
-    let user;
+    const user = await prisma.user.findFirst({
+      where: {
+        resetPasswordToken: token.trim(),
+        resetPasswordExpires: {
+          gt: new Date(),
+        },
+      },
+    });
 
-    if (userId) {
-      user = await prisma.user.findUnique({ where: { id: userId } });
-    } else if (email) {
-      user = await prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } });
-    } else {
-      throw { status: 400, message: 'Either email or authenticated user ID must be provided.' };
+    if (!user) {
+      throw { status: 400, message: 'Invalid or expired password reset token.' };
     }
+
+    const passwordHash = await bcrypt.hash(newPassword, securityConfig.saltRounds);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        resetPasswordToken: null,
+        resetPasswordExpires: null,
+      },
+    });
+
+    return { message: 'Password has been reset successfully. You can now login with your new password.' };
+  }
+
+  /**
+   * Change password for authenticated user using old password and new password.
+   */
+  public async changePassword(input: ChangePasswordInput): Promise<{ message: string }> {
+    const { userId, oldPassword, newPassword } = input;
+
+    if (!userId || !oldPassword || !newPassword) {
+      throw { status: 400, message: 'Current password and new password are required.' };
+    }
+
+    if (newPassword.length < 6) {
+      throw { status: 400, message: 'New password must be at least 6 characters long.' };
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
 
     if (!user) {
       throw { status: 404, message: 'User not found.' };
     }
 
-    // If oldPassword is provided, verify it
-    if (oldPassword) {
-      const isMatch = await bcrypt.compare(oldPassword, user.passwordHash);
-      if (!isMatch) {
-        throw { status: 401, message: 'Current password does not match.' };
-      }
+    const isMatch = await bcrypt.compare(oldPassword, user.passwordHash);
+    if (!isMatch) {
+      throw { status: 401, message: 'Current password does not match.' };
     }
 
-    // Hash the new password and update
     const passwordHash = await bcrypt.hash(newPassword, securityConfig.saltRounds);
 
     await prisma.user.update({
@@ -395,7 +478,7 @@ export class AuthService {
       data: { passwordHash },
     });
 
-    return { message: 'Password has been reset successfully.' };
+    return { message: 'Password changed successfully.' };
   }
 
   /**

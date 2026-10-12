@@ -7,4 +7,5 @@ export const mailConfig = {
   port: Number(process.env.SMTP_PORT) || 1025,
   from: process.env.SMTP_FROM || 'DockSlot <no-reply@dockslot.local>',
   appUrl: process.env.APP_URL || 'http://localhost:5000',
+  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
 };

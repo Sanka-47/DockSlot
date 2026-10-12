@@ -51,16 +51,18 @@ model Organization {
 }
 
 model User {
-  id                Int      @id @default(autoincrement())
-  organizationId    Int
-  email             String   @unique
-  passwordHash      String
-  role              UserRole
-  isActive          Boolean  @default(true)
-  isEmailVerified   Boolean  @default(false)
-  verificationToken String?  @unique
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                   Int       @id @default(autoincrement())
+  organizationId       Int
+  email                String    @unique
+  passwordHash         String
+  role                 UserRole
+  isActive             Boolean   @default(true)
+  isEmailVerified      Boolean   @default(false)
+  verificationToken    String?   @unique
+  resetPasswordToken   String?   @unique
+  resetPasswordExpires DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 

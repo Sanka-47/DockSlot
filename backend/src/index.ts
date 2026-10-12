@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/auth.routes';
 import bookingRoutes from './routes/booking.routes';
 import warehouseRoutes from './routes/warehouse.routes';
+import { errorHandler } from './middleware/error.middleware';
 
 dotenv.config();
 
@@ -22,6 +23,9 @@ app.use('/api/warehouses', warehouseRoutes);
 app.get('/health', (_req, res) => {
   res.status(200).json({ status: 'OK', message: 'DockSlot API is running' });
 });
+
+// Global Error Handler
+app.use(errorHandler);
 
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {

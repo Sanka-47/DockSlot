@@ -72,13 +72,54 @@ export const resendVerification = async (req: Request, res: Response): Promise<v
   }
 };
 
+export const forgotPassword = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email } = req.body;
+    const result = await authService.forgotPassword(email);
+    res.status(200).json({
+      success: true,
+      message: result.message,
+    });
+  } catch (error: any) {
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'An error occurred during password reset request.',
+    });
+  }
+};
+
 export const resetPassword = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, oldPassword, newPassword } = req.body;
+    const { token, newPassword } = req.body;
+    const result = await authService.resetPassword(token, newPassword);
+    res.status(200).json({
+      success: true,
+      message: result.message,
+    });
+  } catch (error: any) {
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'An error occurred during password reset.',
+    });
+  }
+};
+
+export const changePassword = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { oldPassword, newPassword } = req.body;
     const userId = req.user?.userId;
 
-    const result = await authService.resetPassword({
-      email,
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Unauthorized. Authentication required to change password.',
+      });
+      return;
+    }
+
+    const result = await authService.changePassword({
       userId,
       oldPassword,
       newPassword,
@@ -92,7 +133,7 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
     const status = error.status || 500;
     res.status(status).json({
       success: false,
-      message: error.message || 'An error occurred during password reset.',
+      message: error.message || 'An error occurred during password change.',
     });
   }
 };
