@@ -44,8 +44,8 @@ async function runTests() {
     }
     console.log('Tenant context verified:', meData.data.tenantContext);
 
-    // 3. Test Registration (POST /register)
-    console.log('\n3. Testing Registration (POST /register)...');
+    // 3. Test Registration & Auto-Admin Assignment (POST /register)
+    console.log('\n3. Testing Registration & Auto-Admin Role Assignment (POST /register)...');
     const testEmail = `test_carrier_${Date.now()}@carrier.com`;
     const regRes = await fetch(`${baseUrl}/register`, {
       method: 'POST',
@@ -53,7 +53,6 @@ async function runTests() {
       body: JSON.stringify({
         email: testEmail,
         password: '12345678',
-        role: 'DISPATCHER',
         organizationName: 'New Horizon Logistics',
         organizationType: 'CARRIER',
       }),
@@ -65,6 +64,13 @@ async function runTests() {
     if (!regData.success || !regData.data?.token) {
       throw new Error('Registration failed!');
     }
+    if (regData.data.user.role !== 'CARRIER_ADMIN') {
+      throw new Error(`Expected CARRIER_ADMIN role but got: ${regData.data.user.role}`);
+    }
+    if (!regData.data.user.organization?.id) {
+      throw new Error('Expected created organization in registration response!');
+    }
+    console.log('Verified user became Admin of new organization:', regData.data.user.organization);
 
     // 4. Test Password Reset (POST /reset-password)
     console.log('\n4. Testing Password Reset (POST /reset-password)...');
