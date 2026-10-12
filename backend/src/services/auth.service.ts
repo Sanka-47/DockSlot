@@ -314,6 +314,7 @@ export class AuthService {
 
   /**
    * Login an existing user and issue a JWT token.
+   * Protects against brute-force attacks via temporary account lockout after 5 failed attempts.
    */
   public async login(input: LoginInput): Promise<AuthResponse> {
     const { email, password } = input;
@@ -343,9 +344,61 @@ export class AuthService {
       throw { status: 403, message: 'Account is deactivated. Please contact support.' };
     }
 
+    // 1. Check if the account is currently locked
+    const now = new Date();
+    if (user.lockUntil && user.lockUntil > now) {
+      const remainingMinutes = Math.ceil((user.lockUntil.getTime() - now.getTime()) / (60 * 1000));
+      throw {
+        status: 423,
+        message: `Account is temporarily locked due to multiple failed login attempts. Please try again in ${remainingMinutes} minute(s).`,
+      };
+    }
+
+    // 2. Validate password
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+
     if (!isPasswordValid) {
-      throw { status: 401, message: 'Invalid email or password.' };
+      const maxAttempts = 5;
+      const failedAttempts = (user.failedLoginAttempts || 0) + 1;
+
+      if (failedAttempts >= maxAttempts) {
+        // Lock account for 15 minutes
+        const lockUntil = new Date(Date.now() + 15 * 60 * 1000);
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            failedLoginAttempts: failedAttempts,
+            lockUntil,
+          },
+        });
+        throw {
+          status: 423,
+          message: 'Account is temporarily locked due to 5 consecutive failed login attempts. Please try again after 15 minutes.',
+        };
+      } else {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            failedLoginAttempts: failedAttempts,
+          },
+        });
+        const remaining = maxAttempts - failedAttempts;
+        throw {
+          status: 401,
+          message: `Invalid email or password. ${remaining} attempt(s) remaining before account lockout.`,
+        };
+      }
+    }
+
+    // 3. Password is valid: reset failed attempts and unlock account if needed
+    if (user.failedLoginAttempts > 0 || user.lockUntil !== null) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          failedLoginAttempts: 0,
+          lockUntil: null,
+        },
+      });
     }
 
     const token = this.generateToken(user);
