@@ -5,13 +5,12 @@ import { securityConfig } from '../config/security.config';
 export interface AuthPayload {
   userId: number;
   organizationId: number;
-  organization_id: number;
   role: string;
   email: string;
 }
 
 export interface TenantContext {
-  organization_id: number;
+  organizationId: number;
   role: string;
 }
 
@@ -40,19 +39,18 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
   try {
     const decoded = jwt.verify(token, securityConfig.jwtSecret) as any;
 
-    const organization_id = decoded.organization_id || decoded.organizationId;
+    const organizationId = decoded.organizationId || decoded.organization_id;
 
     const userPayload: AuthPayload = {
       userId: decoded.userId || decoded.id,
-      organizationId: organization_id,
-      organization_id: organization_id,
+      organizationId,
       role: decoded.role,
       email: decoded.email,
     };
 
     req.user = userPayload;
     req.tenant = {
-      organization_id: organization_id,
+      organizationId,
       role: decoded.role,
     };
 

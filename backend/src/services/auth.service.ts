@@ -43,9 +43,7 @@ export class AuthService {
     return jwt.sign(
       {
         userId: user.id,
-        id: user.id,
         organizationId: user.organizationId,
-        organization_id: user.organizationId,
         role: user.role,
         email: user.email,
       },

@@ -39,7 +39,7 @@ async function runTests() {
     console.log('Profile Status:', meRes.status);
     console.log('Profile Result:', JSON.stringify(meData, null, 2));
 
-    if (!meData.success || !meData.data?.tenantContext?.organization_id) {
+    if (!meData.success || !meData.data?.tenantContext?.organizationId) {
       throw new Error('Tenant context verification failed!');
     }
     console.log('Tenant context verified:', meData.data.tenantContext);
