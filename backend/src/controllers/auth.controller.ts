@@ -6,7 +6,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     const result = await authService.register(req.body);
     res.status(201).json({
       success: true,
-      message: 'User registered successfully.',
+      message: 'User registered successfully. A verification email has been sent.',
       data: result,
     });
   } catch (error: any) {
@@ -31,6 +31,43 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     res.status(status).json({
       success: false,
       message: error.message || 'An error occurred during login.',
+    });
+  }
+};
+
+export const verifyEmail = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const token = req.query.token as string;
+    const result = await authService.verifyEmail(token);
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: { email: result.email },
+    });
+  } catch (error: any) {
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Email verification failed.',
+    });
+  }
+};
+
+export const resendVerification = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const email = req.body.email;
+    const userId = req.user?.userId;
+
+    const result = await authService.resendVerification({ email, userId });
+    res.status(200).json({
+      success: true,
+      message: result.message,
+    });
+  } catch (error: any) {
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Failed to resend verification email.',
     });
   }
 };
