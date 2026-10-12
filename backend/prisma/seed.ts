@@ -63,6 +63,7 @@ async function main() {
         passwordHash,
         role: UserRole.WAREHOUSE_ADMIN,
         isActive: true,
+        isEmailVerified: true,
       },
       {
         organizationId: apexOrg.id,
@@ -70,6 +71,7 @@ async function main() {
         passwordHash,
         role: UserRole.DOCK_MANAGER,
         isActive: true,
+        isEmailVerified: true,
       },
     ],
   });
@@ -83,6 +85,7 @@ async function main() {
         passwordHash,
         role: UserRole.WAREHOUSE_ADMIN,
         isActive: true,
+        isEmailVerified: true,
       },
       {
         organizationId: gmtOrg.id,
@@ -90,6 +93,7 @@ async function main() {
         passwordHash,
         role: UserRole.DOCK_MANAGER,
         isActive: true,
+        isEmailVerified: true,
       },
     ],
   });
@@ -103,6 +107,7 @@ async function main() {
         passwordHash,
         role: UserRole.CARRIER_ADMIN,
         isActive: true,
+        isEmailVerified: true,
       },
       {
         organizationId: swiftOrg.id,
@@ -110,6 +115,7 @@ async function main() {
         passwordHash,
         role: UserRole.DISPATCHER,
         isActive: true,
+        isEmailVerified: true,
       },
     ],
   });
@@ -123,6 +129,7 @@ async function main() {
         passwordHash,
         role: UserRole.CARRIER_ADMIN,
         isActive: true,
+        isEmailVerified: true,
       },
       {
         organizationId: falconOrg.id,
@@ -130,6 +137,7 @@ async function main() {
         passwordHash,
         role: UserRole.DISPATCHER,
         isActive: true,
+        isEmailVerified: true,
       },
     ],
   });
