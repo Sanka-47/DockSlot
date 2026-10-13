@@ -65,5 +65,46 @@ export const requireCarrierDispatcher = async (
   next();
 };
 
+/**
+ * Middleware restricting access strictly to users with DISPATCHER or CARRIER_ADMIN role
+ * belonging to a CARRIER organization.
+ */
+export const requireCarrierRole = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  if (!req.user) {
+    res.status(401).json({
+      success: false,
+      message: 'Authentication required.',
+    });
+    return;
+  }
+
+  if (req.user.role !== 'DISPATCHER' && req.user.role !== 'CARRIER_ADMIN') {
+    res.status(403).json({
+      success: false,
+      message: `Forbidden. Role '${req.user.role}' is not authorized to perform this action.`,
+    });
+    return;
+  }
+
+  const organization = await prisma.organization.findUnique({
+    where: { id: req.user.organizationId },
+    select: { type: true },
+  });
+
+  if (!organization || organization.type !== OrganizationType.CARRIER) {
+    res.status(403).json({
+      success: false,
+      message: 'Forbidden. User does not belong to a Carrier organization.',
+    });
+    return;
+  }
+
+  next();
+};
+
 export const rbacMiddleware = authorize;
 export default authorize;
