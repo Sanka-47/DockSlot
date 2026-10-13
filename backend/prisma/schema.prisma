@@ -29,6 +29,7 @@ enum BookingStatus {
   CANCELLED
   ARRIVED
   NO_SHOW
+  COMPLETED
 }
 
 enum OutboxStatus {
@@ -51,29 +52,37 @@ model Organization {
 }
 
 model User {
-  id             Int      @id @default(autoincrement())
-  organizationId Int
-  email          String   @unique
-  passwordHash   String
-  role           UserRole
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                   Int       @id @default(autoincrement())
+  organizationId       Int
+  email                String    @unique
+  passwordHash         String
+  role                 UserRole
+  isActive             Boolean   @default(true)
+  isEmailVerified      Boolean   @default(false)
+  verificationToken    String?   @unique
+  resetPasswordToken   String?   @unique
+  resetPasswordExpires DateTime?
+  failedLoginAttempts  Int       @default(0)
+  lockUntil            DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  auditLogs    AuditLog[]
 
   @@index([organizationId])
   @@map("users")
 }
 
 model Warehouse {
-  id             Int      @id @default(autoincrement())
-  organizationId Int
-  name           String
-  address        String
-  timezone       String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                Int      @id @default(autoincrement())
+  organizationId    Int
+  name              String
+  address           String
+  timezone          String
+  slotLengthMinutes Int      @default(30)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   docks          Dock[]
@@ -91,11 +100,26 @@ model Dock {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
-  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  warehouse Warehouse     @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   bookings  Booking[]
+  closures  DockClosure[]
 
   @@index([warehouseId])
   @@map("docks")
+}
+
+model DockClosure {
+  id        Int      @id @default(autoincrement())
+  dockId    Int
+  startTime DateTime
+  endTime   DateTime
+  reason    String?
+  createdAt DateTime @default(now())
+
+  dock      Dock     @relation(fields: [dockId], references: [id], onDelete: Cascade)
+
+  @@index([dockId])
+  @@map("dock_closures")
 }
 
 model OperatingHour {
@@ -125,16 +149,34 @@ model Booking {
   driverPhone   String?
   cargoNote     String?       @db.Text
   status        BookingStatus @default(BOOKED)
+  activeLock    String?       @default("ACTIVE") @db.VarChar(50)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
   dock       Dock         @relation(fields: [dockId], references: [id], onDelete: Cascade)
   carrierOrg Organization @relation("CarrierBookings", fields: [carrierOrgId], references: [id], onDelete: Cascade)
+  auditLogs  AuditLog[]
 
-  @@unique([dockId, slotStartTime])
+  @@unique([dockId, slotStartTime, activeLock])
   @@index([dockId])
   @@index([carrierOrgId])
   @@map("bookings")
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  bookingId Int
+  userId    Int
+  action    String   // "CREATED", "RESCHEDULED", "CANCELLED", "STATUS_CHANGED"
+  details   Json?    // Stores old vs new values, reason, etc.
+  createdAt DateTime @default(now())
+
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@index([userId])
+  @@map("audit_logs")
 }
 
 model OutboxEvent {
@@ -150,4 +192,14 @@ model OutboxEvent {
   @@index([status])
   @@index([aggregateType, aggregateId])
   @@map("outbox_events")
+}
+
+model IdempotencyRecord {
+  id           Int      @id @default(autoincrement())
+  key          String   @unique
+  responseCode Int
+  responseBody Json
+  createdAt    DateTime @default(now())
+
+  @@map("idempotency_records")
 }

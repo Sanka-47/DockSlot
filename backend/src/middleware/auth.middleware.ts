@@ -71,4 +71,6 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
   }
 };
 
+export const authMiddleware = authenticate;
+
 export default authenticate;
