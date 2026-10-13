@@ -107,13 +107,44 @@ async function runVerificationTests() {
 
     // 5. Attempt sensitive booking creation NOW THAT USER IS VERIFIED
     console.log('\n5. Retrying POST /api/bookings as VERIFIED user (should succeed)...');
+    // Update user role to DISPATCHER to satisfy booking RBAC
+    await prisma.user.update({
+      where: { id: userId },
+      data: { role: 'DISPATCHER' },
+    });
+    // Sign token with DISPATCHER role
+    const jwt = (await import('jsonwebtoken')).default;
+    const { securityConfig } = await import('../config/security.config');
+    const dispatcherToken = jwt.sign(
+      {
+        userId,
+        organizationId: dbUserAfter!.organizationId,
+        role: 'DISPATCHER',
+        email: testEmail,
+      },
+      securityConfig.jwtSecret,
+      { expiresIn: '1h' }
+    );
+
+    const activeDock = await prisma.dock.findFirst({
+      where: { status: 'ACTIVE' },
+      include: { warehouse: { include: { operatingHours: true } } },
+    });
+
     const verifiedBookingRes = await fetch(`${baseUrl}/bookings`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${dispatcherToken}`,
       },
-      body: JSON.stringify({ dockId: 1 }),
+      body: JSON.stringify({
+        dockId: activeDock!.id,
+        slotStartTime: '2026-10-26T02:30:00.000Z',
+        slotEndTime: '2026-10-26T03:00:00.000Z',
+        truckPlate: 'TRK-VERIFY',
+        driverName: 'Verify Driver',
+        driverPhone: '+94770001122',
+      }),
     });
     const verifiedBookingData = (await verifiedBookingRes.json()) as any;
     console.log('Verified Booking Status:', verifiedBookingRes.status);
