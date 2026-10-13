@@ -13,9 +13,18 @@ export interface CreateWarehouseInput {
   name: string;
   address: string;
   timezone: string;
+  slotLengthMinutes?: number;
 }
 
 export interface UpdateWarehouseInput {
+  name?: string;
+  address?: string;
+  timezone?: string;
+  slotLengthMinutes?: number;
+}
+
+export interface UpdateWarehouseSettingsInput {
+  slotLengthMinutes?: number;
   name?: string;
   address?: string;
   timezone?: string;
@@ -89,6 +98,7 @@ export class WarehouseService {
         name: data.name.trim(),
         address: data.address.trim(),
         timezone: trimmedTimezone,
+        slotLengthMinutes: data.slotLengthMinutes || 30,
       },
       include: {
         docks: true,
@@ -146,9 +156,101 @@ export class WarehouseService {
   }
 
   /**
+   * Updates warehouse settings (e.g., default slotLengthMinutes) with strict tenant isolation.
+   * Validates that slotLengthMinutes is a valid increment (e.g., 30, 45, 60 minutes) that divides evenly
+   * into operating schedules, and updates both the warehouse and its operating hours records.
+   * Existing confirmed bookings retain their original time ranges and remain unaffected.
+   */
+  async updateWarehouseSettings(
+    warehouseId: number,
+    organizationId: number,
+    data: UpdateWarehouseSettingsInput
+  ) {
+    if (!warehouseId || isNaN(warehouseId)) {
+      throw { status: 400, message: 'Invalid warehouse ID.' };
+    }
+
+    const warehouse = await prisma.warehouse.findUnique({
+      where: { id: warehouseId },
+      include: {
+        operatingHours: true,
+        docks: true,
+      },
+    });
+
+    if (!warehouse) {
+      throw { status: 404, message: 'Warehouse not found.' };
+    }
+
+    if (warehouse.organizationId !== organizationId) {
+      throw {
+        status: 403,
+        message: 'Forbidden. You do not have permission to manage settings for this warehouse.',
+      };
+    }
+
+    if (data.slotLengthMinutes !== undefined) {
+      const slotLength = data.slotLengthMinutes;
+      const allowedIncrements = [15, 30, 45, 60, 90, 120];
+
+      if (
+        typeof slotLength !== 'number' ||
+        !Number.isInteger(slotLength) ||
+        slotLength <= 0 ||
+        (!allowedIncrements.includes(slotLength) && 1440 % slotLength !== 0)
+      ) {
+        throw {
+          status: 400,
+          message: `Invalid slotLengthMinutes: ${slotLength}. Allowed increments must divide evenly into operating schedules (e.g., 30, 45, 60 minutes).`,
+        };
+      }
+    }
+
+    if (data.timezone) {
+      const trimmedTz = data.timezone.trim();
+      if (!isValidIanaTimeZone(trimmedTz)) {
+        throw { status: 400, message: `Invalid IANA timezone string: '${trimmedTz}'.` };
+      }
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const updated = await tx.warehouse.update({
+        where: { id: warehouseId },
+        data: {
+          ...(data.name && { name: data.name.trim() }),
+          ...(data.address && { address: data.address.trim() }),
+          ...(data.timezone && { timezone: data.timezone.trim() }),
+          ...(data.slotLengthMinutes !== undefined && { slotLengthMinutes: data.slotLengthMinutes }),
+        },
+        include: {
+          docks: true,
+          operatingHours: true,
+        },
+      });
+
+      if (data.slotLengthMinutes !== undefined) {
+        await tx.operatingHour.updateMany({
+          where: { warehouseId },
+          data: {
+            slotLengthMinutes: data.slotLengthMinutes,
+          },
+        });
+      }
+
+      return updated;
+    });
+
+    return result;
+  }
+
+  /**
    * Updates an existing warehouse with tenant isolation check.
    */
   async updateWarehouse(warehouseId: number, organizationId: number, data: UpdateWarehouseInput) {
+    if (data.slotLengthMinutes !== undefined) {
+      return this.updateWarehouseSettings(warehouseId, organizationId, data);
+    }
+
     if (!warehouseId || isNaN(warehouseId)) {
       throw { status: 400, message: 'Invalid warehouse ID.' };
     }

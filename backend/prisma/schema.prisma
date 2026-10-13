@@ -75,13 +75,14 @@ model User {
 }
 
 model Warehouse {
-  id             Int      @id @default(autoincrement())
-  organizationId Int
-  name           String
-  address        String
-  timezone       String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                Int      @id @default(autoincrement())
+  organizationId    Int
+  name              String
+  address           String
+  timezone          String
+  slotLengthMinutes Int      @default(30)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   docks          Dock[]

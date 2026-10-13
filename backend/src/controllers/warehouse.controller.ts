@@ -154,6 +154,57 @@ export const updateWarehouse = async (req: Request, res: Response): Promise<void
 };
 
 /**
+ * Updates warehouse settings (e.g., slotLengthMinutes).
+ * PATCH /api/warehouses/:warehouseId
+ * PATCH /api/warehouses/:warehouseId/settings
+ */
+export const updateWarehouseSettings = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) {
+      res.status(401).json({
+        success: false,
+        message: 'Unauthorized. Organization context required.',
+      });
+      return;
+    }
+
+    const warehouseId = parseParamId(req.params.warehouseId || req.params.id);
+    if (isNaN(warehouseId)) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid warehouse ID.',
+      });
+      return;
+    }
+
+    const { slotLengthMinutes, name, address, timezone } = req.body;
+    const updated = await warehouseService.updateWarehouseSettings(
+      warehouseId,
+      organizationId,
+      {
+        slotLengthMinutes,
+        name,
+        address,
+        timezone,
+      }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Warehouse settings updated successfully',
+      data: updated,
+    });
+  } catch (error: any) {
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Internal server error while updating warehouse settings.',
+    });
+  }
+};
+
+/**
  * Creates a physical dock for a specific warehouse.
  * POST /api/warehouses/:warehouseId/docks
  */

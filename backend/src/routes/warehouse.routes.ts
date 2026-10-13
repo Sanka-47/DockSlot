@@ -4,6 +4,7 @@ import {
   getWarehouseById,
   createWarehouse,
   updateWarehouse,
+  updateWarehouseSettings,
   createDock,
   getDocks,
   updateDockStatus,
@@ -46,6 +47,8 @@ router.get(
 // 3. Single warehouse routes
 router.get('/:warehouseId', authMiddleware, authorize(['WAREHOUSE_ADMIN', 'DOCK_MANAGER']), getWarehouseById);
 router.put('/:warehouseId', authMiddleware, requireVerifiedEmail, authorize(['WAREHOUSE_ADMIN']), updateWarehouse);
+router.patch('/:warehouseId', authMiddleware, requireVerifiedEmail, authorize(['WAREHOUSE_ADMIN']), updateWarehouseSettings);
+router.patch('/:warehouseId/settings', authMiddleware, requireVerifiedEmail, authorize(['WAREHOUSE_ADMIN']), updateWarehouseSettings);
 
 // 4. Warehouse dock routes
 router.post(
