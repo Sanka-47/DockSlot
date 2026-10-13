@@ -86,6 +86,38 @@ export class EmailService {
 
     return this.sendMail({ to: email, subject, html, text });
   }
+
+  /**
+   * Send an invitation email to a newly invited team member.
+   */
+  public async sendInvitationEmail(
+    email: string,
+    organizationName: string,
+    role: string,
+    token: string
+  ): Promise<boolean> {
+    const inviteUrl = `${mailConfig.frontendUrl}/accept-invite?token=${token}`;
+
+    const subject = `You're invited to join ${organizationName} on DockSlot`;
+    const html = `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+        <h2 style="color: #2563eb;">Welcome to DockSlot!</h2>
+        <p>You have been invited to join <strong>${organizationName}</strong> as a <strong>${role}</strong>.</p>
+        <p>Click the link below to accept the invitation and activate your account:</p>
+        <div style="margin: 30px 0;">
+          <a href="${inviteUrl}" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block;">Accept Invitation</a>
+        </div>
+        <p>Or copy and paste this link into your browser:</p>
+        <p><a href="${inviteUrl}" style="color: #2563eb; word-break: break-all;">${inviteUrl}</a></p>
+        <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;" />
+        <p style="font-size: 12px; color: #777;">If you were not expecting this invitation, you can safely ignore this email.</p>
+      </div>
+    `;
+
+    const text = `You have been invited to join ${organizationName} as a ${role} on DockSlot.\n\nAccept your invitation: ${inviteUrl}`;
+
+    return this.sendMail({ to: email, subject, html, text });
+  }
 }
 
 export const emailService = new EmailService();

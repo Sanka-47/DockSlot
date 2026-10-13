@@ -44,9 +44,10 @@ model Organization {
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
 
-  users      User[]
-  warehouses Warehouse[]
-  bookings   Booking[]   @relation("CarrierBookings")
+  users       User[]
+  warehouses  Warehouse[]
+  bookings    Booking[]    @relation("CarrierBookings")
+  invitations Invitation[]
 
   @@map("organizations")
 }
@@ -203,3 +204,19 @@ model IdempotencyRecord {
 
   @@map("idempotency_records")
 }
+
+model Invitation {
+  id             Int      @id @default(autoincrement())
+  email          String   @unique
+  organizationId Int
+  role           String   // "DISPATCHER" or "DOCK_MANAGER"
+  token          String   @unique
+  expiresAt      DateTime
+  status         String   @default("PENDING") // PENDING, ACCEPTED, EXPIRED
+  createdAt      DateTime @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("invitations")
+}
+
