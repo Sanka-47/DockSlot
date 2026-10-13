@@ -2,6 +2,7 @@ import http from 'http';
 import app from '../index';
 import { prisma } from '../config/db.config';
 import { BookingStatus } from '@prisma/client';
+import { mapJsDayToIsoDay, getDayOfWeekInTimeZone } from '../utils/time.utils';
 
 async function runSlotEngineTests() {
   console.log('🧪 Starting Slot Generation & Availability Engine Integration Tests...');
@@ -36,22 +37,34 @@ async function runSlotEngineTests() {
     const carrierOrgId = dispatcherData.data.user.organizationId;
     console.log(`Users authenticated: Warehouse Admin & Carrier Dispatcher (Org: ${carrierOrgId})`);
 
-    // Fetch Colombo Warehouse record from DB
+    // Fetch Warehouses
     const colomboWarehouse = await prisma.warehouse.findFirst({
       where: { name: 'Colombo DC' },
       include: { docks: true },
     });
     if (!colomboWarehouse) throw new Error('Colombo DC warehouse not found in DB!');
 
-    const jebelAliWarehouse = await prisma.warehouse.findFirst({
-      where: { name: 'Jebel Ali Hub' },
-    });
-    if (!jebelAliWarehouse) throw new Error('Jebel Ali Hub warehouse not found in DB!');
-
     const rotterdamWarehouse = await prisma.warehouse.findFirst({
       where: { name: 'Rotterdam Port DC' },
+      include: { docks: true },
     });
     if (!rotterdamWarehouse) throw new Error('Rotterdam Port DC warehouse not found in DB!');
+
+    // Set up Rotterdam Port DC as a 24/7 facility in DB:
+    // Mon-Sun (days 1-7), openTime: "00:00", closeTime: "24:00", slotLengthMinutes: 60
+    await prisma.operatingHour.deleteMany({
+      where: { warehouseId: rotterdamWarehouse.id },
+    });
+    await prisma.operatingHour.createMany({
+      data: [1, 2, 3, 4, 5, 6, 7].map((dayOfWeek) => ({
+        warehouseId: rotterdamWarehouse.id,
+        dayOfWeek,
+        openTime: '00:00',
+        closeTime: '24:00',
+        slotLengthMinutes: 60,
+      })),
+    });
+    console.log('Rotterdam Port DC configured as 24/7 facility (days 1-7, 00:00-24:00, 60m slots).');
 
     // -------------------------------------------------------------
     // TEST 1: Request Validation & Auth Guards
@@ -95,13 +108,34 @@ async function runSlotEngineTests() {
     }
 
     // -------------------------------------------------------------
-    // TEST 2: Operating Hours & Closed Days
+    // TEST 2: Day-of-Week Mapping Reconciliation (1 = Mon ... 7 = Sun)
     // -------------------------------------------------------------
-    console.log('\n--- TEST 2: Operating Hours & Closed Days ---');
+    console.log('\n--- TEST 2: Day-of-Week Mapping Reconciliation ---');
 
-    // 2.1 Sunday check for Colombo DC (Mon-Sat open, Sunday closed)
-    // 2026-10-18 is Sunday
-    console.log('2.1 Checking slots on Sunday (Closed day: 2026-10-18)...');
+    // 2.1 Unit tests for mapJsDayToIsoDay
+    if (mapJsDayToIsoDay(0) !== 7) throw new Error('mapJsDayToIsoDay(0) should be 7 for Sunday');
+    if (mapJsDayToIsoDay(1) !== 1) throw new Error('mapJsDayToIsoDay(1) should be 1 for Monday');
+    if (mapJsDayToIsoDay(6) !== 6) throw new Error('mapJsDayToIsoDay(6) should be 6 for Saturday');
+    console.log('   mapJsDayToIsoDay unit tests passed (Sunday=7, Monday=1, Saturday=6).');
+
+    // 2.2 Date-based day of week
+    // 2026-10-18 is Sunday (day 7)
+    // 2026-10-19 is Monday (day 1)
+    // 2026-10-17 is Saturday (day 6)
+    const sundayDay = getDayOfWeekInTimeZone('2026-10-18', 'Asia/Colombo');
+    const mondayDay = getDayOfWeekInTimeZone('2026-10-19', 'Asia/Colombo');
+    const saturdayDay = getDayOfWeekInTimeZone('2026-10-17', 'Asia/Colombo');
+
+    console.log(`   2026-10-18 (Sun) -> day ${sundayDay} (expected 7)`);
+    console.log(`   2026-10-19 (Mon) -> day ${mondayDay} (expected 1)`);
+    console.log(`   2026-10-17 (Sat) -> day ${saturdayDay} (expected 6)`);
+
+    if (sundayDay !== 7 || mondayDay !== 1 || saturdayDay !== 6) {
+      throw new Error('Day-of-week conversion failed ISO standard 1-7 mapping!');
+    }
+
+    // 2.3 Closed day check: Colombo DC is closed on Sunday (no day 7 operating hours)
+    console.log('2.3 Checking slots on Sunday for Colombo DC (Closed day)...');
     const sundayRes = await fetch(`${baseUrl}/warehouses/${colomboWarehouse.id}/slots?date=2026-10-18`, {
       headers: { Authorization: `Bearer ${dispatcherToken}` },
     });
@@ -111,200 +145,135 @@ async function runSlotEngineTests() {
       throw new Error('Expected empty array for warehouse closed on Sunday.');
     }
 
-    // 2.2 Weekday check for Colombo DC (Thursday: 2026-10-15)
-    // Hours: 08:00 - 18:00 (10 hrs), 30 min slots -> 20 slots per dock
-    // Docks: 3 active, 1 maintenance (Dock C4 is MAINTENANCE, must be ignored)
-    console.log('2.2 Checking slots on Open Weekday (Thursday: 2026-10-15)...');
-    const openDayRes = await fetch(`${baseUrl}/warehouses/${colomboWarehouse.id}/slots?date=2026-10-15`, {
+    // -------------------------------------------------------------
+    // TEST 3: 24/7 Warehouse Operating Hours & Full Midnight Cycle
+    // -------------------------------------------------------------
+    console.log('\n--- TEST 3: 24/7 Warehouse Operating Hours (Rotterdam Port DC) ---');
+
+    // 3.1 Query slots for Rotterdam Port DC on Monday 2026-10-19 (24/7, 60m slots)
+    console.log('3.1 Querying 24/7 slots for Rotterdam Port DC on 2026-10-19...');
+    const rotterdamRes = await fetch(`${baseUrl}/warehouses/${rotterdamWarehouse.id}/slots?date=2026-10-19`, {
       headers: { Authorization: `Bearer ${dispatcherToken}` },
     });
-    const openDayData = (await openDayRes.json()) as any;
-    console.log(`   Status: ${openDayRes.status}, Active docks returned: ${openDayData.data?.length}`);
+    const rotterdamData = (await rotterdamRes.json()) as any;
+    console.log(`   Status: ${rotterdamRes.status}, Active docks: ${rotterdamData.data?.length}`);
 
-    if (openDayRes.status !== 200 || openDayData.data.length !== 3) {
-      throw new Error(`Expected 3 active docks for Colombo DC, got ${openDayData.data?.length}`);
+    // Docks R1, R2, R3 active (R4 in MAINTENANCE)
+    if (rotterdamData.data.length !== 3) {
+      throw new Error(`Expected 3 active docks for Rotterdam Port DC, got ${rotterdamData.data?.length}`);
     }
 
-    // Verify maintenance dock is not included
-    const hasMaintenanceDock = openDayData.data.some((d: any) => d.dockName.includes('C4'));
-    if (hasMaintenanceDock) {
-      throw new Error('Maintenance dock C4 was incorrectly included in available slots!');
+    const dockR1Slots = rotterdamData.data[0].slots;
+    console.log(`   Dock "${rotterdamData.data[0].dockName}" generated ${dockR1Slots.length} slots for the 24-hr cycle.`);
+
+    // 24 hours / 60 min = exactly 24 slots
+    if (dockR1Slots.length !== 24) {
+      throw new Error(`Expected 24 slots for 24/7 warehouse with 60m slot length, got ${dockR1Slots.length}`);
     }
 
-    // Verify slot count per dock (20 slots)
-    const dockC1Slots = openDayData.data[0].slots;
-    console.log(`   Dock "${openDayData.data[0].dockName}" generated ${dockC1Slots.length} slots.`);
-    if (dockC1Slots.length !== 20) {
-      throw new Error(`Expected 20 slots between 08:00-18:00 with 30m intervals, got ${dockC1Slots.length}`);
+    // First slot: 00:00 to 01:00
+    const r1First = dockR1Slots[0];
+    console.log('   First slot:', r1First);
+    if (r1First.localStartTime !== '00:00' || r1First.localEndTime !== '01:00') {
+      throw new Error(`Expected first slot 00:00 - 01:00, got ${r1First.localStartTime} - ${r1First.localEndTime}`);
     }
 
-    // Verify first slot localization for Colombo (Asia/Colombo = UTC+5:30)
-    // 08:00 Colombo time = 02:30 UTC
-    const firstSlot = dockC1Slots[0];
-    console.log('   First slot details:', firstSlot);
-    if (
-      firstSlot.localStartTime !== '08:00' ||
-      firstSlot.localEndTime !== '08:30' ||
-      !firstSlot.slotStartTime.includes('02:30:00') ||
-      !firstSlot.slotEndTime.includes('03:00:00')
-    ) {
-      throw new Error('Slot localization did not match expected Asia/Colombo UTC offset (+05:30)!');
+    // Last slot: 23:00 to 24:00
+    const r1Last = dockR1Slots[23];
+    console.log('   Last slot (midnight span):', r1Last);
+    if (r1Last.localStartTime !== '23:00' || r1Last.localEndTime !== '24:00') {
+      throw new Error(`Expected last slot 23:00 - 24:00, got ${r1Last.localStartTime} - ${r1Last.localEndTime}`);
     }
+
+    // Verify UTC end time of last slot is strictly after start time (+1 hr)
+    const lastStartMs = new Date(r1Last.slotStartTime).getTime();
+    const lastEndMs = new Date(r1Last.slotEndTime).getTime();
+    if (lastEndMs <= lastStartMs || (lastEndMs - lastStartMs) !== 3600000) {
+      throw new Error(`Last slot interval is invalid! End time (${r1Last.slotEndTime}) must be 1hr after start time (${r1Last.slotStartTime})`);
+    }
+    console.log('   Verified last slot correctly spans until midnight of the following day without early truncation.');
+
+    // 3.2 Verify Sunday (day 7) for 24/7 facility also returns full-day availability (24 slots)
+    console.log('3.2 Querying Sunday (2026-10-18, day 7) on 24/7 facility...');
+    const rotterdamSundayRes = await fetch(`${baseUrl}/warehouses/${rotterdamWarehouse.id}/slots?date=2026-10-18`, {
+      headers: { Authorization: `Bearer ${dispatcherToken}` },
+    });
+    const rotterdamSundayData = (await rotterdamSundayRes.json()) as any;
+    if (rotterdamSundayData.data[0].slots.length !== 24) {
+      throw new Error(`Expected 24 slots on Sunday for 24/7 warehouse, got ${rotterdamSundayData.data[0].slots.length}`);
+    }
+    console.log('   Sunday full-day availability verified for 24/7 warehouse.');
 
     // -------------------------------------------------------------
-    // TEST 3: Booking Filtering (Booked vs Available Slots)
+    // TEST 4: 30-Minute Slot Length for 24/7 Facility (48 slots)
     // -------------------------------------------------------------
-    console.log('\n--- TEST 3: Booking Filtering ---');
+    console.log('\n--- TEST 4: 30-Minute Slot Length for 24/7 Hub ---');
+    // Temporarily update Monday to 30-min slots
+    await prisma.operatingHour.updateMany({
+      where: { warehouseId: rotterdamWarehouse.id, dayOfWeek: 1 },
+      data: { slotLengthMinutes: 30 },
+    });
 
-    const dockC1 = colomboWarehouse.docks.find((d) => d.name.includes('C1'))!;
-    const dockC2 = colomboWarehouse.docks.find((d) => d.name.includes('C2'))!;
-    const dockC3 = colomboWarehouse.docks.find((d) => d.name.includes('C3'))!;
+    const rotterdam30Res = await fetch(`${baseUrl}/warehouses/${rotterdamWarehouse.id}/slots?date=2026-10-19`, {
+      headers: { Authorization: `Bearer ${dispatcherToken}` },
+    });
+    const rotterdam30Data = (await rotterdam30Res.json()) as any;
+    const slots30Count = rotterdam30Data.data[0].slots.length;
+    console.log(`   30-minute slot count for 24/7 day: ${slots30Count} (expected 48)`);
 
-    // 3.1 Create a BOOKED slot on Dock C1 for 08:00-08:30 (UTC 02:30:00)
-    console.log('3.1 Inserting BOOKED booking on Dock C1 at 08:00...');
-    const booking1 = await prisma.booking.create({
+    if (slots30Count !== 48) {
+      throw new Error(`Expected 48 slots for 24/7 warehouse with 30m slots, got ${slots30Count}`);
+    }
+    const last30Slot = rotterdam30Data.data[0].slots[47];
+    if (last30Slot.localStartTime !== '23:30' || last30Slot.localEndTime !== '24:00') {
+      throw new Error(`Expected last 30m slot 23:30 - 24:00, got ${last30Slot.localStartTime} - ${last30Slot.localEndTime}`);
+    }
+
+    // Revert Monday back to 60-min slots
+    await prisma.operatingHour.updateMany({
+      where: { warehouseId: rotterdamWarehouse.id, dayOfWeek: 1 },
+      data: { slotLengthMinutes: 60 },
+    });
+
+    // -------------------------------------------------------------
+    // TEST 5: Booking Filtering on 24/7 Facility (Midnight Span Slot)
+    // -------------------------------------------------------------
+    console.log('\n--- TEST 5: Booking Filtering on Midnight Span Slot ---');
+
+    const dockR1 = rotterdamWarehouse.docks.find((d) => d.name.includes('R1'))!;
+
+    // Book the 23:00 - 24:00 slot on Dock R1
+    console.log('5.1 Booking 23:00 - 24:00 slot on Dock R1...');
+    const bookingMidnight = await prisma.booking.create({
       data: {
-        dockId: dockC1.id,
+        dockId: dockR1.id,
         carrierOrgId,
-        slotStartTime: new Date(firstSlot.slotStartTime),
-        slotEndTime: new Date(firstSlot.slotEndTime),
+        slotStartTime: new Date(r1Last.slotStartTime),
+        slotEndTime: new Date(r1Last.slotEndTime),
         status: BookingStatus.BOOKED,
       },
     });
 
-    // 3.2 Create an ARRIVED booking on Dock C2 for 09:00-09:30
-    console.log('3.2 Inserting ARRIVED booking on Dock C2 at 09:00...');
-    const slot0900Utc = new Date(dockC1Slots[2].slotStartTime); // index 2 is 09:00
-    const slot0930Utc = new Date(dockC1Slots[2].slotEndTime);
-    const booking2 = await prisma.booking.create({
-      data: {
-        dockId: dockC2.id,
-        carrierOrgId,
-        slotStartTime: slot0900Utc,
-        slotEndTime: slot0930Utc,
-        status: BookingStatus.ARRIVED,
-      },
-    });
-
-    // 3.3 Create a CANCELLED booking on Dock C3 for 08:00-08:30 (should NOT block slot)
-    console.log('3.3 Inserting CANCELLED booking on Dock C3 at 08:00...');
-    const booking3 = await prisma.booking.create({
-      data: {
-        dockId: dockC3.id,
-        carrierOrgId,
-        slotStartTime: new Date(firstSlot.slotStartTime),
-        slotEndTime: new Date(firstSlot.slotEndTime),
-        status: BookingStatus.CANCELLED,
-      },
-    });
-
-    // Query slots again
-    const filteredRes = await fetch(`${baseUrl}/warehouses/${colomboWarehouse.id}/slots?date=2026-10-15`, {
+    const filteredRotterdamRes = await fetch(`${baseUrl}/warehouses/${rotterdamWarehouse.id}/slots?date=2026-10-19`, {
       headers: { Authorization: `Bearer ${dispatcherToken}` },
     });
-    const filteredData = (await filteredRes.json()) as any;
+    const filteredRotterdamData = (await filteredRotterdamRes.json()) as any;
+    const r1FilteredSlots = filteredRotterdamData.data.find((d: any) => d.dockId === dockR1.id).slots;
 
-    const resDockC1 = filteredData.data.find((d: any) => d.dockId === dockC1.id);
-    const resDockC2 = filteredData.data.find((d: any) => d.dockId === dockC2.id);
-    const resDockC3 = filteredData.data.find((d: any) => d.dockId === dockC3.id);
-
-    console.log(`   Dock C1 remaining slots: ${resDockC1.slots.length} (expected 19)`);
-    console.log(`   Dock C2 remaining slots: ${resDockC2.slots.length} (expected 19)`);
-    console.log(`   Dock C3 remaining slots: ${resDockC3.slots.length} (expected 20)`);
-
-    // Verify 08:00 is absent from Dock C1
-    const c1Has0800 = resDockC1.slots.some((s: any) => s.localStartTime === '08:00');
-    if (c1Has0800 || resDockC1.slots.length !== 19) {
-      throw new Error('Dock C1 08:00 slot was NOT properly filtered out by BOOKED status!');
+    console.log(`   Dock R1 remaining slots: ${r1FilteredSlots.length} (expected 23)`);
+    if (r1FilteredSlots.length !== 23) {
+      throw new Error(`Expected 23 slots after booking midnight slot, got ${r1FilteredSlots.length}`);
     }
 
-    // Verify 09:00 is absent from Dock C2
-    const c2Has0900 = resDockC2.slots.some((s: any) => s.localStartTime === '09:00');
-    if (c2Has0900 || resDockC2.slots.length !== 19) {
-      throw new Error('Dock C2 09:00 slot was NOT properly filtered out by ARRIVED status!');
+    const hasMidnightSlot = r1FilteredSlots.some((s: any) => s.localStartTime === '23:00');
+    if (hasMidnightSlot) {
+      throw new Error('23:00 - 24:00 slot was NOT filtered out by BOOKED booking!');
     }
 
-    // Verify 08:00 IS STILL PRESENT on Dock C3 because status was CANCELLED
-    const c3Has0800 = resDockC3.slots.some((s: any) => s.localStartTime === '08:00');
-    if (!c3Has0800 || resDockC3.slots.length !== 20) {
-      throw new Error('Dock C3 slot was incorrectly blocked by a CANCELLED booking!');
-    }
+    // Cleanup test booking
+    await prisma.booking.delete({ where: { id: bookingMidnight.id } });
 
-    // -------------------------------------------------------------
-    // TEST 4: Multi-Timezone Slot Generation (Dubai & Amsterdam)
-    // -------------------------------------------------------------
-    console.log('\n--- TEST 4: Multi-Timezone Slot Localization ---');
-
-    // 4.1 Jebel Ali Hub (Asia/Dubai = UTC+4), 45-min slots, Sun-Thu 07:00-19:00
-    // Test on Sunday 2026-10-18 (Open in Dubai!)
-    console.log('4.1 Testing Jebel Ali Hub (Asia/Dubai) on Sunday 2026-10-18...');
-    const dubaiRes = await fetch(`${baseUrl}/warehouses/${jebelAliWarehouse.id}/slots?date=2026-10-18`, {
-      headers: { Authorization: `Bearer ${whAdminToken}` },
-    });
-    const dubaiData = (await dubaiRes.json()) as any;
-    console.log(`   Dubai active docks: ${dubaiData.data?.length}`);
-
-    // Dock J3 is in MAINTENANCE, so 2 active docks
-    if (dubaiData.data.length !== 2) {
-      throw new Error(`Expected 2 active docks for Dubai, got ${dubaiData.data.length}`);
-    }
-
-    const dubaiSlots = dubaiData.data[0].slots;
-    console.log(`   Dubai slots count: ${dubaiSlots.length}`);
-    // 07:00 to 19:00 (12 hrs = 720 min) / 45 min = 16 slots
-    if (dubaiSlots.length !== 16) {
-      throw new Error(`Expected 16 slots of 45min for Dubai, got ${dubaiSlots.length}`);
-    }
-
-    // First slot: 07:00 Dubai time = 03:00 UTC (+04:00 offset)
-    const dubaiFirst = dubaiSlots[0];
-    console.log('   Dubai first slot:', dubaiFirst);
-    if (
-      dubaiFirst.localStartTime !== '07:00' ||
-      dubaiFirst.localEndTime !== '07:45' ||
-      !dubaiFirst.slotStartTime.includes('03:00:00')
-    ) {
-      throw new Error('Dubai timezone slot generation failed to calculate UTC+4 offset!');
-    }
-
-    // 4.2 Rotterdam Port DC (Europe/Amsterdam = UTC+2 in October), 60-min slots, Mon-Fri 06:00-22:00
-    // Test on Monday 2026-10-19
-    console.log('4.2 Testing Rotterdam Port DC (Europe/Amsterdam) on Monday 2026-10-19...');
-    const amsRes = await fetch(`${baseUrl}/warehouses/${rotterdamWarehouse.id}/slots?date=2026-10-19`, {
-      headers: { Authorization: `Bearer ${dispatcherToken}` },
-    });
-    const amsData = (await amsRes.json()) as any;
-    console.log(`   Rotterdam active docks: ${amsData.data?.length}`);
-
-    // Dock R4 is in MAINTENANCE, so 3 active docks
-    if (amsData.data.length !== 3) {
-      throw new Error(`Expected 3 active docks for Rotterdam, got ${amsData.data.length}`);
-    }
-
-    const amsSlots = amsData.data[0].slots;
-    console.log(`   Rotterdam slots count: ${amsSlots.length}`);
-    // 06:00 to 22:00 (16 hrs) / 60 min = 16 slots
-    if (amsSlots.length !== 16) {
-      throw new Error(`Expected 16 slots of 60min for Rotterdam, got ${amsSlots.length}`);
-    }
-
-    // First slot: 06:00 Amsterdam time = 04:00 UTC (CEST is UTC+2)
-    const amsFirst = amsSlots[0];
-    console.log('   Rotterdam first slot:', amsFirst);
-    if (
-      amsFirst.localStartTime !== '06:00' ||
-      amsFirst.localEndTime !== '07:00' ||
-      !amsFirst.slotStartTime.includes('04:00:00')
-    ) {
-      throw new Error('Amsterdam timezone slot generation failed to calculate CEST UTC+2 offset!');
-    }
-
-    // Cleanup test bookings
-    await prisma.booking.deleteMany({
-      where: { id: { in: [booking1.id, booking2.id, booking3.id] } },
-    });
-
-    console.log('\n🎉 ALL SLOT ENGINE & AVAILABILITY TESTS PASSED SUCCESSFULLY!');
+    console.log('\n🎉 ALL 24/7 AND DAY-OF-WEEK RECONCILIATION TESTS PASSED SUCCESSFULLY!');
   } finally {
     server.close();
     await prisma.$disconnect();

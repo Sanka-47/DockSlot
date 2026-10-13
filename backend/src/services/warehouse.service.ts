@@ -330,14 +330,17 @@ export class WarehouseService {
       return [];
     }
 
-    // c. Determine the day of the week for targetDate in the warehouse's timezone
+    // c. Determine the day of the week for targetDate in the warehouse's timezone (1 = Monday ... 7 = Sunday)
     const dayOfWeek = getDayOfWeekInTimeZone(trimmedDate, warehouse.timezone);
 
-    // Query operating_hours for this day of week
+    // Query operating_hours for this day of week (supporting 1-7 and fallback to 0 for Sunday)
     const operatingHour = await prisma.operatingHour.findFirst({
       where: {
         warehouseId,
-        dayOfWeek,
+        OR: [
+          { dayOfWeek },
+          ...(dayOfWeek === 7 ? [{ dayOfWeek: 0 }] : []),
+        ],
       },
     });
 
@@ -366,7 +369,7 @@ export class WarehouseService {
         status: { in: [BookingStatus.BOOKED, BookingStatus.ARRIVED] },
         slotStartTime: {
           gte: startOfDayUtc,
-          lte: endOfDayUtc,
+          lt: endOfDayUtc,
         },
       },
       select: {
