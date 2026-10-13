@@ -136,6 +136,21 @@ export class BookingService {
     const slotEnd = new Date(data.slotEndTime);
     this.validateSlotOperatingHours(dock.warehouse, slotStart, slotEnd);
 
+    // Verify requested slot is not under scheduled dock maintenance closure
+    const overlappingClosure = await prisma.dockClosure.findFirst({
+      where: {
+        dockId: data.dockId,
+        startTime: { lt: slotEnd },
+        endTime: { gt: slotStart },
+      },
+    });
+    if (overlappingClosure) {
+      throw {
+        status: 400,
+        message: 'The requested dock slot is unavailable due to scheduled dock maintenance.',
+      };
+    }
+
     // c. Execute the booking inside a Prisma transaction guaranteeing atomicity
     try {
       const result = await prisma.$transaction(async (tx) => {
@@ -320,6 +335,21 @@ export class BookingService {
     const slotStart = new Date(data.slotStartTime);
     const slotEnd = new Date(data.slotEndTime);
     this.validateSlotOperatingHours(targetDock.warehouse, slotStart, slotEnd);
+
+    // Verify target slot is not under scheduled dock maintenance closure
+    const overlappingClosure = await prisma.dockClosure.findFirst({
+      where: {
+        dockId: targetDockId,
+        startTime: { lt: slotEnd },
+        endTime: { gt: slotStart },
+      },
+    });
+    if (overlappingClosure) {
+      throw {
+        status: 400,
+        message: 'The requested dock slot is unavailable due to scheduled dock maintenance.',
+      };
+    }
 
     try {
       const result = await prisma.$transaction(async (tx) => {
@@ -607,6 +637,113 @@ export class BookingService {
       },
       orderBy: { slotStartTime: 'desc' },
     });
+  }
+
+  /**
+   * Updates booking status (ARRIVED, NO_SHOW, COMPLETED).
+   * Verifies that the warehouse belongs to the requesting warehouse operator organization.
+   * Records an audit log entry tracking the status change.
+   */
+  async updateBookingStatus(
+    bookingId: number,
+    warehouseAdminOrgId: number,
+    userId: number,
+    status: 'ARRIVED' | 'NO_SHOW' | 'COMPLETED'
+  ) {
+    if (!bookingId || isNaN(bookingId)) {
+      throw { status: 400, message: 'Invalid booking ID.' };
+    }
+
+    const validStatuses = ['ARRIVED', 'NO_SHOW', 'COMPLETED'];
+    if (!status || !validStatuses.includes(status)) {
+      throw {
+        status: 400,
+        message: `Invalid status '${status}'. Allowed statuses are: ${validStatuses.join(', ')}.`,
+      };
+    }
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        dock: {
+          include: {
+            warehouse: true,
+          },
+        },
+        carrierOrg: true,
+      },
+    });
+
+    if (!booking) {
+      throw { status: 404, message: 'Booking not found.' };
+    }
+
+    if (booking.dock.warehouse.organizationId !== warehouseAdminOrgId) {
+      throw {
+        status: 403,
+        message: 'Forbidden. You do not have permission to manage bookings for this warehouse.',
+      };
+    }
+
+    if (booking.status === BookingStatus.CANCELLED) {
+      throw {
+        status: 400,
+        message: 'Cannot update status of a cancelled booking.',
+      };
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const updatedBooking = await tx.booking.update({
+        where: { id: bookingId },
+        data: {
+          status: status as BookingStatus,
+        },
+        include: {
+          dock: {
+            include: {
+              warehouse: true,
+            },
+          },
+          carrierOrg: true,
+        },
+      });
+
+      // Record AuditLog entry tracking the status change
+      await tx.auditLog.create({
+        data: {
+          bookingId,
+          userId,
+          action: 'STATUS_CHANGED',
+          details: {
+            oldStatus: booking.status,
+            newStatus: status,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      });
+
+      // Simultaneously create OutboxEvent
+      await tx.outboxEvent.create({
+        data: {
+          aggregateType: 'BOOKING',
+          aggregateId: String(booking.id),
+          payload: {
+            action: 'STATUS_CHANGED',
+            bookingId: booking.id,
+            carrierOrgId: booking.carrierOrgId,
+            dockId: booking.dockId,
+            oldStatus: booking.status,
+            newStatus: status,
+            updatedAt: new Date().toISOString(),
+          },
+          status: OutboxStatus.PENDING,
+        },
+      });
+
+      return updatedBooking;
+    });
+
+    return result;
   }
 }
 

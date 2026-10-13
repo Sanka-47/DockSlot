@@ -265,3 +265,59 @@ export const getBookings = async (req: Request, res: Response): Promise<void> =>
     });
   }
 };
+
+/**
+ * Updates booking operational status (ARRIVED, NO_SHOW, COMPLETED).
+ * PATCH /api/bookings/:id/status
+ */
+export const updateBookingStatus = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const organizationId = req.user?.organizationId;
+    const userId = req.user?.userId;
+    if (!organizationId || !userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Unauthorized. Authentication context required.',
+      });
+      return;
+    }
+
+    const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const bookingId = parseInt(rawId, 10);
+    if (isNaN(bookingId)) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid booking ID.',
+      });
+      return;
+    }
+
+    const { status } = req.body;
+    if (!status) {
+      res.status(400).json({
+        success: false,
+        message: 'Status is required.',
+      });
+      return;
+    }
+
+    const updatedBooking = await bookingService.updateBookingStatus(
+      bookingId,
+      organizationId,
+      userId,
+      status
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Booking status updated successfully',
+      data: updatedBooking,
+    });
+  } catch (error: any) {
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'An error occurred while updating booking status.',
+    });
+  }
+};

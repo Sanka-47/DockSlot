@@ -325,3 +325,95 @@ export const getAvailableSlots = async (req: Request, res: Response): Promise<vo
   }
 };
 
+/**
+ * Creates a scheduled maintenance closure for a dock.
+ * POST /api/docks/:dockId/closures
+ */
+export const createDockClosure = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) {
+      res.status(401).json({
+        success: false,
+        message: 'Unauthorized. Organization context required.',
+      });
+      return;
+    }
+
+    const dockId = parseParamId(req.params.dockId);
+    if (isNaN(dockId)) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid dock ID.',
+      });
+      return;
+    }
+
+    const { startTime, endTime, reason } = req.body;
+    if (!startTime || !endTime) {
+      res.status(400).json({
+        success: false,
+        message: 'Missing required fields: startTime and endTime are required.',
+      });
+      return;
+    }
+
+    const closure = await warehouseService.createDockClosure(dockId, organizationId, {
+      startTime,
+      endTime,
+      reason,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Dock maintenance closure scheduled successfully',
+      data: closure,
+    });
+  } catch (error: any) {
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Internal server error while scheduling dock maintenance closure.',
+    });
+  }
+};
+
+/**
+ * Retrieves all scheduled maintenance closures for a dock.
+ * GET /api/docks/:dockId/closures
+ */
+export const getDockClosures = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) {
+      res.status(401).json({
+        success: false,
+        message: 'Unauthorized. Organization context required.',
+      });
+      return;
+    }
+
+    const dockId = parseParamId(req.params.dockId);
+    if (isNaN(dockId)) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid dock ID.',
+      });
+      return;
+    }
+
+    const closures = await warehouseService.getDockClosures(dockId, organizationId);
+
+    res.status(200).json({
+      success: true,
+      data: closures,
+    });
+  } catch (error: any) {
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Internal server error while fetching dock maintenance closures.',
+    });
+  }
+};
+

@@ -26,6 +26,12 @@ export interface CreateDockInput {
   status?: DockStatus;
 }
 
+export interface CreateDockClosureInput {
+  startTime: string;
+  endTime: string;
+  reason?: string;
+}
+
 export interface AvailableSlot {
   slotStartTime: string;
   slotEndTime: string;
@@ -284,9 +290,114 @@ export class WarehouseService {
   }
 
   /**
+   * Creates a scheduled maintenance closure for a dock.
+   * Verifies tenant ownership and ensures closure does not overlap with active bookings.
+   */
+  async createDockClosure(dockId: number, warehouseAdminOrgId: number, data: CreateDockClosureInput) {
+    if (!dockId || isNaN(dockId)) {
+      throw { status: 400, message: 'Invalid dock ID.' };
+    }
+
+    if (!data.startTime || !data.endTime) {
+      throw { status: 400, message: 'startTime and endTime are required.' };
+    }
+
+    const closureStart = new Date(data.startTime);
+    const closureEnd = new Date(data.endTime);
+
+    if (isNaN(closureStart.getTime()) || isNaN(closureEnd.getTime())) {
+      throw { status: 400, message: 'Invalid startTime or endTime format.' };
+    }
+
+    if (closureEnd <= closureStart) {
+      throw { status: 400, message: 'endTime must be greater than startTime.' };
+    }
+
+    // Verify dock exists and belongs to the caller's warehouse operator organization
+    const dock = await prisma.dock.findUnique({
+      where: { id: dockId },
+      include: { warehouse: true },
+    });
+
+    if (!dock) {
+      throw { status: 404, message: 'Dock not found.' };
+    }
+
+    if (dock.warehouse.organizationId !== warehouseAdminOrgId) {
+      throw {
+        status: 403,
+        message: 'Forbidden. You do not have permission to manage this dock.',
+      };
+    }
+
+    // Validate that the closure does not overlap with active bookings that cannot be fulfilled
+    const overlappingBooking = await prisma.booking.findFirst({
+      where: {
+        dockId,
+        status: { in: [BookingStatus.BOOKED, BookingStatus.ARRIVED] },
+        slotStartTime: { lt: closureEnd },
+        slotEndTime: { gt: closureStart },
+      },
+    });
+
+    if (overlappingBooking) {
+      throw {
+        status: 409,
+        message: 'Cannot schedule maintenance closure: an active booking exists on this dock during the requested time window.',
+      };
+    }
+
+    const closure = await prisma.dockClosure.create({
+      data: {
+        dockId,
+        startTime: closureStart,
+        endTime: closureEnd,
+        reason: data.reason ? data.reason.trim() : null,
+      },
+      include: {
+        dock: true,
+      },
+    });
+
+    return closure;
+  }
+
+  /**
+   * Retrieves all scheduled maintenance closures for a dock.
+   */
+  async getDockClosures(dockId: number, warehouseAdminOrgId: number) {
+    if (!dockId || isNaN(dockId)) {
+      throw { status: 400, message: 'Invalid dock ID.' };
+    }
+
+    const dock = await prisma.dock.findUnique({
+      where: { id: dockId },
+      include: { warehouse: true },
+    });
+
+    if (!dock) {
+      throw { status: 404, message: 'Dock not found.' };
+    }
+
+    if (dock.warehouse.organizationId !== warehouseAdminOrgId) {
+      throw {
+        status: 403,
+        message: 'Forbidden. You do not have access to closures for this dock.',
+      };
+    }
+
+    const closures = await prisma.dockClosure.findMany({
+      where: { dockId },
+      orderBy: { startTime: 'asc' },
+    });
+
+    return closures;
+  }
+
+  /**
    * Generates and returns available time slots for all active docks of a warehouse on targetDate,
    * strictly adhering to the warehouse's IANA timezone and operating hours,
-   * and filtering out existing active bookings (BOOKED or ARRIVED).
+   * and filtering out existing active bookings (BOOKED or ARRIVED) as well as scheduled maintenance closures.
    */
   async getAvailableSlots(warehouseId: number, targetDate: string): Promise<AvailableDockSlots[]> {
     if (!warehouseId || isNaN(warehouseId)) {
@@ -381,7 +492,22 @@ export class WarehouseService {
       },
     });
 
-    // f. Filter out any slots that are already booked for a dock, returning clean mapping
+    // Query scheduled maintenance closures overlapping target date
+    const closures = await prisma.dockClosure.findMany({
+      where: {
+        dockId: { in: activeDocks.map((d) => d.id) },
+        startTime: { lt: endOfDayUtc },
+        endTime: { gt: startOfDayUtc },
+      },
+      select: {
+        id: true,
+        dockId: true,
+        startTime: true,
+        endTime: true,
+      },
+    });
+
+    // f. Filter out any slots that are already booked or under scheduled maintenance closure
     const dockSlotMappings: AvailableDockSlots[] = activeDocks.map((dock) => {
       const freeSlots: AvailableSlot[] = [];
 
@@ -398,7 +524,14 @@ export class WarehouseService {
           return bStart === slotStartMs || (bStart < slotEndMs && bEnd > slotStartMs);
         });
 
-        if (!isBooked) {
+        const isUnderMaintenance = closures.some((c) => {
+          if (c.dockId !== dock.id) return false;
+          const cStart = c.startTime.getTime();
+          const cEnd = c.endTime.getTime();
+          return cStart < slotEndMs && cEnd > slotStartMs;
+        });
+
+        if (!isBooked && !isUnderMaintenance) {
           freeSlots.push({
             slotStartTime: slotStartTime.toISOString(),
             slotEndTime: slotEndTime.toISOString(),

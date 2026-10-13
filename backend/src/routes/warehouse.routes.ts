@@ -8,6 +8,8 @@ import {
   getDocks,
   updateDockStatus,
   getAvailableSlots,
+  createDockClosure,
+  getDockClosures,
 } from '../controllers/warehouse.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { requireVerifiedEmail } from '../middleware/verification.middleware';
@@ -19,13 +21,26 @@ const router = Router();
 router.get('/', authMiddleware, authorize(['WAREHOUSE_ADMIN', 'DOCK_MANAGER']), getWarehouses);
 router.post('/', authMiddleware, requireVerifiedEmail, authorize(['WAREHOUSE_ADMIN']), createWarehouse);
 
-// 2. Direct dock status route (placed before /:warehouseId to avoid param collision)
+// 2. Direct dock routes (placed before /:warehouseId to avoid param collision)
 router.patch(
   '/docks/:dockId/status',
   authMiddleware,
   requireVerifiedEmail,
   authorize(['WAREHOUSE_ADMIN', 'DOCK_MANAGER']),
   updateDockStatus
+);
+router.post(
+  '/docks/:dockId/closures',
+  authMiddleware,
+  requireVerifiedEmail,
+  authorize(['WAREHOUSE_ADMIN', 'DOCK_MANAGER']),
+  createDockClosure
+);
+router.get(
+  '/docks/:dockId/closures',
+  authMiddleware,
+  authorize(['WAREHOUSE_ADMIN', 'DOCK_MANAGER']),
+  getDockClosures
 );
 
 // 3. Single warehouse routes

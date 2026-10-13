@@ -106,5 +106,87 @@ export const requireCarrierRole = async (
   next();
 };
 
+/**
+ * Middleware restricting access strictly to users with the DOCK_MANAGER role
+ * belonging to a WAREHOUSE_OPERATOR organization.
+ */
+export const requireDockManager = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  if (!req.user) {
+    res.status(401).json({
+      success: false,
+      message: 'Authentication required.',
+    });
+    return;
+  }
+
+  if (req.user.role !== 'DOCK_MANAGER') {
+    res.status(403).json({
+      success: false,
+      message: `Forbidden. Role '${req.user.role}' is not authorized to perform this action. Only Dock Managers are permitted.`,
+    });
+    return;
+  }
+
+  const organization = await prisma.organization.findUnique({
+    where: { id: req.user.organizationId },
+    select: { type: true },
+  });
+
+  if (!organization || organization.type !== OrganizationType.WAREHOUSE_OPERATOR) {
+    res.status(403).json({
+      success: false,
+      message: 'Forbidden. User does not belong to a Warehouse Operator organization.',
+    });
+    return;
+  }
+
+  next();
+};
+
+/**
+ * Middleware restricting access to users with WAREHOUSE_ADMIN or DOCK_MANAGER role
+ * belonging to a WAREHOUSE_OPERATOR organization.
+ */
+export const requireWarehouseStaff = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  if (!req.user) {
+    res.status(401).json({
+      success: false,
+      message: 'Authentication required.',
+    });
+    return;
+  }
+
+  if (req.user.role !== 'WAREHOUSE_ADMIN' && req.user.role !== 'DOCK_MANAGER') {
+    res.status(403).json({
+      success: false,
+      message: `Forbidden. Role '${req.user.role}' is not authorized to perform this action.`,
+    });
+    return;
+  }
+
+  const organization = await prisma.organization.findUnique({
+    where: { id: req.user.organizationId },
+    select: { type: true },
+  });
+
+  if (!organization || organization.type !== OrganizationType.WAREHOUSE_OPERATOR) {
+    res.status(403).json({
+      success: false,
+      message: 'Forbidden. User does not belong to a Warehouse Operator organization.',
+    });
+    return;
+  }
+
+  next();
+};
+
 export const rbacMiddleware = authorize;
 export default authorize;
