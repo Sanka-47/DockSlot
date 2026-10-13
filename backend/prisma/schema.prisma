@@ -157,3 +157,13 @@ model OutboxEvent {
   @@index([aggregateType, aggregateId])
   @@map("outbox_events")
 }
+
+model IdempotencyRecord {
+  id           Int      @id @default(autoincrement())
+  key          String   @unique
+  responseCode Int
+  responseBody Json
+  createdAt    DateTime @default(now())
+
+  @@map("idempotency_records")
+}
