@@ -6,6 +6,7 @@ import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { CarrierDashboard } from './pages/CarrierDashboard';
 import { WarehouseDashboard } from './pages/WarehouseDashboard';
+import { DockManagerDashboard } from './pages/DockManagerDashboard';
 import { Warehouse, LogOut } from 'lucide-react';
 
 const AppContent: React.FC = () => {
@@ -113,7 +114,13 @@ const AppContent: React.FC = () => {
 
       {/* Main Dashboard View */}
       <main className="flex-1 p-6 max-w-7xl w-full mx-auto">
-        {isCarrier ? <CarrierDashboard /> : <WarehouseDashboard />}
+        {isCarrier ? (
+          <CarrierDashboard />
+        ) : user.role === 'DOCK_MANAGER' ? (
+          <DockManagerDashboard />
+        ) : (
+          <WarehouseDashboard />
+        )}
       </main>
     </div>
   );
