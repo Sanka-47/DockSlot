@@ -268,6 +268,7 @@ export const getBookings = async (req: Request, res: Response): Promise<void> =>
 
 /**
  * Updates booking operational status (ARRIVED, NO_SHOW, COMPLETED).
+ * Status can only be changed after the booking's scheduled slot start time has passed.
  * PATCH /api/bookings/:id/status
  */
 export const updateBookingStatus = async (req: Request, res: Response): Promise<void> => {

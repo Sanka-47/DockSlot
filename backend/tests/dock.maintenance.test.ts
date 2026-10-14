@@ -358,7 +358,27 @@ describe('Dock Maintenance Closures & Booking Status Management Tests', () => {
     expect(res.body.message).toContain('Forbidden');
   });
 
-  it('allows Dock Manager to update status to ARRIVED and generates STATUS_CHANGED audit log', async () => {
+  it('rejects status change if booking slotStartTime has not passed yet (400 Bad Request)', async () => {
+    const res = await request(app)
+      .patch(`/api/bookings/${testBookingId}/status`)
+      .set('Authorization', `Bearer ${dockManagerAToken}`)
+      .send({ status: 'ARRIVED' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toMatch(/slot start time/i);
+  });
+
+  it('allows Dock Manager to update status to ARRIVED and generates STATUS_CHANGED audit log once slotStartTime has passed', async () => {
+    // Fast-forward slotStartTime to the past to permit operational status change
+    await prisma.booking.update({
+      where: { id: testBookingId },
+      data: {
+        slotStartTime: new Date(Date.now() - 30 * 60 * 1000), // 30 minutes in the past
+        slotEndTime: new Date(Date.now() + 30 * 60 * 1000),
+      },
+    });
+
     const res = await request(app)
       .patch(`/api/bookings/${testBookingId}/status`)
       .set('Authorization', `Bearer ${dockManagerAToken}`)

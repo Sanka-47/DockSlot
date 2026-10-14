@@ -692,6 +692,15 @@ export class BookingService {
       };
     }
 
+    // Validation: Booking status can only be changed after the scheduled slot start time has passed
+    const now = new Date();
+    if (now < new Date(booking.slotStartTime)) {
+      throw {
+        status: 400,
+        message: 'Booking status can only be changed after the scheduled slot start time has passed.',
+      };
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       const updatedBooking = await tx.booking.update({
         where: { id: bookingId },

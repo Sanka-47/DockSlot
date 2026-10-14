@@ -62,7 +62,10 @@ export const getWarehouses = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const warehouses = await warehouseService.getWarehouses(organizationId);
+    const role = req.user?.role;
+    const isCarrier = role === 'CARRIER_ADMIN' || role === 'DISPATCHER';
+
+    const warehouses = await warehouseService.getWarehouses(organizationId, isCarrier);
     res.status(200).json({
       success: true,
       data: warehouses,
@@ -100,7 +103,10 @@ export const getWarehouseById = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    const warehouse = await warehouseService.getWarehouseById(warehouseId, organizationId);
+    const role = req.user?.role;
+    const isCarrier = role === 'CARRIER_ADMIN' || role === 'DISPATCHER';
+
+    const warehouse = await warehouseService.getWarehouseById(warehouseId, organizationId, isCarrier);
     res.status(200).json({
       success: true,
       data: warehouse,
@@ -272,7 +278,10 @@ export const getDocks = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const docks = await warehouseService.getDocks(warehouseId, organizationId);
+    const role = req.user?.role;
+    const isCarrier = role === 'CARRIER_ADMIN' || role === 'DISPATCHER';
+
+    const docks = await warehouseService.getDocks(warehouseId, organizationId, isCarrier);
     res.status(200).json({
       success: true,
       data: docks,
@@ -405,6 +414,31 @@ export const createDockClosure = async (req: Request, res: Response): Promise<vo
       res.status(400).json({
         success: false,
         message: 'Missing required fields: startTime and endTime are required.',
+      });
+      return;
+    }
+
+    if (!reason || typeof reason !== 'string' || !reason.trim()) {
+      res.status(400).json({
+        success: false,
+        message: 'Reason is required and cannot be blank.',
+      });
+      return;
+    }
+
+    const startDate = new Date(startTime);
+    if (isNaN(startDate.getTime())) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid startTime format.',
+      });
+      return;
+    }
+
+    if (startDate < new Date()) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid startTime: Closure start time cannot be in the past.',
       });
       return;
     }

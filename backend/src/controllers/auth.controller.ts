@@ -1,13 +1,21 @@
 import { Request, Response } from 'express';
 import { authService } from '../services/auth.service';
+import { invitationService } from '../services/invitation.service';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
-    const result = await authService.register(req.body);
+    const payload = {
+      ...req.body,
+      organizationName: req.body.organizationName || req.body.orgName,
+      organizationType: req.body.organizationType || req.body.orgType,
+    };
+    const result = await authService.register(payload);
     res.status(201).json({
       success: true,
       message: 'User registered successfully. A verification email has been sent.',
       data: result,
+      token: result.token,
+      user: result.user,
     });
   } catch (error: any) {
     const status = error.status || 500;
@@ -161,6 +169,26 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
     res.status(status).json({
       success: false,
       message: error.message || 'Failed to retrieve user profile.',
+    });
+  }
+};
+
+export const acceptInvite = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { token, password } = req.body;
+    const result = await invitationService.acceptInvitation({ token, password });
+    res.status(201).json({
+      success: true,
+      message: 'Invitation accepted successfully. Account created.',
+      data: result,
+      token: result.token,
+      user: result.user,
+    });
+  } catch (error: any) {
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'An error occurred while accepting the invitation.',
     });
   }
 };

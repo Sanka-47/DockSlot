@@ -1,13 +1,13 @@
 {
   "sessions": {
     "8d7f92be-18ee-473e-88fe-3e61afd476dc": {
-      "user_message_count": 29,
-      "agent_message_count": 804,
+      "user_message_count": 46,
+      "agent_message_count": 1415,
       "start_timestamp": "2026-10-12T04:51:47Z",
-      "end_timestamp": "2026-10-13T08:40:16Z",
-      "markdown_size_bytes": 2185168,
+      "end_timestamp": "2026-10-14T16:37:39Z",
+      "markdown_size_bytes": 3821179,
       "provider": "antigravity",
-      "last_updated": "2026-10-13T15:20:32Z"
+      "last_updated": "2026-10-14T17:58:13Z"
     }
   }
 }

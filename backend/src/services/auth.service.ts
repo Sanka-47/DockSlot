@@ -40,6 +40,11 @@ export interface ResendVerificationInput {
   userId?: number;
 }
 
+export interface AcceptInviteInput {
+  token: string;
+  password: string;
+}
+
 export interface AuthResponse {
   token: string;
   user: {
