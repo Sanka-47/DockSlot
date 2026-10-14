@@ -27,9 +27,14 @@ export class EmailService {
       });
       console.log(`[EmailService] Email sent to ${options.to}: ${options.subject}`);
       return true;
-    } catch (error) {
-      console.error(`[EmailService] Failed to send email to ${options.to}:`, error);
-      // In local dev without active Mailhog server running, log error without crashing the caller
+    } catch (error: any) {
+      if (error?.code === 'ECONNREFUSED') {
+        console.warn(
+          `[EmailService] SMTP server is not running on ${mailConfig.host}:${mailConfig.port}. (Email to ${options.to} not sent via SMTP).`
+        );
+      } else {
+        console.error(`[EmailService] Failed to send email to ${options.to}:`, error?.message || error);
+      }
       return false;
     }
   }
@@ -39,6 +44,10 @@ export class EmailService {
    */
   public async sendVerificationEmail(email: string, token: string): Promise<boolean> {
     const verificationUrl = `${mailConfig.appUrl}/api/auth/verify?token=${token}`;
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[EmailService:DevPreview] Verification link for ${email}: ${verificationUrl}`);
+    }
 
     const subject = 'Verify your DockSlot account';
     const html = `
@@ -65,6 +74,10 @@ export class EmailService {
    */
   public async sendPasswordResetEmail(email: string, token: string): Promise<boolean> {
     const resetUrl = `${mailConfig.frontendUrl}/reset-password?token=${token}`;
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[EmailService:DevPreview] Password reset link for ${email}: ${resetUrl}`);
+    }
 
     const subject = 'Reset your DockSlot password';
     const html = `
@@ -97,6 +110,10 @@ export class EmailService {
     token: string
   ): Promise<boolean> {
     const inviteUrl = `${mailConfig.frontendUrl}/accept-invite?token=${token}`;
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[EmailService:DevPreview] Invitation link for ${email}: ${inviteUrl}`);
+    }
 
     const subject = `You're invited to join ${organizationName} on DockSlot`;
     const html = `
