@@ -2,3 +2,5 @@ the first iteration of ui did not follow the exact color theame that i provided 
 
 ![alt text](FirstAIDesing.png)
 ![alt text](<Screenshot 2026-10-14 070434.png>)
+
+auth ui was implemented, there were some issues with useEffect and useState wich cause actvieTab to display incorrectly, the AI agent noticed it and fixed it without my input also there was and issue with mailhog email catcher, used an alternative selution that has no drawbacks. 
