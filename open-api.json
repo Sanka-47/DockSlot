@@ -1,0 +1,1145 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "DockSlot Logistics & Dock Scheduling API",
+        "version": "1.0.0",
+        "description": "API documentation for multi-tenant logistics platform."
+    },
+    "servers": [{
+        "url": "http://localhost:5000/api",
+        "description": "Local development API server"
+    }, {
+        "url": "http://localhost:5000",
+        "description": "Root server"
+    }],
+    "components": {
+        "securitySchemes": {
+            "bearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+                "description": "Enter your JWT Bearer token in the format: Bearer <token>"
+            }
+        }
+    },
+    "security": [{
+        "bearerAuth": []
+    }],
+    "paths": {
+        "/warehouses": {
+            "get": {
+                "summary": "List all warehouses for the authenticated warehouse operator",
+                "tags": ["Warehouses"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "responses": {
+                    "200": {
+                        "description": "List of warehouses"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    }
+                }
+            },
+            "post": {
+                "summary": "Create a new warehouse facility",
+                "tags": ["Warehouses"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["name", "address", "timezone"],
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "example": "Colombo Central Logistics Hub"
+                                    },
+                                    "address": {
+                                        "type": "string",
+                                        "example": "100 Port Access Road, Colombo"
+                                    },
+                                    "timezone": {
+                                        "type": "string",
+                                        "example": "Asia/Colombo"
+                                    },
+                                    "slotLengthMinutes": {
+                                        "type": "integer",
+                                        "enum": [30, 45, 60],
+                                        "example": 30
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Warehouse created successfully"
+                    }
+                }
+            }
+        },
+        "/warehouses/docks/{dockId}/status": {
+            "patch": {
+                "summary": "Update dock status (ACTIVE or MAINTENANCE)",
+                "tags": ["Warehouses"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [{
+                    "in": "path",
+                    "name": "dockId",
+                    "required": true,
+                    "schema": {
+                        "type": "integer"
+                    }
+                }],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["status"],
+                                "properties": {
+                                    "status": {
+                                        "type": "string",
+                                        "enum": ["ACTIVE", "MAINTENANCE"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Dock status updated"
+                    }
+                }
+            }
+        },
+        "/warehouses/docks/{dockId}/closures": {
+            "post": {
+                "summary": "Schedule a maintenance closure window for a dock",
+                "description": "Blocks out a specific time range from slot generation for maintenance or repairs.",
+                "tags": ["Warehouses"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [{
+                    "in": "path",
+                    "name": "dockId",
+                    "required": true,
+                    "schema": {
+                        "type": "integer"
+                    }
+                }],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["startTime", "endTime"],
+                                "properties": {
+                                    "startTime": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "example": "2026-11-15T04:45:00.000Z"
+                                    },
+                                    "endTime": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "example": "2026-11-15T05:45:00.000Z"
+                                    },
+                                    "reason": {
+                                        "type": "string",
+                                        "example": "Hydraulic lift sensor calibration"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Maintenance closure scheduled"
+                    },
+                    "400": {
+                        "description": "Invalid time range or conflicts with confirmed bookings"
+                    }
+                }
+            },
+            "get": {
+                "summary": "List maintenance closures for a dock",
+                "tags": ["Warehouses"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [{
+                    "in": "path",
+                    "name": "dockId",
+                    "required": true,
+                    "schema": {
+                        "type": "integer"
+                    }
+                }],
+                "responses": {
+                    "200": {
+                        "description": "List of scheduled dock closures"
+                    }
+                }
+            }
+        },
+        "/warehouses/{warehouseId}": {
+            "get": {
+                "summary": "Get warehouse details by ID",
+                "tags": ["Warehouses"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [{
+                    "in": "path",
+                    "name": "warehouseId",
+                    "required": true,
+                    "schema": {
+                        "type": "integer"
+                    }
+                }],
+                "responses": {
+                    "200": {
+                        "description": "Warehouse details"
+                    },
+                    "404": {
+                        "description": "Warehouse not found"
+                    }
+                }
+            },
+            "put": {
+                "summary": "Update warehouse general info",
+                "tags": ["Warehouses"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [{
+                    "in": "path",
+                    "name": "warehouseId",
+                    "required": true,
+                    "schema": {
+                        "type": "integer"
+                    }
+                }],
+                "responses": {
+                    "200": {
+                        "description": "Warehouse updated"
+                    }
+                }
+            }
+        },
+        "/warehouses/{warehouseId}/settings": {
+            "patch": {
+                "summary": "Update warehouse default slot length",
+                "description": "Restricted to WAREHOUSE_ADMIN. Supported increments: 30, 45, 60 minutes.\nExisting confirmed bookings remain completely unaffected.\n",
+                "tags": ["Warehouses"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [{
+                    "in": "path",
+                    "name": "warehouseId",
+                    "required": true,
+                    "schema": {
+                        "type": "integer"
+                    }
+                }],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["slotLengthMinutes"],
+                                "properties": {
+                                    "slotLengthMinutes": {
+                                        "type": "integer",
+                                        "enum": [30, 45, 60],
+                                        "example": 45
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Warehouse slot length settings updated"
+                    },
+                    "400": {
+                        "description": "Invalid slot length (must be 30, 45, or 60)"
+                    },
+                    "403": {
+                        "description": "Forbidden. Tenant boundary violation"
+                    }
+                }
+            }
+        },
+        "/warehouses/{warehouseId}/docks": {
+            "post": {
+                "summary": "Add a new dock to a warehouse",
+                "tags": ["Warehouses"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [{
+                    "in": "path",
+                    "name": "warehouseId",
+                    "required": true,
+                    "schema": {
+                        "type": "integer"
+                    }
+                }],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["name"],
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "example": "Dock A1 (Refrigerated)"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Dock created"
+                    }
+                }
+            },
+            "get": {
+                "summary": "List all docks for a warehouse",
+                "tags": ["Warehouses"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [{
+                    "in": "path",
+                    "name": "warehouseId",
+                    "required": true,
+                    "schema": {
+                        "type": "integer"
+                    }
+                }],
+                "responses": {
+                    "200": {
+                        "description": "List of docks"
+                    }
+                }
+            }
+        },
+        "/warehouses/{warehouseId}/slots": {
+            "get": {
+                "summary": "Slot Availability Search Engine",
+                "description": "Computes and returns available time slots for active docks on a target date.\nCorrectly evaluates IANA timezone conversions, 24/7 schedules, confirmed bookings, and dock maintenance closures.\n",
+                "tags": ["Warehouses"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [{
+                    "in": "path",
+                    "name": "warehouseId",
+                    "required": true,
+                    "schema": {
+                        "type": "integer"
+                    },
+                    "description": "Warehouse ID"
+                }, {
+                    "in": "query",
+                    "name": "targetDate",
+                    "required": true,
+                    "schema": {
+                        "type": "string",
+                        "format": "date"
+                    },
+                    "description": "Target date in YYYY-MM-DD format",
+                    "example": "2026-11-15"
+                }, {
+                    "in": "query",
+                    "name": "dockId",
+                    "required": false,
+                    "schema": {
+                        "type": "integer"
+                    },
+                    "description": "Filter slots by a specific dock ID"
+                }],
+                "responses": {
+                    "200": {
+                        "description": "List of available time slots",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "dockId": {
+                                                        "type": "integer"
+                                                    },
+                                                    "dockName": {
+                                                        "type": "string"
+                                                    },
+                                                    "slotStartTime": {
+                                                        "type": "string",
+                                                        "format": "date-time"
+                                                    },
+                                                    "slotEndTime": {
+                                                        "type": "string",
+                                                        "format": "date-time"
+                                                    },
+                                                    "isAvailable": {
+                                                        "type": "boolean"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Missing or invalid targetDate"
+                    },
+                    "404": {
+                        "description": "Warehouse not found"
+                    }
+                }
+            }
+        },
+        "/users/invite": {
+            "post": {
+                "summary": "Invite a team member with auto-assigned role and organization",
+                "description": "Restricted strictly to CARRIER_ADMIN or WAREHOUSE_ADMIN.\n- CARRIER_ADMIN invites automatically assign the DISPATCHER role in the carrier organization.\n- WAREHOUSE_ADMIN invites automatically assign the DOCK_MANAGER role in the warehouse organization.\nGenerates a secure 32-byte hex token valid for 48 hours and dispatches an invitation email.\n",
+                "tags": ["Users & Invitations"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["email"],
+                                "properties": {
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email",
+                                        "description": "Email address of the team member to invite",
+                                        "example": "dispatcher@swiftlogistics.com"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Invitation created and email dispatched successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Invitation successfully created for dispatcher@swiftlogistics.com as DISPATCHER."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "id": {
+                                                    "type": "integer"
+                                                },
+                                                "email": {
+                                                    "type": "string"
+                                                },
+                                                "organizationId": {
+                                                    "type": "integer"
+                                                },
+                                                "role": {
+                                                    "type": "string",
+                                                    "example": "DISPATCHER"
+                                                },
+                                                "token": {
+                                                    "type": "string"
+                                                },
+                                                "expiresAt": {
+                                                    "type": "string",
+                                                    "format": "date-time"
+                                                },
+                                                "status": {
+                                                    "type": "string",
+                                                    "example": "PENDING"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid email format or missing email"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Forbidden. Requester is not CARRIER_ADMIN or WAREHOUSE_ADMIN"
+                    },
+                    "409": {
+                        "description": "User already registered with this email"
+                    }
+                }
+            }
+        },
+        "/bookings": {
+            "get": {
+                "summary": "List bookings for the authenticated user's organization",
+                "description": "Returns bookings filtered by carrier organization or warehouse operator organization.",
+                "tags": ["Bookings"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "responses": {
+                    "200": {
+                        "description": "List of bookings"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    }
+                }
+            },
+            "post": {
+                "summary": "Create a confirmed dock booking",
+                "description": "Atomically reserves a dock time slot and schedules an asynchronous outbox event.\nProtected against concurrent double-booking and mobile network retries via Idempotency-Key.\nRestricted to users with DISPATCHER role in a CARRIER organization.\n",
+                "tags": ["Bookings"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [{
+                    "in": "header",
+                    "name": "Idempotency-Key",
+                    "required": false,
+                    "schema": {
+                        "type": "string"
+                    },
+                    "description": "Unique key to ensure idempotent booking requests across retries",
+                    "example": "7f8a1b2c-3d4e-5f6a-7b8c-9d0e1f2a3b4c"
+                }],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["dockId", "slotStartTime", "slotEndTime", "truckPlate", "driverName", "driverPhone"],
+                                "properties": {
+                                    "dockId": {
+                                        "type": "integer",
+                                        "example": 1
+                                    },
+                                    "slotStartTime": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "example": "2026-11-15T04:00:00.000Z"
+                                    },
+                                    "slotEndTime": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "example": "2026-11-15T04:30:00.000Z"
+                                    },
+                                    "truckPlate": {
+                                        "type": "string",
+                                        "example": "WP-CA-4029"
+                                    },
+                                    "driverName": {
+                                        "type": "string",
+                                        "example": "Nuwan Perera"
+                                    },
+                                    "driverPhone": {
+                                        "type": "string",
+                                        "example": "+94771234567"
+                                    },
+                                    "cargoNote": {
+                                        "type": "string",
+                                        "example": "20ft Container electronics"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Booking confirmed and outbox event created"
+                    },
+                    "400": {
+                        "description": "Slot out of operating hours, past date, or invalid payload"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Only carrier dispatchers with verified emails can create bookings"
+                    },
+                    "409": {
+                        "description": "Slot already booked or maintenance closure active (Concurrency conflict)"
+                    }
+                }
+            }
+        },
+        "/bookings/{id}/reschedule": {
+            "patch": {
+                "summary": "Reschedule a confirmed booking",
+                "description": "Moves an existing confirmed booking to a new time slot (and optionally a new dock).\nReleases the old slot atomically and logs an audit log entry.\n",
+                "tags": ["Bookings"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [{
+                    "in": "path",
+                    "name": "id",
+                    "required": true,
+                    "schema": {
+                        "type": "integer"
+                    },
+                    "description": "Booking ID"
+                }],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["slotStartTime", "slotEndTime"],
+                                "properties": {
+                                    "slotStartTime": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "example": "2026-11-15T05:00:00.000Z"
+                                    },
+                                    "slotEndTime": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "example": "2026-11-15T05:30:00.000Z"
+                                    },
+                                    "newDockId": {
+                                        "type": "integer",
+                                        "example": 2
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Booking successfully rescheduled"
+                    },
+                    "400": {
+                        "description": "Invalid slot times or booking cannot be rescheduled"
+                    },
+                    "403": {
+                        "description": "Forbidden. Tenant boundary violation"
+                    },
+                    "404": {
+                        "description": "Booking not found"
+                    },
+                    "409": {
+                        "description": "Target slot already occupied"
+                    }
+                }
+            }
+        },
+        "/bookings/{id}/cancel": {
+            "patch": {
+                "summary": "Cancel a confirmed booking",
+                "description": "Cancels the booking, releases the time slot for other carriers, and creates an audit log.",
+                "tags": ["Bookings"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [{
+                    "in": "path",
+                    "name": "id",
+                    "required": true,
+                    "schema": {
+                        "type": "integer"
+                    },
+                    "description": "Booking ID"
+                }],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "reason": {
+                                        "type": "string",
+                                        "example": "Truck mechanical breakdown"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Booking cancelled and slot released"
+                    },
+                    "400": {
+                        "description": "Booking already cancelled or completed"
+                    },
+                    "403": {
+                        "description": "Forbidden. Not the owning carrier"
+                    },
+                    "404": {
+                        "description": "Booking not found"
+                    }
+                }
+            }
+        },
+        "/bookings/{id}": {
+            "delete": {
+                "summary": "Cancel a confirmed booking (DELETE method alias)",
+                "tags": ["Bookings"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [{
+                    "in": "path",
+                    "name": "id",
+                    "required": true,
+                    "schema": {
+                        "type": "integer"
+                    }
+                }],
+                "responses": {
+                    "200": {
+                        "description": "Booking cancelled successfully"
+                    }
+                }
+            }
+        },
+        "/bookings/{id}/audit-logs": {
+            "get": {
+                "summary": "View lifecycle audit logs for a booking",
+                "description": "Dual-sided audit trail visible to both the carrier and the operating warehouse.",
+                "tags": ["Bookings"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [{
+                    "in": "path",
+                    "name": "id",
+                    "required": true,
+                    "schema": {
+                        "type": "integer"
+                    }
+                }],
+                "responses": {
+                    "200": {
+                        "description": "Array of lifecycle audit log entries (CREATED, RESCHEDULED, CANCELLED, etc.)"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "404": {
+                        "description": "Booking not found"
+                    }
+                }
+            }
+        },
+        "/bookings/{id}/status": {
+            "patch": {
+                "summary": "Update operational status of a booking (Yard check-in / check-out)",
+                "description": "Restricted strictly to DOCK_MANAGER in the warehouse operator organization.",
+                "tags": ["Bookings"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [{
+                    "in": "path",
+                    "name": "id",
+                    "required": true,
+                    "schema": {
+                        "type": "integer"
+                    }
+                }],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["status"],
+                                "properties": {
+                                    "status": {
+                                        "type": "string",
+                                        "enum": ["ARRIVED", "NO_SHOW", "COMPLETED"],
+                                        "example": "ARRIVED"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Booking status updated successfully"
+                    },
+                    "400": {
+                        "description": "Invalid status transition"
+                    },
+                    "403": {
+                        "description": "Forbidden. Only Dock Managers can update operational status"
+                    },
+                    "404": {
+                        "description": "Booking not found"
+                    }
+                }
+            }
+        },
+        "/auth/register": {
+            "post": {
+                "summary": "Register a new organization and admin user",
+                "description": "Creates an Organization (CARRIER or WAREHOUSE_OPERATOR) and assigns CARRIER_ADMIN or WAREHOUSE_ADMIN.",
+                "tags": ["Authentication"],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["email", "password", "organizationType"],
+                                "properties": {
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email",
+                                        "example": "admin@swiftlogistics.com"
+                                    },
+                                    "password": {
+                                        "type": "string",
+                                        "format": "password",
+                                        "minLength": 6,
+                                        "example": "SecurePass123!"
+                                    },
+                                    "organizationName": {
+                                        "type": "string",
+                                        "example": "Swift Logistics Corp"
+                                    },
+                                    "orgName": {
+                                        "type": "string",
+                                        "example": "Swift Logistics Corp"
+                                    },
+                                    "organizationType": {
+                                        "type": "string",
+                                        "enum": ["CARRIER", "WAREHOUSE_OPERATOR"],
+                                        "example": "CARRIER"
+                                    },
+                                    "orgType": {
+                                        "type": "string",
+                                        "enum": ["CARRIER", "WAREHOUSE_OPERATOR"],
+                                        "example": "CARRIER"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Registration successful, returns user details and JWT token"
+                    },
+                    "400": {
+                        "description": "Validation error or missing required fields"
+                    },
+                    "409": {
+                        "description": "Email already registered"
+                    }
+                }
+            }
+        },
+        "/auth/login": {
+            "post": {
+                "summary": "Authenticate user and issue JWT token",
+                "tags": ["Authentication"],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["email", "password"],
+                                "properties": {
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email",
+                                        "example": "admin@swiftlogistics.com"
+                                    },
+                                    "password": {
+                                        "type": "string",
+                                        "format": "password",
+                                        "example": "SecurePass123!"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Login successful, returns JWT token"
+                    },
+                    "401": {
+                        "description": "Invalid credentials or account locked"
+                    }
+                }
+            }
+        },
+        "/auth/accept-invite": {
+            "post": {
+                "summary": "Accept a team member invitation and set account password",
+                "tags": ["Authentication"],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["token", "password"],
+                                "properties": {
+                                    "token": {
+                                        "type": "string",
+                                        "description": "Secure invitation token sent via email",
+                                        "example": "3b1f4869c97b830e2f5b6140adbb8f0174ca29dfa98e15099fbc"
+                                    },
+                                    "password": {
+                                        "type": "string",
+                                        "format": "password",
+                                        "minLength": 6,
+                                        "example": "Password123!"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Account created successfully and user logged in"
+                    },
+                    "400": {
+                        "description": "Expired token or validation error"
+                    },
+                    "404": {
+                        "description": "Invitation token not found"
+                    },
+                    "409": {
+                        "description": "User email already registered"
+                    }
+                }
+            }
+        },
+        "/auth/verify": {
+            "get": {
+                "summary": "Verify user email address with email token",
+                "tags": ["Authentication"],
+                "parameters": [{
+                    "in": "query",
+                    "name": "token",
+                    "required": true,
+                    "schema": {
+                        "type": "string"
+                    }
+                }],
+                "responses": {
+                    "200": {
+                        "description": "Email verified successfully"
+                    },
+                    "400": {
+                        "description": "Invalid or expired verification token"
+                    }
+                }
+            }
+        },
+        "/auth/resend-verification": {
+            "post": {
+                "summary": "Resend verification email",
+                "tags": ["Authentication"],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Verification email resent"
+                    }
+                }
+            }
+        },
+        "/auth/forgot-password": {
+            "post": {
+                "summary": "Request a password reset link",
+                "tags": ["Authentication"],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["email"],
+                                "properties": {
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Reset email sent if account exists"
+                    }
+                }
+            }
+        },
+        "/auth/reset-password": {
+            "post": {
+                "summary": "Reset account password with reset token",
+                "tags": ["Authentication"],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["token", "newPassword"],
+                                "properties": {
+                                    "token": {
+                                        "type": "string"
+                                    },
+                                    "newPassword": {
+                                        "type": "string",
+                                        "minLength": 6
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Password updated successfully"
+                    },
+                    "400": {
+                        "description": "Invalid or expired token"
+                    }
+                }
+            }
+        },
+        "/auth/me": {
+            "get": {
+                "summary": "Retrieve currently authenticated user profile and tenant context",
+                "tags": ["Authentication"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "responses": {
+                    "200": {
+                        "description": "Current user profile"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                }
+            }
+        },
+        "/auth/change-password": {
+            "post": {
+                "summary": "Change password for currently authenticated user",
+                "tags": ["Authentication"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["oldPassword", "newPassword"],
+                                "properties": {
+                                    "oldPassword": {
+                                        "type": "string"
+                                    },
+                                    "newPassword": {
+                                        "type": "string",
+                                        "minLength": 6
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Password changed successfully"
+                    },
+                    "401": {
+                        "description": "Unauthorized or invalid old password"
+                    }
+                }
+            }
+        }
+       
+    },
+    "tags": []
+}
