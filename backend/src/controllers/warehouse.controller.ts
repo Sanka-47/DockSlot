@@ -62,7 +62,10 @@ export const getWarehouses = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const warehouses = await warehouseService.getWarehouses(organizationId);
+    const role = req.user?.role;
+    const isCarrier = role === 'CARRIER_ADMIN' || role === 'DISPATCHER';
+
+    const warehouses = await warehouseService.getWarehouses(organizationId, isCarrier);
     res.status(200).json({
       success: true,
       data: warehouses,
@@ -100,7 +103,10 @@ export const getWarehouseById = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    const warehouse = await warehouseService.getWarehouseById(warehouseId, organizationId);
+    const role = req.user?.role;
+    const isCarrier = role === 'CARRIER_ADMIN' || role === 'DISPATCHER';
+
+    const warehouse = await warehouseService.getWarehouseById(warehouseId, organizationId, isCarrier);
     res.status(200).json({
       success: true,
       data: warehouse,
@@ -272,7 +278,10 @@ export const getDocks = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const docks = await warehouseService.getDocks(warehouseId, organizationId);
+    const role = req.user?.role;
+    const isCarrier = role === 'CARRIER_ADMIN' || role === 'DISPATCHER';
+
+    const docks = await warehouseService.getDocks(warehouseId, organizationId, isCarrier);
     res.status(200).json({
       success: true,
       data: docks,

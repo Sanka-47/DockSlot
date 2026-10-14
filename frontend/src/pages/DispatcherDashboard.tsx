@@ -145,21 +145,67 @@ export const DispatcherDashboard: React.FC = () => {
     setIsLoadingInitial(true);
     setErrorMessage(null);
     try {
-      const [warehousesRes, bookingsRes] = await Promise.all([
+      const [warehousesResult, bookingsResult] = await Promise.allSettled([
         warehouseApi.getAll(),
         bookingApi.getAll(),
       ]);
 
-      const fetchedWarehouses = warehousesRes?.data || [];
-      setWarehouses(fetchedWarehouses);
-      if (fetchedWarehouses.length > 0) {
-        setSelectedWarehouseId(String(fetchedWarehouses[0].id));
+      let fetchedBookings: Booking[] = [];
+      if (bookingsResult.status === 'fulfilled') {
+        fetchedBookings = bookingsResult.value?.data || [];
+        setBookings(fetchedBookings);
+      } else {
+        const msg =
+          bookingsResult.reason?.response?.data?.message ||
+          bookingsResult.reason?.message ||
+          'Failed to load bookings.';
+        setErrorMessage(msg);
       }
 
-      setBookings(bookingsRes?.data || []);
-    } catch (err: any) {
-      const msg = err.response?.data?.message || err.message || 'Failed to load initial data.';
-      setErrorMessage(msg);
+      if (warehousesResult.status === 'fulfilled') {
+        const fetchedWarehouses = warehousesResult.value?.data || [];
+        setWarehouses(fetchedWarehouses);
+        if (fetchedWarehouses.length > 0) {
+          setSelectedWarehouseId(String(fetchedWarehouses[0].id));
+        }
+      } else {
+        // Fallback: extract warehouses from existing bookings if any
+        const fallbackWarehousesMap: Record<number, Warehouse> = {};
+        fetchedBookings.forEach((b) => {
+          if (b.dock?.warehouse) {
+            const wh = b.dock.warehouse;
+            if (!fallbackWarehousesMap[wh.id]) {
+              fallbackWarehousesMap[wh.id] = {
+                id: wh.id,
+                organizationId: 0,
+                name: wh.name,
+                address: wh.address || '',
+                timezone: wh.timezone || 'UTC',
+                slotLengthMinutes: 30,
+                docks: [
+                  {
+                    id: b.dock.id,
+                    warehouseId: wh.id,
+                    name: b.dock.name,
+                    status: b.dock.status,
+                  },
+                ],
+              };
+            }
+          }
+        });
+        const fallbackWarehouses = Object.values(fallbackWarehousesMap);
+        if (fallbackWarehouses.length > 0) {
+          setWarehouses(fallbackWarehouses);
+          setSelectedWarehouseId(String(fallbackWarehouses[0].id));
+        } else {
+          const msg =
+            warehousesResult.reason?.response?.data?.message ||
+            warehousesResult.reason?.message ||
+            'Failed to load warehouses.';
+          setErrorMessage(msg);
+        }
+      }
     } finally {
       setIsLoadingInitial(false);
     }

@@ -33,7 +33,12 @@ const router = Router();
  *       403:
  *         description: Forbidden
  */
-router.get('/', authMiddleware, authorize(['WAREHOUSE_ADMIN', 'DOCK_MANAGER']), getWarehouses);
+router.get(
+  '/',
+  authMiddleware,
+  authorize(['WAREHOUSE_ADMIN', 'DOCK_MANAGER', 'CARRIER_ADMIN', 'DISPATCHER']),
+  getWarehouses
+);
 
 /**
  * @openapi
@@ -212,7 +217,12 @@ router.get(
  *       404:
  *         description: Warehouse not found
  */
-router.get('/:warehouseId', authMiddleware, authorize(['WAREHOUSE_ADMIN', 'DOCK_MANAGER']), getWarehouseById);
+router.get(
+  '/:warehouseId',
+  authMiddleware,
+  authorize(['WAREHOUSE_ADMIN', 'DOCK_MANAGER', 'CARRIER_ADMIN', 'DISPATCHER']),
+  getWarehouseById
+);
 
 /**
  * @openapi
@@ -335,7 +345,12 @@ router.post(
  *       200:
  *         description: List of docks
  */
-router.get('/:warehouseId/docks', authMiddleware, authorize(['WAREHOUSE_ADMIN', 'DOCK_MANAGER']), getDocks);
+router.get(
+  '/:warehouseId/docks',
+  authMiddleware,
+  authorize(['WAREHOUSE_ADMIN', 'DOCK_MANAGER', 'CARRIER_ADMIN', 'DISPATCHER']),
+  getDocks
+);
 
 router.patch(
   '/:warehouseId/docks/:dockId/status',

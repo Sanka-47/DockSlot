@@ -109,15 +109,17 @@ export class WarehouseService {
   }
 
   /**
-   * Retrieves all warehouses belonging to the specified organization.
+   * Retrieves all warehouses belonging to the specified organization (or all warehouses if caller is a carrier).
    */
-  async getWarehouses(organizationId: number) {
+  async getWarehouses(organizationId: number, isCarrier: boolean = false) {
     if (!organizationId) {
       throw { status: 400, message: 'Organization ID is required.' };
     }
 
+    const whereClause = isCarrier ? {} : { organizationId };
+
     const warehouses = await prisma.warehouse.findMany({
-      where: { organizationId },
+      where: whereClause,
       include: {
         docks: true,
         operatingHours: true,
@@ -129,9 +131,9 @@ export class WarehouseService {
   }
 
   /**
-   * Retrieves a specific warehouse by ID, enforcing strict tenant isolation.
+   * Retrieves a specific warehouse by ID, enforcing strict tenant isolation for warehouse operators.
    */
-  async getWarehouseById(warehouseId: number, organizationId: number) {
+  async getWarehouseById(warehouseId: number, organizationId: number, isCarrier: boolean = false) {
     if (!warehouseId || isNaN(warehouseId)) {
       throw { status: 400, message: 'Invalid warehouse ID.' };
     }
@@ -148,7 +150,7 @@ export class WarehouseService {
       throw { status: 404, message: 'Warehouse not found.' };
     }
 
-    if (warehouse.organizationId !== organizationId) {
+    if (!isCarrier && warehouse.organizationId !== organizationId) {
       throw { status: 403, message: 'Forbidden. You do not have access to this warehouse.' };
     }
 
@@ -330,9 +332,9 @@ export class WarehouseService {
   }
 
   /**
-   * Lists docks for a warehouse, enforcing strict tenant isolation.
+   * Lists docks for a warehouse, enforcing strict tenant isolation for warehouse operators.
    */
-  async getDocks(warehouseId: number, organizationId: number) {
+  async getDocks(warehouseId: number, organizationId: number, isCarrier: boolean = false) {
     if (!warehouseId || isNaN(warehouseId)) {
       throw { status: 400, message: 'Invalid warehouse ID.' };
     }
@@ -345,7 +347,7 @@ export class WarehouseService {
       throw { status: 404, message: 'Warehouse not found.' };
     }
 
-    if (warehouse.organizationId !== organizationId) {
+    if (!isCarrier && warehouse.organizationId !== organizationId) {
       throw { status: 403, message: 'Forbidden. You do not have access to docks for this warehouse.' };
     }
 
