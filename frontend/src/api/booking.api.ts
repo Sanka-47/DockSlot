@@ -25,11 +25,16 @@ export const bookingApi = {
 
   reschedule: async (
     id: number,
-    data: { slotStartTime: string; slotEndTime: string; dockId?: number; reason?: string }
+    data: { slotStartTime: string; slotEndTime: string; dockId?: number; newDockId?: number; reason?: string }
   ): Promise<{ success: boolean; message: string; data: Booking }> => {
+    const effectiveDockId = data.dockId ?? data.newDockId;
+    const payload = {
+      ...data,
+      ...(effectiveDockId !== undefined ? { dockId: effectiveDockId, newDockId: effectiveDockId } : {}),
+    };
     const response = await apiClient.patch<{ success: boolean; message: string; data: Booking }>(
       `/bookings/${id}/reschedule`,
-      data
+      payload
     );
     return response.data;
   },

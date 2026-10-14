@@ -60,3 +60,19 @@ export interface CreateDockClosureRequest {
 export interface UpdateDockStatusRequest {
   status: DockStatus;
 }
+
+export interface AvailableSlot {
+  slotStartTime: string;
+  slotEndTime: string;
+  localStartTime?: string;
+  localEndTime?: string;
+  isAvailable?: boolean;
+  dockId?: number;
+  dockName?: string;
+}
+
+export interface AvailableDockSlots {
+  dockId: number;
+  dockName: string;
+  slots: AvailableSlot[];
+}

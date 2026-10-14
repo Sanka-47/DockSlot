@@ -219,32 +219,32 @@ router.patch(
   cancelBooking
 );
 
-/**
- * @openapi
- * /bookings/{id}:
- *   delete:
- *     summary: Cancel a confirmed booking (DELETE method alias)
- *     tags:
- *       - Bookings
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     responses:
- *       200:
- *         description: Booking cancelled successfully
- */
-router.delete(
-  '/:id',
-  authMiddleware,
-  requireVerifiedEmail,
-  requireCarrierRole,
-  cancelBooking
-);
+// /**
+//  * @openapi
+//  * /bookings/{id}:
+//  *   delete:
+//  *     summary: Cancel a confirmed booking (DELETE method alias)
+//  *     tags:
+//  *       - Bookings
+//  *     security:
+//  *       - bearerAuth: []
+//  *     parameters:
+//  *       - in: path
+//  *         name: id
+//  *         required: true
+//  *         schema:
+//  *           type: integer
+//  *     responses:
+//  *       200:
+//  *         description: Booking cancelled successfully
+//  */
+// router.delete(
+//   '/:id',
+//   authMiddleware,
+//   requireVerifiedEmail,
+//   requireCarrierRole,
+//   cancelBooking
+// );
 
 /**
  * @openapi

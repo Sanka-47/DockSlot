@@ -5,6 +5,7 @@ import type {
   DockClosure,
   CreateDockClosureRequest,
   DockStatus,
+  AvailableDockSlots,
 } from '../types/warehouse.types';
 
 export const warehouseApi = {
@@ -52,6 +53,25 @@ export const warehouseApi = {
   ): Promise<{ success: boolean; data: DockClosure[] }> => {
     const response = await apiClient.get<{ success: boolean; data: DockClosure[] }>(
       `/warehouses/docks/${dockId}/closures`
+    );
+    return response.data;
+  },
+
+  getAvailableSlots: async (
+    warehouseId: number,
+    targetDate: string,
+    dockId?: number
+  ): Promise<{ success: boolean; data: AvailableDockSlots[] }> => {
+    const params: Record<string, string | number> = {
+      targetDate,
+      date: targetDate,
+    };
+    if (dockId !== undefined) {
+      params.dockId = dockId;
+    }
+    const response = await apiClient.get<{ success: boolean; data: AvailableDockSlots[] }>(
+      `/warehouses/${warehouseId}/slots`,
+      { params }
     );
     return response.data;
   },
