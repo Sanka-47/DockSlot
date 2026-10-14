@@ -187,6 +187,16 @@ export const DockManagerDashboard: React.FC = () => {
     newStatus: 'ARRIVED' | 'NO_SHOW' | 'COMPLETED'
   ) => {
     setErrorMessage(null);
+
+    // Client-side validation: booking slotStartTime must have passed
+    const targetBooking = bookings.find((b) => b.id === bookingId);
+    if (targetBooking?.slotStartTime && new Date() < new Date(targetBooking.slotStartTime)) {
+      setErrorMessage(
+        `Cannot update status for booking #${bookingId} before its scheduled slot start time has passed.`
+      );
+      return;
+    }
+
     setStatusActionLoadingId(bookingId);
     try {
       const res = await bookingApi.updateStatus(bookingId, newStatus);
@@ -652,6 +662,9 @@ export const DockManagerDashboard: React.FC = () => {
                     const isActionLoading = statusActionLoadingId === booking.id;
                     const isBooked = booking.status === 'BOOKED';
                     const isArrived = booking.status === 'ARRIVED';
+                    const isSlotStarted = Boolean(
+                      booking.slotStartTime && new Date() >= new Date(booking.slotStartTime)
+                    );
 
                     return (
                       <tr
@@ -756,8 +769,13 @@ export const DockManagerDashboard: React.FC = () => {
                                 size="sm"
                                 variant="primary"
                                 onClick={() => handleUpdateStatus(booking.id, 'ARRIVED')}
+                                disabled={!isSlotStarted}
                                 className="bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] px-2.5 py-1 h-7"
-                                title="Mark incoming truck as arrived at the facility yard"
+                                title={
+                                  isSlotStarted
+                                    ? 'Mark incoming truck as arrived at the facility yard'
+                                    : 'Cannot mark as Arrived before the scheduled slot start time has passed'
+                                }
                               >
                                 <CheckCircle2 className="w-3 h-3 mr-1" />
                                 <span>Arrived</span>
@@ -767,8 +785,13 @@ export const DockManagerDashboard: React.FC = () => {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => handleUpdateStatus(booking.id, 'NO_SHOW')}
+                                disabled={!isSlotStarted}
                                 className="border-rose-200 text-rose-700 hover:bg-rose-50 text-[11px] px-2.5 py-1 h-7"
-                                title="Mark carrier appointment as a No-Show"
+                                title={
+                                  isSlotStarted
+                                    ? 'Mark carrier appointment as a No-Show'
+                                    : 'Cannot mark as No-Show before the scheduled slot start time has passed'
+                                }
                               >
                                 <XCircle className="w-3 h-3 mr-1" />
                                 <span>No-Show</span>

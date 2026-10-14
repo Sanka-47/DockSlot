@@ -277,7 +277,7 @@ router.get('/:id/audit-logs', authMiddleware, getBookingAuditLogs);
  * /bookings/{id}/status:
  *   patch:
  *     summary: Update operational status of a booking (Yard check-in / check-out)
- *     description: Restricted strictly to DOCK_MANAGER in the warehouse operator organization.
+ *     description: Restricted strictly to DOCK_MANAGER in the warehouse operator organization. Status can only be changed after the scheduled slot start time has passed.
  *     tags:
  *       - Bookings
  *     security:
