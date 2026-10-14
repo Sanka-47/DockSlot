@@ -241,6 +241,14 @@ export const DockManagerDashboard: React.FC = () => {
     setIsClosureModalOpen(true);
   };
 
+  // Dynamically compute minimum date-time string for datetime-local inputs
+  const getMinDateTime = (): string => {
+    const now = new Date();
+    return new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 16);
+  };
+
   // Submit Closure Modal
   const handleSubmitClosure = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -251,6 +259,12 @@ export const DockManagerDashboard: React.FC = () => {
       return;
     }
 
+    const trimmedReason = closureReason.trim();
+    if (!trimmedReason) {
+      setClosureError('Maintenance reason is required and cannot be blank.');
+      return;
+    }
+
     if (!closureStartTime || !closureEndTime) {
       setClosureError('Both start time and end time are required.');
       return;
@@ -258,6 +272,20 @@ export const DockManagerDashboard: React.FC = () => {
 
     const startDate = new Date(closureStartTime);
     const endDate = new Date(closureEndTime);
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      setClosureError('Please enter valid start and end dates.');
+      return;
+    }
+
+    // Client-side validation: start time cannot be in the past
+    const now = new Date();
+    if (startDate < now) {
+      setClosureError(
+        'Closure start time cannot be in the past. Please select a current or future time.'
+      );
+      return;
+    }
 
     if (endDate <= startDate) {
       setClosureError('End time must be after the start time.');
@@ -270,7 +298,7 @@ export const DockManagerDashboard: React.FC = () => {
       const res = await warehouseApi.createDockClosure(Number(selectedDockForClosure), {
         startTime: startDate.toISOString(),
         endTime: endDate.toISOString(),
-        reason: closureReason.trim() || undefined,
+        reason: trimmedReason,
       });
 
       const newClosure = res.data;
@@ -841,15 +869,24 @@ export const DockManagerDashboard: React.FC = () => {
 
               {/* 2. Reason */}
               <div>
-                <Label htmlFor="closure-reason">Maintenance Reason / Note</Label>
+                <Label htmlFor="closure-reason" required>
+                  Maintenance Reason / Note
+                </Label>
                 <Input
                   id="closure-reason"
                   type="text"
+                  required
                   placeholder="e.g. Hydraulic lift sensor calibration or routine inspection"
                   value={closureReason}
                   onChange={(e) => setClosureReason(e.target.value)}
                   disabled={isSubmittingClosure}
+                  hasError={Boolean(closureError && !closureReason.trim())}
                 />
+                {closureError && !closureReason.trim() && (
+                  <p className="text-[11px] text-red-600 mt-1">
+                    Please provide a valid maintenance reason.
+                  </p>
+                )}
               </div>
 
               {/* 3. Start Time */}
@@ -861,10 +898,14 @@ export const DockManagerDashboard: React.FC = () => {
                   id="closure-start"
                   type="datetime-local"
                   required
+                  min={getMinDateTime()}
                   value={closureStartTime}
                   onChange={(e) => setClosureStartTime(e.target.value)}
                   disabled={isSubmittingClosure}
                 />
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Cannot be in the past.
+                </p>
               </div>
 
               {/* 4. End Time */}
@@ -876,6 +917,7 @@ export const DockManagerDashboard: React.FC = () => {
                   id="closure-end"
                   type="datetime-local"
                   required
+                  min={closureStartTime || getMinDateTime()}
                   value={closureEndTime}
                   onChange={(e) => setClosureEndTime(e.target.value)}
                   disabled={isSubmittingClosure}

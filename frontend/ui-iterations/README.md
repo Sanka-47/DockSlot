@@ -17,5 +17,6 @@ Ai fixed this by -
  Stopped running processes holding the query engine DLL and regenerated the clean Prisma client using npx prisma generate matching the actual database columns.
       • Verified warehouse.service.ts:452-462 and warehouse.controller.ts:383-430 create dock closures with only { dockId, startTime, endTime, reason }.
       • Restarted the backend server.
-      
+
+added back end and front end validation so maintainance reasone is required and we can't choose past dates
 ![alt text](image.png)

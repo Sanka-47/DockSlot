@@ -38,7 +38,7 @@ export interface CreateDockInput {
 export interface CreateDockClosureInput {
   startTime: string;
   endTime: string;
-  reason?: string;
+  reason: string;
 }
 
 export interface AvailableSlot {
@@ -404,11 +404,19 @@ export class WarehouseService {
       throw { status: 400, message: 'startTime and endTime are required.' };
     }
 
+    if (!data.reason || typeof data.reason !== 'string' || !data.reason.trim()) {
+      throw { status: 400, message: 'Reason is required and cannot be blank.' };
+    }
+
     const closureStart = new Date(data.startTime);
     const closureEnd = new Date(data.endTime);
 
     if (isNaN(closureStart.getTime()) || isNaN(closureEnd.getTime())) {
       throw { status: 400, message: 'Invalid startTime or endTime format.' };
+    }
+
+    if (closureStart < new Date()) {
+      throw { status: 400, message: 'Invalid startTime: Closure start time cannot be in the past.' };
     }
 
     if (closureEnd <= closureStart) {

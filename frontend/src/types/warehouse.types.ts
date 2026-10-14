@@ -54,7 +54,7 @@ export interface DockClosure {
 export interface CreateDockClosureRequest {
   startTime: string;
   endTime: string;
-  reason?: string;
+  reason: string;
 }
 
 export interface UpdateDockStatusRequest {

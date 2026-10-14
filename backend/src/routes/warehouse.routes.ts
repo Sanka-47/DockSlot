@@ -138,6 +138,7 @@ router.patch(
  *             required:
  *               - startTime
  *               - endTime
+ *               - reason
  *             properties:
  *               startTime:
  *                 type: string

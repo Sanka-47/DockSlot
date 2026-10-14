@@ -409,6 +409,31 @@ export const createDockClosure = async (req: Request, res: Response): Promise<vo
       return;
     }
 
+    if (!reason || typeof reason !== 'string' || !reason.trim()) {
+      res.status(400).json({
+        success: false,
+        message: 'Reason is required and cannot be blank.',
+      });
+      return;
+    }
+
+    const startDate = new Date(startTime);
+    if (isNaN(startDate.getTime())) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid startTime format.',
+      });
+      return;
+    }
+
+    if (startDate < new Date()) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid startTime: Closure start time cannot be in the past.',
+      });
+      return;
+    }
+
     const closure = await warehouseService.createDockClosure(dockId, organizationId, {
       startTime,
       endTime,

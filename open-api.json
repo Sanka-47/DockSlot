@@ -146,7 +146,7 @@
                         "application/json": {
                             "schema": {
                                 "type": "object",
-                                "required": ["startTime", "endTime"],
+                                "required": ["startTime", "endTime", "reason"],
                                 "properties": {
                                     "startTime": {
                                         "type": "string",
