@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { authService } from '../services/auth.service';
+import { invitationService } from '../services/invitation.service';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -175,7 +176,7 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
 export const acceptInvite = async (req: Request, res: Response): Promise<void> => {
   try {
     const { token, password } = req.body;
-    const result = await authService.acceptInvite({ token, password });
+    const result = await invitationService.acceptInvitation({ token, password });
     res.status(201).json({
       success: true,
       message: 'Invitation accepted successfully. Account created.',

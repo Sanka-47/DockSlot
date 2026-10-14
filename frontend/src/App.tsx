@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { AuthProvider } from './context/AuthContext';
 import { useAuth } from './hooks/useAuth';
 import { AuthPage } from './pages/AuthPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { CarrierDashboard } from './pages/CarrierDashboard';
 import { WarehouseDashboard } from './pages/WarehouseDashboard';
 import { Warehouse, LogOut } from 'lucide-react';
@@ -21,9 +23,51 @@ const AppContent: React.FC = () => {
     );
   }
 
+  // Handle URL paths for Password Reset & Forgot Password
+  const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+  const searchParams =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search)
+      : new URLSearchParams();
+  const urlToken = searchParams.get('token') || undefined;
+
+  if (
+    pathname.includes('reset-password') ||
+    (urlToken && !pathname.includes('accept-invite') && !pathname.includes('verify'))
+  ) {
+    return (
+      <ResetPasswordPage
+        token={urlToken}
+        onBackToSignIn={() => {
+          if (typeof window !== 'undefined') {
+            window.location.href = '/';
+          }
+        }}
+        onSuccess={() => {
+          if (typeof window !== 'undefined') {
+            window.location.href = '/';
+          }
+        }}
+      />
+    );
+  }
+
+  if (pathname.includes('forgot-password')) {
+    return (
+      <ForgotPasswordPage
+        onBackToSignIn={() => {
+          if (typeof window !== 'undefined') {
+            window.location.href = '/';
+          }
+        }}
+      />
+    );
+  }
+
   if (!isAuthenticated || !user) {
     return (
       <AuthPage
+        resetToken={urlToken}
         onNavigate={(route) => setActiveView(route)}
       />
     );

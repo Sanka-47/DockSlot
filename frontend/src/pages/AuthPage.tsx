@@ -19,6 +19,8 @@ import { Tabs } from '../components/ui/tabs';
 import { authApi } from '../api/auth.api';
 import { storage } from '../utils/storage';
 import { useAuth } from '../hooks/useAuth';
+import { ForgotPasswordPage } from './ForgotPasswordPage';
+import { ResetPasswordPage } from './ResetPasswordPage';
 import type {
   OrganizationType,
   User,
@@ -26,23 +28,64 @@ import type {
   RegisterRequest,
 } from '../types/user.types';
 
-export type AuthTab = 'signin' | 'register';
+export type AuthTab = 'signin' | 'register' | 'forgot' | 'reset';
 
 export interface AuthPageProps {
   initialTab?: AuthTab;
+  resetToken?: string;
   onSuccess?: (user: User, token: string) => void;
   onNavigate?: (route: 'carrier' | 'warehouse') => void;
 }
 
 export const AuthPage: React.FC<AuthPageProps> = ({
   initialTab = 'signin',
+  resetToken,
   onSuccess,
   onNavigate,
 }) => {
   const { login: setAuthContextUser } = useAuth();
 
-  // Tab State: 'signin' | 'register'
-  const [activeTab, setActiveTab] = useState<AuthTab>(initialTab);
+  // Determine initial tab synchronously based on URL and props
+  const getInitialTab = (): AuthTab => {
+    if (initialTab && initialTab !== 'signin') {
+      return initialTab;
+    }
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname;
+      const searchParams = new URLSearchParams(window.location.search);
+      if (
+        resetToken ||
+        path.includes('reset-password') ||
+        (searchParams.get('token') && !path.includes('accept-invite') && !path.includes('verify'))
+      ) {
+        return 'reset';
+      }
+      if (path.includes('forgot-password')) {
+        return 'forgot';
+      }
+    }
+    return initialTab;
+  };
+
+  // Tab State: 'signin' | 'register' | 'forgot' | 'reset'
+  const [activeTab, setActiveTab] = useState<AuthTab>(getInitialTab);
+
+  // Sync tab if URL or resetToken changes
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname;
+      const searchParams = new URLSearchParams(window.location.search);
+      if (
+        resetToken ||
+        path.includes('reset-password') ||
+        (searchParams.get('token') && !path.includes('accept-invite') && !path.includes('verify'))
+      ) {
+        setActiveTab('reset');
+      } else if (path.includes('forgot-password')) {
+        setActiveTab('forgot');
+      }
+    }
+  }, [resetToken]);
 
   // Common UI State
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -208,6 +251,24 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     }
   };
 
+  if (activeTab === 'forgot') {
+    return (
+      <ForgotPasswordPage
+        onBackToSignIn={() => handleTabChange('signin')}
+      />
+    );
+  }
+
+  if (activeTab === 'reset') {
+    return (
+      <ResetPasswordPage
+        token={resetToken}
+        onBackToSignIn={() => handleTabChange('signin')}
+        onSuccess={() => handleTabChange('signin')}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#D9D9D9] flex flex-col justify-center items-center p-4 sm:p-6 lg:p-8">
       {/* Brand Header */}
@@ -304,16 +365,13 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   <Label htmlFor="signin-password" required>
                     Password
                   </Label>
-                  <a
-                    href="#forgot"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setErrorMessage('Password reset instructions can be requested via API.');
-                    }}
-                    className="text-xs text-[#2F4F4F] hover:underline font-medium"
+                  <button
+                    type="button"
+                    onClick={() => handleTabChange('forgot')}
+                    className="text-xs text-[#2F4F4F] hover:underline font-medium focus:outline-none"
                   >
                     Forgot password?
-                  </a>
+                  </button>
                 </div>
                 <Input
                   id="signin-password"
