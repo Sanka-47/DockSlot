@@ -114,6 +114,7 @@ export class BookingService {
         warehouse: {
           include: {
             operatingHours: true,
+            policy: true,
           },
         },
       },
@@ -135,6 +136,37 @@ export class BookingService {
     const slotStart = new Date(data.slotStartTime);
     const slotEnd = new Date(data.slotEndTime);
     this.validateSlotOperatingHours(dock.warehouse, slotStart, slotEnd);
+
+    // Enforce configurable warehouse booking & anti-hogging policies
+    const policy = dock.warehouse.policy;
+    if (policy) {
+      // Max Advance Horizon Check: Reject bookings where slotStartTime > now() + maxAdvanceDays
+      const maxAdvanceMs = policy.maxAdvanceDays * 24 * 60 * 60 * 1000;
+      if (slotStart.getTime() > Date.now() + maxAdvanceMs) {
+        throw {
+          status: 400,
+          message: `Policy violation: Bookings cannot be made more than ${policy.maxAdvanceDays} days in advance.`,
+        };
+      }
+
+      // Anti-Hogging Check: Count active carrier bookings (BOOKED, ARRIVED) at this warehouse
+      const activeBookingsCount = await prisma.booking.count({
+        where: {
+          carrierOrgId: dispatcherOrgId,
+          status: { in: [BookingStatus.BOOKED, BookingStatus.ARRIVED] },
+          dock: {
+            warehouseId: dock.warehouseId,
+          },
+        },
+      });
+
+      if (activeBookingsCount >= policy.maxConcurrentBookings) {
+        throw {
+          status: 400,
+          message: `Policy violation: Carrier organization has reached maximum allowed concurrent active bookings (${policy.maxConcurrentBookings}) at this warehouse.`,
+        };
+      }
+    }
 
     // Verify requested slot is not under scheduled dock maintenance closure
     const overlappingClosure = await prisma.dockClosure.findFirst({
@@ -278,6 +310,7 @@ export class BookingService {
             warehouse: {
               include: {
                 operatingHours: true,
+                policy: true,
               },
             },
           },
@@ -312,6 +345,7 @@ export class BookingService {
           warehouse: {
             include: {
               operatingHours: true,
+              policy: true,
             },
           },
         },
@@ -335,6 +369,34 @@ export class BookingService {
     const slotStart = new Date(data.slotStartTime);
     const slotEnd = new Date(data.slotEndTime);
     this.validateSlotOperatingHours(targetDock.warehouse, slotStart, slotEnd);
+
+    // Enforce configurable warehouse booking policy & lock window rules
+    const policy = targetDock.warehouse.policy || booking.dock.warehouse.policy;
+    if (policy) {
+      // 1. Max Advance Horizon Check on target slot
+      const maxAdvanceMs = policy.maxAdvanceDays * 24 * 60 * 60 * 1000;
+      if (slotStart.getTime() > Date.now() + maxAdvanceMs) {
+        throw {
+          status: 400,
+          message: `Policy violation: Bookings cannot be rescheduled more than ${policy.maxAdvanceDays} days in advance.`,
+        };
+      }
+
+      // 2. 24-Hour Lock Window & Same-Day Rescheduling Exception
+      const hoursUntilCurrentSlot = (booking.slotStartTime.getTime() - Date.now()) / (60 * 60 * 1000);
+      if (hoursUntilCurrentSlot < policy.bookingLockWindowHours) {
+        const warehouseTz = targetDock.warehouse.timezone;
+        const currentSlotDate = formatInTimeZone(booking.slotStartTime, warehouseTz, 'yyyy-MM-dd');
+        const targetSlotDate = formatInTimeZone(slotStart, warehouseTz, 'yyyy-MM-dd');
+
+        if (currentSlotDate !== targetSlotDate) {
+          throw {
+            status: 400,
+            message: `Cannot reschedule to a different date within the ${policy.bookingLockWindowHours}-hour lock window. Only same-day emergency rescheduling is permitted.`,
+          };
+        }
+      }
+    }
 
     // Verify target slot is not under scheduled dock maintenance closure
     const overlappingClosure = await prisma.dockClosure.findFirst({
@@ -458,7 +520,11 @@ export class BookingService {
       include: {
         dock: {
           include: {
-            warehouse: true,
+            warehouse: {
+              include: {
+                policy: true,
+              },
+            },
           },
         },
         carrierOrg: true,
@@ -479,6 +545,18 @@ export class BookingService {
 
     if (booking.status === BookingStatus.ARRIVED) {
       throw { status: 400, message: 'Cannot cancel a booking that has already arrived.' };
+    }
+
+    // Enforce lock window restriction on cancellations
+    const policy = booking.dock.warehouse.policy;
+    if (policy) {
+      const hoursUntilSlot = (booking.slotStartTime.getTime() - Date.now()) / (60 * 60 * 1000);
+      if (hoursUntilSlot < policy.bookingLockWindowHours) {
+        throw {
+          status: 400,
+          message: `Cannot cancel booking within the ${policy.bookingLockWindowHours}-hour lock window prior to scheduled slot.`,
+        };
+      }
     }
 
     const result = await prisma.$transaction(async (tx) => {

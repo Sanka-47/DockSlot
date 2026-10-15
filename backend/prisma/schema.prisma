@@ -85,9 +85,10 @@ model Warehouse {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   docks          Dock[]
   operatingHours OperatingHour[]
+  policy         WarehousePolicy?
 
   @@index([organizationId])
   @@map("warehouses")
@@ -219,4 +220,19 @@ model Invitation {
 
   @@map("invitations")
 }
+
+model WarehousePolicy {
+  id                     Int       @id @default(autoincrement())
+  warehouseId            Int       @unique
+  maxConcurrentBookings  Int       @default(3)
+  maxAdvanceDays         Int       @default(14)
+  bookingLockWindowHours Int       @default(24)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  warehouse              Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@map("warehouse_policies")
+}
+
 

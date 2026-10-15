@@ -293,6 +293,115 @@
                 }
             }
         },
+        "/warehouses/{warehouseId}/policy": {
+            "get": {
+                "summary": "Get warehouse booking and anti-hogging policy",
+                "description": "Restricted to WAREHOUSE_ADMIN of the owning organization.",
+                "tags": ["Warehouses"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [{
+                    "in": "path",
+                    "name": "warehouseId",
+                    "required": true,
+                    "schema": {
+                        "type": "integer"
+                    }
+                }],
+                "responses": {
+                    "200": {
+                        "description": "Warehouse policy configuration",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "id": { "type": "integer", "example": 1 },
+                                                "warehouseId": { "type": "integer", "example": 1 },
+                                                "maxConcurrentBookings": { "type": "integer", "example": 3 },
+                                                "maxAdvanceDays": { "type": "integer", "example": 14 },
+                                                "bookingLockWindowHours": { "type": "integer", "example": 24 }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden. Tenant boundary violation"
+                    },
+                    "404": {
+                        "description": "Warehouse not found"
+                    }
+                }
+            },
+            "put": {
+                "summary": "Update warehouse booking and anti-hogging policy",
+                "description": "Configures maximum concurrent active bookings per carrier, maximum advance reservation days, and hard-lock window hours. Restricted to WAREHOUSE_ADMIN.",
+                "tags": ["Warehouses"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [{
+                    "in": "path",
+                    "name": "warehouseId",
+                    "required": true,
+                    "schema": {
+                        "type": "integer"
+                    }
+                }],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "maxConcurrentBookings": {
+                                        "type": "integer",
+                                        "example": 3,
+                                        "description": "Max active uncompleted bookings a single carrier organization can hold simultaneously"
+                                    },
+                                    "maxAdvanceDays": {
+                                        "type": "integer",
+                                        "example": 14,
+                                        "description": "Max advance days into the future carriers can reserve slots"
+                                    },
+                                    "bookingLockWindowHours": {
+                                        "type": "integer",
+                                        "example": 24,
+                                        "description": "Hard-lock window hours before slot start preventing standard cancellations"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Warehouse policy updated successfully"
+                    },
+                    "400": {
+                        "description": "Invalid policy configuration parameters"
+                    },
+                    "403": {
+                        "description": "Forbidden. Tenant boundary violation"
+                    },
+                    "404": {
+                        "description": "Warehouse not found"
+                    }
+                }
+            }
+        },
         "/warehouses/{warehouseId}/docks": {
             "post": {
                 "summary": "Add a new dock to a warehouse",
@@ -612,7 +721,7 @@
                         "description": "Booking confirmed and outbox event created"
                     },
                     "400": {
-                        "description": "Slot out of operating hours, past date, or invalid payload"
+                        "description": "Slot out of operating hours, past date, invalid payload, maxAdvanceDays horizon exceeded, or carrier maxConcurrentBookings policy reached"
                     },
                     "401": {
                         "description": "Authentication required"
@@ -629,7 +738,7 @@
         "/bookings/{id}/reschedule": {
             "patch": {
                 "summary": "Reschedule a confirmed booking",
-                "description": "Moves an existing confirmed booking to a new time slot (and optionally a new dock).\nReleases the old slot atomically and logs an audit log entry.\n",
+                "description": "Moves an existing confirmed booking to a new time slot (and optionally a new dock). Enforces warehouse booking policies. If within the 24-hour lock window, only same-day emergency rescheduling is permitted.",
                 "tags": ["Bookings"],
                 "security": [{
                     "bearerAuth": []
@@ -675,7 +784,68 @@
                         "description": "Booking successfully rescheduled"
                     },
                     "400": {
-                        "description": "Invalid slot times or booking cannot be rescheduled"
+                        "description": "Invalid slot times, max advance days exceeded, or cross-date rescheduling attempted within lock window"
+                    },
+                    "403": {
+                        "description": "Forbidden. Tenant boundary violation"
+                    },
+                    "404": {
+                        "description": "Booking not found"
+                    },
+                    "409": {
+                        "description": "Target slot already occupied"
+                    }
+                }
+            },
+            "put": {
+                "summary": "Reschedule a confirmed booking",
+                "description": "Moves an existing confirmed booking to a new time slot (and optionally a new dock). Enforces warehouse booking policies. If within the 24-hour lock window, only same-day emergency rescheduling is permitted.",
+                "tags": ["Bookings"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [{
+                    "in": "path",
+                    "name": "id",
+                    "required": true,
+                    "schema": {
+                        "type": "integer"
+                    },
+                    "description": "Booking ID"
+                }],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["slotStartTime", "slotEndTime"],
+                                "properties": {
+                                    "slotStartTime": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "example": "2026-11-15T05:00:00.000Z"
+                                    },
+                                    "slotEndTime": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "example": "2026-11-15T05:30:00.000Z"
+                                    },
+                                    "newDockId": {
+                                        "type": "integer",
+                                        "example": 2
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Booking successfully rescheduled"
+                    },
+                    "400": {
+                        "description": "Invalid slot times, max advance days exceeded, or cross-date rescheduling attempted within lock window"
                     },
                     "403": {
                         "description": "Forbidden. Tenant boundary violation"
@@ -692,7 +862,7 @@
         "/bookings/{id}/cancel": {
             "patch": {
                 "summary": "Cancel a confirmed booking",
-                "description": "Cancels the booking, releases the time slot for other carriers, and creates an audit log.",
+                "description": "Cancels the booking, releases the time slot for other carriers, and creates an audit log. Blocked within the bookingLockWindowHours window.",
                 "tags": ["Bookings"],
                 "security": [{
                     "bearerAuth": []
@@ -726,10 +896,10 @@
                         "description": "Booking cancelled and slot released"
                     },
                     "400": {
-                        "description": "Booking already cancelled or completed"
+                        "description": "Booking is already cancelled/arrived, or cancellation attempted within the lock window"
                     },
                     "403": {
-                        "description": "Forbidden. Not the owning carrier"
+                        "description": "Forbidden. Tenant boundary violation"
                     },
                     "404": {
                         "description": "Booking not found"

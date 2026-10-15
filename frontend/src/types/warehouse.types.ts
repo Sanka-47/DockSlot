@@ -28,6 +28,22 @@ export interface OperatingHour {
   slotLengthMinutes: number;
 }
 
+export interface WarehousePolicy {
+  id: number;
+  warehouseId: number;
+  maxConcurrentBookings: number;
+  maxAdvanceDays: number;
+  bookingLockWindowHours: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface UpdateWarehousePolicyRequest {
+  maxConcurrentBookings?: number;
+  maxAdvanceDays?: number;
+  bookingLockWindowHours?: number;
+}
+
 export interface Warehouse {
   id: number;
   organizationId: number;
@@ -39,6 +55,7 @@ export interface Warehouse {
   updatedAt?: string;
   docks?: Dock[];
   operatingHours?: OperatingHour[];
+  policy?: WarehousePolicy;
 }
 
 export interface DockClosure {

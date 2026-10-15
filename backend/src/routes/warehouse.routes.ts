@@ -11,6 +11,8 @@ import {
   getAvailableSlots,
   createDockClosure,
   getDockClosures,
+  getWarehousePolicy,
+  updateWarehousePolicy,
 } from '../controllers/warehouse.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { requireVerifiedEmail } from '../middleware/verification.middleware';
@@ -291,6 +293,93 @@ router.put('/:warehouseId', authMiddleware, requireVerifiedEmail, authorize(['WA
  */
 router.patch('/:warehouseId', authMiddleware, requireVerifiedEmail, authorize(['WAREHOUSE_ADMIN']), updateWarehouseSettings);
 router.patch('/:warehouseId/settings', authMiddleware, requireVerifiedEmail, authorize(['WAREHOUSE_ADMIN']), updateWarehouseSettings);
+
+/**
+ * @openapi
+ * /warehouses/{warehouseId}/policy:
+ *   get:
+ *     summary: Get warehouse booking and anti-hogging policy
+ *     description: Restricted to WAREHOUSE_ADMIN of the owning organization.
+ *     tags:
+ *       - Warehouses
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: warehouseId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Warehouse policy configuration
+ *       403:
+ *         description: Forbidden. Tenant boundary violation
+ *       404:
+ *         description: Warehouse not found
+ */
+router.get(
+  '/:warehouseId/policy',
+  authMiddleware,
+  requireVerifiedEmail,
+  authorize(['WAREHOUSE_ADMIN']),
+  getWarehousePolicy
+);
+
+/**
+ * @openapi
+ * /warehouses/{warehouseId}/policy:
+ *   put:
+ *     summary: Update warehouse booking and anti-hogging policy
+ *     description: |
+ *       Configures maximum concurrent active bookings per carrier, maximum advance reservation days,
+ *       and hard-lock window hours before slot start. Restricted to WAREHOUSE_ADMIN.
+ *     tags:
+ *       - Warehouses
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: warehouseId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               maxConcurrentBookings:
+ *                 type: integer
+ *                 example: 3
+ *                 description: Max active uncompleted bookings a single carrier can hold simultaneously
+ *               maxAdvanceDays:
+ *                 type: integer
+ *                 example: 14
+ *                 description: Max advance days into the future carriers can reserve slots
+ *               bookingLockWindowHours:
+ *                 type: integer
+ *                 example: 24
+ *                 description: Hard-lock window hours before slot start preventing standard cancellations
+ *     responses:
+ *       200:
+ *         description: Warehouse policy updated successfully
+ *       400:
+ *         description: Invalid policy configuration parameters
+ *       403:
+ *         description: Forbidden. Tenant boundary violation
+ *       404:
+ *         description: Warehouse not found
+ */
+router.put(
+  '/:warehouseId/policy',
+  authMiddleware,
+  requireVerifiedEmail,
+  authorize(['WAREHOUSE_ADMIN']),
+  updateWarehousePolicy
+);
 
 /**
  * @openapi

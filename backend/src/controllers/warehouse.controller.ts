@@ -502,3 +502,89 @@ export const getDockClosures = async (req: Request, res: Response): Promise<void
   }
 };
 
+/**
+ * Retrieves the booking policy for a warehouse.
+ * GET /api/warehouses/:warehouseId/policy
+ */
+export const getWarehousePolicy = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) {
+      res.status(401).json({
+        success: false,
+        message: 'Unauthorized. Organization context required.',
+      });
+      return;
+    }
+
+    const warehouseId = parseParamId(req.params.warehouseId || req.params.id);
+    if (isNaN(warehouseId)) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid warehouse ID.',
+      });
+      return;
+    }
+
+    const policy = await warehouseService.getWarehousePolicy(warehouseId, organizationId);
+
+    res.status(200).json({
+      success: true,
+      data: policy,
+    });
+  } catch (error: any) {
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Internal server error while fetching warehouse policy.',
+    });
+  }
+};
+
+/**
+ * Updates the booking policy for a warehouse.
+ * PUT /api/warehouses/:warehouseId/policy
+ */
+export const updateWarehousePolicy = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) {
+      res.status(401).json({
+        success: false,
+        message: 'Unauthorized. Organization context required.',
+      });
+      return;
+    }
+
+    const warehouseId = parseParamId(req.params.warehouseId || req.params.id);
+    if (isNaN(warehouseId)) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid warehouse ID.',
+      });
+      return;
+    }
+
+    const { maxConcurrentBookings, maxAdvanceDays, bookingLockWindowHours } = req.body;
+
+    const policy = await warehouseService.updateWarehousePolicy(warehouseId, organizationId, {
+      maxConcurrentBookings,
+      maxAdvanceDays,
+      bookingLockWindowHours,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Warehouse policy updated successfully',
+      data: policy,
+    });
+  } catch (error: any) {
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Internal server error while updating warehouse policy.',
+    });
+  }
+};
+
+

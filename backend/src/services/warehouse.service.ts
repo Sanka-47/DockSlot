@@ -30,6 +30,12 @@ export interface UpdateWarehouseSettingsInput {
   timezone?: string;
 }
 
+export interface UpdateWarehousePolicyInput {
+  maxConcurrentBookings?: number;
+  maxAdvanceDays?: number;
+  bookingLockWindowHours?: number;
+}
+
 export interface CreateDockInput {
   name: string;
   status?: DockStatus;
@@ -99,9 +105,17 @@ export class WarehouseService {
         address: data.address.trim(),
         timezone: trimmedTimezone,
         slotLengthMinutes: data.slotLengthMinutes || 30,
+        policy: {
+          create: {
+            maxConcurrentBookings: 3,
+            maxAdvanceDays: 14,
+            bookingLockWindowHours: 24,
+          },
+        },
       },
       include: {
         docks: true,
+        policy: true,
       },
     });
 
@@ -123,6 +137,7 @@ export class WarehouseService {
       include: {
         docks: true,
         operatingHours: true,
+        policy: true,
       },
       orderBy: { id: 'asc' },
     });
@@ -143,6 +158,7 @@ export class WarehouseService {
       include: {
         docks: true,
         operatingHours: true,
+        policy: true,
       },
     });
 
@@ -685,6 +701,134 @@ export class WarehouseService {
     });
 
     return dockSlotMappings;
+  }
+
+  /**
+   * Retrieves the booking policy for a warehouse.
+   * If no policy exists yet, creates one with default values.
+   */
+  async getWarehousePolicy(warehouseId: number, organizationId: number) {
+    if (!warehouseId || isNaN(warehouseId)) {
+      throw { status: 400, message: 'Invalid warehouse ID.' };
+    }
+
+    const warehouse = await prisma.warehouse.findUnique({
+      where: { id: warehouseId },
+      include: { policy: true },
+    });
+
+    if (!warehouse) {
+      throw { status: 404, message: 'Warehouse not found.' };
+    }
+
+    if (warehouse.organizationId !== organizationId) {
+      throw { status: 403, message: 'Forbidden. You do not have access to this warehouse.' };
+    }
+
+    if (!warehouse.policy) {
+      const policy = await prisma.warehousePolicy.create({
+        data: {
+          warehouseId,
+          maxConcurrentBookings: 3,
+          maxAdvanceDays: 14,
+          bookingLockWindowHours: 24,
+        },
+      });
+      return policy;
+    }
+
+    return warehouse.policy;
+  }
+
+  /**
+   * Updates the configurable booking policy for a warehouse.
+   * Restricted to WAREHOUSE_ADMIN of the owning organization.
+   */
+  async updateWarehousePolicy(
+    warehouseId: number,
+    organizationId: number,
+    data: UpdateWarehousePolicyInput
+  ) {
+    if (!warehouseId || isNaN(warehouseId)) {
+      throw { status: 400, message: 'Invalid warehouse ID.' };
+    }
+
+    const warehouse = await prisma.warehouse.findUnique({
+      where: { id: warehouseId },
+      include: { policy: true },
+    });
+
+    if (!warehouse) {
+      throw { status: 404, message: 'Warehouse not found.' };
+    }
+
+    if (warehouse.organizationId !== organizationId) {
+      throw { status: 403, message: 'Forbidden. You do not have access to this warehouse.' };
+    }
+
+    if (
+      data.maxConcurrentBookings === undefined &&
+      data.maxAdvanceDays === undefined &&
+      data.bookingLockWindowHours === undefined
+    ) {
+      throw {
+        status: 400,
+        message: 'At least one policy field (maxConcurrentBookings, maxAdvanceDays, bookingLockWindowHours) must be provided.',
+      };
+    }
+
+    if (data.maxConcurrentBookings !== undefined) {
+      if (
+        typeof data.maxConcurrentBookings !== 'number' ||
+        !Number.isInteger(data.maxConcurrentBookings) ||
+        data.maxConcurrentBookings < 1
+      ) {
+        throw { status: 400, message: 'maxConcurrentBookings must be a positive integer.' };
+      }
+    }
+
+    if (data.maxAdvanceDays !== undefined) {
+      if (
+        typeof data.maxAdvanceDays !== 'number' ||
+        !Number.isInteger(data.maxAdvanceDays) ||
+        data.maxAdvanceDays < 1
+      ) {
+        throw { status: 400, message: 'maxAdvanceDays must be a positive integer.' };
+      }
+    }
+
+    if (data.bookingLockWindowHours !== undefined) {
+      if (
+        typeof data.bookingLockWindowHours !== 'number' ||
+        !Number.isInteger(data.bookingLockWindowHours) ||
+        data.bookingLockWindowHours < 0
+      ) {
+        throw { status: 400, message: 'bookingLockWindowHours must be a non-negative integer.' };
+      }
+    }
+
+    const updatedPolicy = await prisma.warehousePolicy.upsert({
+      where: { warehouseId },
+      create: {
+        warehouseId,
+        maxConcurrentBookings: data.maxConcurrentBookings ?? 3,
+        maxAdvanceDays: data.maxAdvanceDays ?? 14,
+        bookingLockWindowHours: data.bookingLockWindowHours ?? 24,
+      },
+      update: {
+        ...(data.maxConcurrentBookings !== undefined && {
+          maxConcurrentBookings: data.maxConcurrentBookings,
+        }),
+        ...(data.maxAdvanceDays !== undefined && {
+          maxAdvanceDays: data.maxAdvanceDays,
+        }),
+        ...(data.bookingLockWindowHours !== undefined && {
+          bookingLockWindowHours: data.bookingLockWindowHours,
+        }),
+      },
+    });
+
+    return updatedPolicy;
   }
 }
 
