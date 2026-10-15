@@ -31,6 +31,7 @@ export const TeamManagementModal: React.FC<TeamManagementModalProps> = ({
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [deactivatingId, setDeactivatingId] = useState<number | null>(null);
+  const [reactivatingId, setReactivatingId] = useState<number | null>(null);
   const [inviteEmail, setInviteEmail] = useState<string>('');
   const [isInviting, setIsInviting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -79,6 +80,26 @@ export const TeamManagementModal: React.FC<TeamManagementModalProps> = ({
       setErrorMessage(err.response?.data?.message || 'Failed to deactivate user.');
     } finally {
       setDeactivatingId(null);
+    }
+  };
+
+  const handleReactivate = async (targetUser: User) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to reactivate ${targetUser.email}? They will be allowed to log in and access the system.`
+    );
+    if (!confirmed) return;
+
+    setReactivatingId(targetUser.id);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      const res = await userApi.reactivateUser(targetUser.id);
+      setSuccessMessage(res.message || `User ${targetUser.email} has been reactivated.`);
+      await fetchUsers();
+    } catch (err: any) {
+      setErrorMessage(err.response?.data?.message || 'Failed to reactivate user.');
+    } finally {
+      setReactivatingId(null);
     }
   };
 
@@ -248,10 +269,21 @@ export const TeamManagementModal: React.FC<TeamManagementModalProps> = ({
                       </div>
 
                       <div>
-                        {isDeactivated ? (
-                          <span className="text-[11px] text-gray-400 italic">Access Severed</span>
-                        ) : isSelf ? (
+                        {isSelf ? (
                           <span className="text-[11px] text-gray-400">Current Session</span>
+                        ) : isDeactivated ? (
+                          <button
+                            onClick={() => handleReactivate(u)}
+                            disabled={reactivatingId === u.id}
+                            className="px-2.5 py-1 text-xs font-medium text-emerald-600 hover:text-emerald-700 border border-emerald-200 hover:border-emerald-300 hover:bg-emerald-50 rounded transition-colors disabled:opacity-50 flex items-center space-x-1"
+                          >
+                            {reactivatingId === u.id ? (
+                              <RefreshCw className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <UserCheck className="w-3 h-3" />
+                            )}
+                            <span>Reactivate</span>
+                          </button>
                         ) : (
                           <button
                             onClick={() => handleDeactivate(u)}

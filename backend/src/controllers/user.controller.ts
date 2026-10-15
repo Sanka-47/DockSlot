@@ -27,7 +27,65 @@ export const deactivateUser = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const result = await userService.deactivateUser(
+    const isReactivating = req.body?.isActive === true || req.body?.action === 'reactivate';
+
+    const result = isReactivating
+      ? await userService.reactivateUser(
+          {
+            userId: requester.userId,
+            organizationId: requester.organizationId,
+            role: requester.role,
+          },
+          targetUserId
+        )
+      : await userService.deactivateUser(
+          {
+            userId: requester.userId,
+            organizationId: requester.organizationId,
+            role: requester.role,
+          },
+          targetUserId
+        );
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result.user,
+    });
+  } catch (error: any) {
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Failed to update user status.',
+    });
+  }
+};
+
+export const reactivateUser = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const requester = req.user;
+    if (!requester) {
+      res.status(401).json({
+        success: false,
+        message: 'Unauthorized. Authentication required.',
+      });
+      return;
+    }
+
+    const targetUserIdParam = req.params.id;
+    const targetUserId = parseInt(
+      typeof targetUserIdParam === 'string' ? targetUserIdParam : '',
+      10
+    );
+    if (isNaN(targetUserId)) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid target user ID.',
+      });
+      return;
+    }
+
+    const result = await userService.reactivateUser(
       {
         userId: requester.userId,
         organizationId: requester.organizationId,
@@ -45,7 +103,7 @@ export const deactivateUser = async (req: Request, res: Response): Promise<void>
     const status = error.status || 500;
     res.status(status).json({
       success: false,
-      message: error.message || 'Failed to deactivate user.',
+      message: error.message || 'Failed to reactivate user.',
     });
   }
 };

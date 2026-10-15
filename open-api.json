@@ -1469,6 +1469,65 @@
                     }
                 }
             }
+        },
+        "/users/{id}/reactivate": {
+            "patch": {
+                "summary": "Reactivate a previously deactivated organization user",
+                "description": "Restricted to CARRIER_ADMIN or WAREHOUSE_ADMIN managing users within their organization. Sets isActive = 1 in MySQL and updates Redis cache to allow user authentication.",
+                "tags": ["Users & Invitations"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "description": "Target User ID to reactivate",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "User reactivated successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": { "type": "boolean", "example": true },
+                                        "message": { "type": "string", "example": "User reactivated successfully." },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "id": { "type": "integer" },
+                                                "email": { "type": "string" },
+                                                "role": { "type": "string" },
+                                                "organizationId": { "type": "integer" },
+                                                "isActive": { "type": "boolean", "example": true }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid user ID"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    },
+                    "403": {
+                        "description": "Forbidden. Requester is not an admin or target belongs to another organization"
+                    },
+                    "404": {
+                        "description": "User not found"
+                    }
+                }
+            }
         }
     },
     "tags": []

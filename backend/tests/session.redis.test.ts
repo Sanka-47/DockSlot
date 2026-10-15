@@ -312,5 +312,85 @@ describe('Redis + JWT Session Control & User Deactivation Tests', () => {
       expect(foundDispatcher).toBeDefined();
       expect(foundDispatcher.isActive).toBe(false);
     });
+
+    it('should reject reactivating a user from another organization with 403 Forbidden', async () => {
+      const res = await request(app)
+        .patch(`/api/users/${foreignOrgDispatcher.id}/reactivate`)
+        .set('Authorization', `Bearer ${carrierAdminToken}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toContain('another organization');
+    });
+
+    it('should allow organization admin to reactivate a deactivated user (PATCH /api/users/:id/reactivate)', async () => {
+      const res = await request(app)
+        .patch(`/api/users/${dispatcherUser.id}/reactivate`)
+        .set('Authorization', `Bearer ${carrierAdminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.message).toContain('reactivated successfully');
+      expect(res.body.data.isActive).toBe(true);
+
+      // Verify in MySQL
+      const userInDb = await prisma.user.findUnique({ where: { id: dispatcherUser.id } });
+      expect(userInDb?.isActive).toBe(true);
+
+      // Verify in Redis
+      const redisActive = await redis.get(`user:${dispatcherUser.id}:isActive`);
+      expect(redisActive).toBe('1');
+    });
+
+    it('should allow reactivated user to authenticate with valid token', async () => {
+      const versionStr = await redis.get(`user:${dispatcherUser.id}:tokenVersion`);
+      const currentVersion = parseInt(versionStr || '0', 10);
+
+      const validToken = jwt.sign(
+        {
+          userId: dispatcherUser.id,
+          organizationId: carrierOrgId,
+          role: dispatcherUser.role,
+          email: dispatcherUser.email,
+          tokenVersion: currentVersion,
+        },
+        securityConfig.jwtSecret,
+        { expiresIn: '1h' }
+      );
+
+      const res = await request(app)
+        .get('/api/auth/me')
+        .set('Authorization', `Bearer ${validToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.id).toBe(dispatcherUser.id);
+    });
+
+    it('should support reactivation via PATCH /api/users/:id/deactivate with { isActive: true }', async () => {
+      // First deactivate
+      await request(app)
+        .patch(`/api/users/${dispatcherUser.id}/deactivate`)
+        .set('Authorization', `Bearer ${carrierAdminToken}`);
+
+      let userInDb = await prisma.user.findUnique({ where: { id: dispatcherUser.id } });
+      expect(userInDb?.isActive).toBe(false);
+
+      // Now reactivate via deactivate endpoint with body
+      const res = await request(app)
+        .patch(`/api/users/${dispatcherUser.id}/deactivate`)
+        .set('Authorization', `Bearer ${carrierAdminToken}`)
+        .send({ isActive: true });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.isActive).toBe(true);
+
+      userInDb = await prisma.user.findUnique({ where: { id: dispatcherUser.id } });
+      expect(userInDb?.isActive).toBe(true);
+
+      const redisActive = await redis.get(`user:${dispatcherUser.id}:isActive`);
+      expect(redisActive).toBe('1');
+    });
   });
 });

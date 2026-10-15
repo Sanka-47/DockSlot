@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { inviteUser, getUsers, deactivateUser } from '../controllers/user.controller';
+import { inviteUser, getUsers, deactivateUser, reactivateUser } from '../controllers/user.controller';
 import { authenticate } from '../middleware/auth.middleware';
 import { authorize } from '../middleware/rbac.middleware';
 
@@ -157,6 +157,44 @@ router.patch(
   authenticate,
   authorize(['CARRIER_ADMIN', 'WAREHOUSE_ADMIN']),
   deactivateUser
+);
+
+/**
+ * @openapi
+ * /users/{id}/reactivate:
+ *   patch:
+ *     summary: Reactivate a previously deactivated user
+ *     description: |
+ *       Restricted strictly to CARRIER_ADMIN or WAREHOUSE_ADMIN managing users within their organization.
+ *       Sets isActive = true in MySQL and updates Redis cache to allow logins and authorization.
+ *     tags:
+ *       - Users & Invitations
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Target user ID to reactivate
+ *     responses:
+ *       200:
+ *         description: User reactivated successfully
+ *       400:
+ *         description: Invalid target user ID
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Forbidden. Requester is not an admin or target belongs to another organization
+ *       404:
+ *         description: Target user not found
+ */
+router.patch(
+  '/:id/reactivate',
+  authenticate,
+  authorize(['CARRIER_ADMIN', 'WAREHOUSE_ADMIN']),
+  reactivateUser
 );
 
 export default router;

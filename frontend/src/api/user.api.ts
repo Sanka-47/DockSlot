@@ -22,6 +22,11 @@ export const userApi = {
     return response.data;
   },
 
+  reactivateUser: async (userId: number): Promise<{ success: boolean; message: string; data?: User }> => {
+    const response = await apiClient.patch<{ success: boolean; message: string; data?: User }>(`/users/${userId}/reactivate`);
+    return response.data;
+  },
+
   inviteUser: async (data: InviteUserRequest): Promise<InviteUserResponse> => {
     const response = await apiClient.post<InviteUserResponse>('/users/invite', data);
     return response.data;

@@ -113,6 +113,7 @@ export const WarehouseAdminDashboard: React.FC = () => {
   const [inviteEmail, setInviteEmail] = useState<string>('');
   const [isSendingInvite, setIsSendingInvite] = useState<boolean>(false);
   const [deactivatingUserId, setDeactivatingUserId] = useState<number | null>(null);
+  const [reactivatingUserId, setReactivatingUserId] = useState<number | null>(null);
 
   // Feedback Notifications
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
@@ -412,6 +413,25 @@ export const WarehouseAdminDashboard: React.FC = () => {
       setErrorBanner(err.response?.data?.message || 'Failed to deactivate user.');
     } finally {
       setDeactivatingUserId(null);
+    }
+  };
+
+  const handleReactivateUser = async (targetUser: User) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to reactivate ${targetUser.email}? They will be permitted to log in and access system functions.`
+    );
+    if (!confirmed) return;
+
+    setReactivatingUserId(targetUser.id);
+    setErrorBanner(null);
+    try {
+      const res = await userApi.reactivateUser(targetUser.id);
+      triggerSuccess(res.message || `User ${targetUser.email} has been reactivated.`);
+      await fetchUsers();
+    } catch (err: any) {
+      setErrorBanner(err.response?.data?.message || 'Failed to reactivate user.');
+    } finally {
+      setReactivatingUserId(null);
     }
   };
 
@@ -1125,10 +1145,21 @@ export const WarehouseAdminDashboard: React.FC = () => {
                     </div>
 
                     <div>
-                      {isDeactivated ? (
-                        <span className="text-xs text-gray-400 italic">Access Revoked</span>
-                      ) : isSelf ? (
+                      {isSelf ? (
                         <span className="text-xs text-gray-400 font-medium">Current Session</span>
+                      ) : isDeactivated ? (
+                        <button
+                          onClick={() => handleReactivateUser(u)}
+                          disabled={reactivatingUserId === u.id}
+                          className="px-3 py-1.5 text-xs font-medium text-emerald-600 hover:text-emerald-700 border border-emerald-200 hover:bg-emerald-50 rounded-lg transition-colors flex items-center space-x-1 disabled:opacity-50"
+                        >
+                          {reactivatingUserId === u.id ? (
+                            <RefreshCw className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <UserCheck className="w-3 h-3" />
+                          )}
+                          <span>Reactivate</span>
+                        </button>
                       ) : (
                         <button
                           onClick={() => handleDeactivateUser(u)}
