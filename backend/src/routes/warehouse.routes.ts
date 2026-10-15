@@ -8,6 +8,8 @@ import {
   createDock,
   getDocks,
   updateDockStatus,
+  updateDock,
+  updateDockName,
   getAvailableSlots,
   createDockClosure,
   getDockClosures,
@@ -452,6 +454,81 @@ router.patch(
   requireVerifiedEmail,
   authorize(['WAREHOUSE_ADMIN', 'DOCK_MANAGER']),
   updateDockStatus
+);
+
+/**
+ * @openapi
+ * /warehouses/{warehouseId}/docks/{dockId}:
+ *   patch:
+ *     summary: Update dock name or details
+ *     description: |
+ *       Restricted to WAREHOUSE_ADMIN.
+ *       To avoid driver confusion, the dock name can only be updated if there are no active bookings with status 'BOOKED'.
+ *     tags:
+ *       - Warehouses
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: warehouseId
+ *         required: false
+ *         schema:
+ *           type: integer
+ *       - in: path
+ *         name: dockId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: Dock A1 (Refrigerated Express)
+ *     responses:
+ *       200:
+ *         description: Dock updated successfully
+ *       400:
+ *         description: Cannot update dock name while active BOOKED bookings exist, or invalid name
+ *       403:
+ *         description: Forbidden. Tenant boundary violation or insufficient role
+ *       404:
+ *         description: Dock not found
+ */
+router.patch(
+  '/:warehouseId/docks/:dockId',
+  authMiddleware,
+  requireVerifiedEmail,
+  authorize(['WAREHOUSE_ADMIN']),
+  updateDock
+);
+
+router.put(
+  '/:warehouseId/docks/:dockId',
+  authMiddleware,
+  requireVerifiedEmail,
+  authorize(['WAREHOUSE_ADMIN']),
+  updateDock
+);
+
+router.patch(
+  '/docks/:dockId',
+  authMiddleware,
+  requireVerifiedEmail,
+  authorize(['WAREHOUSE_ADMIN']),
+  updateDock
+);
+
+router.put(
+  '/docks/:dockId',
+  authMiddleware,
+  requireVerifiedEmail,
+  authorize(['WAREHOUSE_ADMIN']),
+  updateDock
 );
 
 /**

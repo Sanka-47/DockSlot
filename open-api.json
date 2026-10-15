@@ -124,6 +124,54 @@
                 }
             }
         },
+        "/warehouses/docks/{dockId}": {
+            "patch": {
+                "summary": "Update dock name or details",
+                "description": "Restricted to WAREHOUSE_ADMIN. To avoid driver confusion, the name can only be updated if there are no active bookings with status 'BOOKED'.",
+                "tags": ["Warehouses"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [{
+                    "in": "path",
+                    "name": "dockId",
+                    "required": true,
+                    "schema": {
+                        "type": "integer"
+                    }
+                }],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "example": "Dock A1 (Renamed)"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Dock updated successfully"
+                    },
+                    "400": {
+                        "description": "Cannot update dock name while active BOOKED bookings exist"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "404": {
+                        "description": "Dock not found"
+                    }
+                }
+            }
+        },
         "/warehouses/docks/{dockId}/closures": {
             "post": {
                 "summary": "Schedule a maintenance closure window for a dock",

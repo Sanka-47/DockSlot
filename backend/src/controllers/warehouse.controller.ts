@@ -338,6 +338,77 @@ export const updateDockStatus = async (req: Request, res: Response): Promise<voi
 };
 
 /**
+ * Updates dock details (name, and optional status).
+ * To avoid confusion with drivers, the name is only updatable if there are no active
+ * bookings with status 'BOOKED' for this dock.
+ * PATCH /api/warehouses/:warehouseId/docks/:dockId
+ * PATCH /api/warehouses/docks/:dockId
+ * PUT /api/warehouses/:warehouseId/docks/:dockId
+ * PUT /api/warehouses/docks/:dockId
+ */
+export const updateDock = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) {
+      res.status(401).json({
+        success: false,
+        message: 'Unauthorized. Organization context required.',
+      });
+      return;
+    }
+
+    const dockId = parseParamId(req.params.dockId);
+    if (isNaN(dockId)) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid dock ID.',
+      });
+      return;
+    }
+
+    const rawWarehouseId = req.params.warehouseId;
+    const warehouseId = rawWarehouseId ? parseParamId(rawWarehouseId) : undefined;
+    if (warehouseId !== undefined && isNaN(warehouseId)) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid warehouse ID.',
+      });
+      return;
+    }
+
+    const { name, status } = req.body;
+    if (name === undefined && status === undefined) {
+      res.status(400).json({
+        success: false,
+        message: 'At least one field (name or status) must be provided to update.',
+      });
+      return;
+    }
+
+    const updatedDock = await warehouseService.updateDock(
+      dockId,
+      organizationId,
+      { name, status },
+      warehouseId
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Dock updated successfully',
+      data: updatedDock,
+    });
+  } catch (error: any) {
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Internal server error while updating dock.',
+    });
+  }
+};
+
+export const updateDockName = updateDock;
+
+/**
  * Retrieves available time slots for a warehouse on a given date.
  * GET /api/warehouses/:warehouseId/slots?date=YYYY-MM-DD
  */

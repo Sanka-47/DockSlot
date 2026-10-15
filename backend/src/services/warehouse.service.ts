@@ -41,6 +41,11 @@ export interface CreateDockInput {
   status?: DockStatus;
 }
 
+export interface UpdateDockInput {
+  name?: string;
+  status?: DockStatus;
+}
+
 export interface CreateDockClosureInput {
   startTime: string;
   endTime: string;
@@ -428,6 +433,73 @@ export class WarehouseService {
     const updatedDock = await prisma.dock.update({
       where: { id: dockId },
       data: { status },
+    });
+
+    return updatedDock;
+  }
+
+  /**
+   * Updates a dock's name (and optional status), strictly verifying organization ownership.
+   * To prevent driver and carrier confusion, the dock name can only be updated if there are
+   * no active bookings with status 'BOOKED' for this dock.
+   */
+  async updateDock(dockId: number, organizationId: number, data: UpdateDockInput, warehouseId?: number) {
+    if (!dockId || isNaN(dockId)) {
+      throw { status: 400, message: 'Invalid dock ID.' };
+    }
+
+    if (data.name !== undefined && (!data.name || typeof data.name !== 'string' || !data.name.trim())) {
+      throw { status: 400, message: 'Dock name cannot be empty.' };
+    }
+
+    if (data.status && !Object.values(DockStatus).includes(data.status)) {
+      throw { status: 400, message: `Invalid dock status: '${data.status}'. Must be ACTIVE or MAINTENANCE.` };
+    }
+
+    const dock = await prisma.dock.findUnique({
+      where: { id: dockId },
+      include: { warehouse: true },
+    });
+
+    if (!dock) {
+      throw { status: 404, message: 'Dock not found.' };
+    }
+
+    if (warehouseId && dock.warehouseId !== warehouseId) {
+      throw { status: 400, message: 'Dock does not belong to the specified warehouse.' };
+    }
+
+    if (dock.warehouse.organizationId !== organizationId) {
+      throw { status: 403, message: 'Forbidden. You do not have permission to modify this dock.' };
+    }
+
+    const isNameChanging = data.name !== undefined && data.name.trim() !== dock.name;
+
+    if (isNameChanging) {
+      const activeBookedCount = await prisma.booking.count({
+        where: {
+          dockId,
+          status: BookingStatus.BOOKED,
+        },
+      });
+
+      if (activeBookedCount > 0) {
+        throw {
+          status: 400,
+          message: `Cannot update dock name while there are active bookings with status 'BOOKED'.`,
+        };
+      }
+    }
+
+    const updatedDock = await prisma.dock.update({
+      where: { id: dockId },
+      data: {
+        ...(data.name !== undefined && { name: data.name.trim() }),
+        ...(data.status !== undefined && { status: data.status }),
+      },
+      include: {
+        warehouse: true,
+      },
     });
 
     return updatedDock;
