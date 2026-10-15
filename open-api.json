@@ -175,7 +175,7 @@
         "/warehouses/docks/{dockId}/closures": {
             "post": {
                 "summary": "Schedule a maintenance closure window for a dock",
-                "description": "Blocks out a specific time range from slot generation for maintenance or repairs.",
+                "description": "Blocks out a specific time range from slot generation for maintenance or repairs. Maintenance cannot be scheduled if active bookings exist on this dock for that day.",
                 "tags": ["Warehouses"],
                 "security": [{
                     "bearerAuth": []
@@ -220,7 +220,10 @@
                         "description": "Maintenance closure scheduled"
                     },
                     "400": {
-                        "description": "Invalid time range or conflicts with confirmed bookings"
+                        "description": "Invalid time range"
+                    },
+                    "409": {
+                        "description": "Conflict: Active bookings exist on this dock for that day"
                     }
                 }
             },

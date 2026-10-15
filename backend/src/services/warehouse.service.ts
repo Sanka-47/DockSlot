@@ -7,6 +7,7 @@ import {
   generateTimeIntervals,
   zonedDateAndTimeToUtc,
   getZonedDayBounds,
+  formatInTimeZone,
 } from '../utils/time.utils';
 
 export interface CreateWarehouseInput {
@@ -577,20 +578,28 @@ export class WarehouseService {
       };
     }
 
-    // Validate that the closure does not overlap with active bookings that cannot be fulfilled
-    const overlappingBooking = await prisma.booking.findFirst({
+    // Validate that the closure does not fall on days with active bookings
+    const timeZone = dock.warehouse.timezone || 'UTC';
+    const startDateStr = formatInTimeZone(closureStart, timeZone, 'yyyy-MM-dd');
+    const effectiveEnd = new Date(closureEnd.getTime() - 1);
+    const endDateStr = formatInTimeZone(effectiveEnd, timeZone, 'yyyy-MM-dd');
+
+    const { startOfDayUtc } = getZonedDayBounds(startDateStr, timeZone);
+    const { endOfDayUtc } = getZonedDayBounds(endDateStr, timeZone);
+
+    const bookingOnDay = await prisma.booking.findFirst({
       where: {
         dockId,
         status: { in: [BookingStatus.BOOKED, BookingStatus.ARRIVED] },
-        slotStartTime: { lt: closureEnd },
-        slotEndTime: { gt: closureStart },
+        slotStartTime: { lt: endOfDayUtc },
+        slotEndTime: { gt: startOfDayUtc },
       },
     });
 
-    if (overlappingBooking) {
+    if (bookingOnDay) {
       throw {
         status: 409,
-        message: 'Cannot schedule maintenance closure: an active booking exists on this dock during the requested time window.',
+        message: 'Cannot schedule maintenance closure: an active booking exists on this dock for that day.',
       };
     }
 

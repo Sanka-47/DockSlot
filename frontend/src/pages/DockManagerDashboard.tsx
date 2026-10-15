@@ -7,6 +7,7 @@ import {
   XCircle,
   Clock,
   Calendar,
+  CalendarX,
   Filter,
   Search,
   RefreshCw,
@@ -50,6 +51,9 @@ export const DockManagerDashboard: React.FC = () => {
   // Modal State for Maintenance Closure
   const [isClosureModalOpen, setIsClosureModalOpen] = useState<boolean>(false);
   const [selectedDockForClosure, setSelectedDockForClosure] = useState<number | ''>('');
+  const [selectedClosureDate, setSelectedClosureDate] = useState<string>('');
+  const [closureStartTimeOnly, setClosureStartTimeOnly] = useState<string>('08:00');
+  const [closureEndTimeOnly, setClosureEndTimeOnly] = useState<string>('18:00');
   const [closureStartTime, setClosureStartTime] = useState<string>('');
   const [closureEndTime, setClosureEndTime] = useState<string>('');
   const [closureReason, setClosureReason] = useState<string>('');
@@ -227,36 +231,165 @@ export const DockManagerDashboard: React.FC = () => {
     }
   };
 
+  // Map of date (YYYY-MM-DD) -> active bookings count on the selected dock bay
+  const bookedDatesForSelectedDock = useMemo(() => {
+    const datesMap = new Map<string, number>();
+    const targetDockId = Number(selectedDockForClosure);
+    if (!targetDockId) return datesMap;
+
+    bookings.forEach((b) => {
+      const bDockId = b.dockId ?? b.dock?.id;
+      if (
+        bDockId === targetDockId &&
+        (b.status === 'BOOKED' || b.status === 'ARRIVED')
+      ) {
+        const d = new Date(b.slotStartTime);
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const dateStr = `${yyyy}-${mm}-${dd}`;
+        datesMap.set(dateStr, (datesMap.get(dateStr) || 0) + 1);
+      }
+    });
+
+    return datesMap;
+  }, [bookings, selectedDockForClosure]);
+
+  // Generate next 14 calendar days starting from today for quick selection
+  const upcomingDays = useMemo(() => {
+    const days: {
+      dateStr: string;
+      dayOfWeekShort: string;
+      dayOfMonth: number;
+      monthShort: string;
+    }[] = [];
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const dateStr = `${yyyy}-${mm}-${dd}`;
+
+      days.push({
+        dateStr,
+        dayOfWeekShort: d.toLocaleDateString('en-US', { weekday: 'short' }),
+        dayOfMonth: d.getDate(),
+        monthShort: d.toLocaleDateString('en-US', { month: 'short' }),
+      });
+    }
+
+    return days;
+  }, []);
+
+  const isSelectedDateBooked = useMemo(() => {
+    if (!selectedClosureDate) return false;
+    return bookedDatesForSelectedDock.has(selectedClosureDate);
+  }, [selectedClosureDate, bookedDatesForSelectedDock]);
+
+  const hasBookingConflict = useMemo(() => {
+    if (isSelectedDateBooked) return true;
+    if (!closureStartTime || !closureEndTime || !selectedDockForClosure) return false;
+
+    const startDate = new Date(closureStartTime);
+    const endDate = new Date(closureEndTime);
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return false;
+
+    const cur = new Date(startDate);
+    cur.setHours(0, 0, 0, 0);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+
+    while (cur <= end) {
+      const yyyy = cur.getFullYear();
+      const mm = String(cur.getMonth() + 1).padStart(2, '0');
+      const dd = String(cur.getDate()).padStart(2, '0');
+      const dateStr = `${yyyy}-${mm}-${dd}`;
+      if (bookedDatesForSelectedDock.has(dateStr)) {
+        return true;
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+    return false;
+  }, [isSelectedDateBooked, closureStartTime, closureEndTime, selectedDockForClosure, bookedDatesForSelectedDock]);
+
   // Open Closure Modal (optionally preselecting a dock)
   const handleOpenClosureModal = (dockId?: number) => {
     setClosureError(null);
-    setSelectedDockForClosure(dockId !== undefined ? dockId : allDocks[0]?.id || '');
+    const targetDockId = dockId !== undefined ? dockId : allDocks[0]?.id || '';
+    setSelectedDockForClosure(targetDockId);
 
-    // Default start time: current time rounded to nearest 15 mins
-    const now = new Date();
-    now.setMinutes(Math.ceil(now.getMinutes() / 15) * 15, 0, 0);
-    const startIso = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
-      .toISOString()
-      .slice(0, 16);
+    // Compute booked dates for targetDockId
+    const targetBookedDates = new Set<string>();
+    bookings.forEach((b) => {
+      const bDockId = b.dockId ?? b.dock?.id;
+      if (
+        bDockId === Number(targetDockId) &&
+        (b.status === 'BOOKED' || b.status === 'ARRIVED')
+      ) {
+        const d = new Date(b.slotStartTime);
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        targetBookedDates.add(`${yyyy}-${mm}-${dd}`);
+      }
+    });
 
-    // Default end time: +2 hours
-    const end = new Date(now.getTime() + 2 * 60 * 60 * 1000);
-    const endIso = new Date(end.getTime() - end.getTimezoneOffset() * 60000)
-      .toISOString()
-      .slice(0, 16);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let chosenDate = '';
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const dateStr = `${yyyy}-${mm}-${dd}`;
+      if (!targetBookedDates.has(dateStr)) {
+        chosenDate = dateStr;
+        break;
+      }
+    }
+    if (!chosenDate) {
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      chosenDate = `${yyyy}-${mm}-${dd}`;
+    }
 
-    setClosureStartTime(startIso);
-    setClosureEndTime(endIso);
+    setSelectedClosureDate(chosenDate);
+    setClosureStartTimeOnly('08:00');
+    setClosureEndTimeOnly('18:00');
+    setClosureStartTime(`${chosenDate}T08:00`);
+    setClosureEndTime(`${chosenDate}T18:00`);
     setClosureReason('');
     setIsClosureModalOpen(true);
   };
 
-  // Dynamically compute minimum date-time string for datetime-local inputs
-  const getMinDateTime = (): string => {
-    const now = new Date();
-    return new Date(now.getTime() - now.getTimezoneOffset() * 60000)
-      .toISOString()
-      .slice(0, 16);
+  const handleSelectClosureDate = (dateStr: string) => {
+    setSelectedClosureDate(dateStr);
+    setClosureStartTime(`${dateStr}T${closureStartTimeOnly}`);
+    setClosureEndTime(`${dateStr}T${closureEndTimeOnly}`);
+    if (closureError) setClosureError(null);
+  };
+
+  const handleStartTimeChange = (timeStr: string) => {
+    setClosureStartTimeOnly(timeStr);
+    if (selectedClosureDate) {
+      setClosureStartTime(`${selectedClosureDate}T${timeStr}`);
+    }
+  };
+
+  const handleEndTimeChange = (timeStr: string) => {
+    setClosureEndTimeOnly(timeStr);
+    if (selectedClosureDate) {
+      setClosureEndTime(`${selectedClosureDate}T${timeStr}`);
+    }
   };
 
   // Submit Closure Modal
@@ -266,6 +399,13 @@ export const DockManagerDashboard: React.FC = () => {
 
     if (!selectedDockForClosure) {
       setClosureError('Please select a dock to schedule maintenance.');
+      return;
+    }
+
+    if (hasBookingConflict) {
+      setClosureError(
+        'Cannot schedule maintenance closure: an active booking exists on this dock for that day.'
+      );
       return;
     }
 
@@ -834,16 +974,21 @@ export const DockManagerDashboard: React.FC = () => {
           aria-modal="true"
           className="fixed inset-0 z-50 overflow-y-auto bg-black/50 flex items-center justify-center p-4"
         >
-          <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full border border-gray-300 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full border border-gray-300 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             {/* Modal Header */}
             <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50">
               <div className="flex items-center space-x-2">
                 <div className="p-1.5 bg-[#2F4F4F] text-white rounded">
                   <Wrench className="w-4 h-4" />
                 </div>
-                <h3 className="font-bold text-base text-gray-900">
-                  Schedule Dock Maintenance Closure
-                </h3>
+                <div>
+                  <h3 className="font-bold text-base text-gray-900 leading-tight">
+                    Schedule Dock Maintenance Closure
+                  </h3>
+                  <p className="text-[11px] text-gray-500">
+                    Maintenance cannot be scheduled on days with existing bookings.
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
@@ -874,7 +1019,11 @@ export const DockManagerDashboard: React.FC = () => {
                 <select
                   id="closure-dock"
                   value={selectedDockForClosure}
-                  onChange={(e) => setSelectedDockForClosure(Number(e.target.value))}
+                  onChange={(e) => {
+                    const newDockId = Number(e.target.value);
+                    setSelectedDockForClosure(newDockId);
+                    setClosureError(null);
+                  }}
                   required
                   disabled={isSubmittingClosure}
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#2F4F4F] focus:border-[#2F4F4F]"
@@ -886,11 +1035,125 @@ export const DockManagerDashboard: React.FC = () => {
                   ))}
                 </select>
                 <p className="text-[11px] text-gray-500 mt-1">
-                  Time slots within this window will be temporarily blocked from booking.
+                  Select the loading dock to reserve for scheduled maintenance.
                 </p>
               </div>
 
-              {/* 2. Reason */}
+              {/* 2. Select Maintenance Date (Days with bookings are DISABLED) */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <Label required>Maintenance Date</Label>
+                  <span className="text-[11px] text-amber-700 font-medium flex items-center">
+                    <CalendarX className="w-3 h-3 mr-1" />
+                    Days with bookings are disabled
+                  </span>
+                </div>
+
+                {/* Quick 14-day selector grid */}
+                <div className="grid grid-cols-7 gap-1.5 p-2 bg-gray-50 border border-gray-200 rounded-lg max-h-48 overflow-y-auto">
+                  {upcomingDays.map((d) => {
+                    const isBooked = bookedDatesForSelectedDock.has(d.dateStr);
+                    const bookingCount = bookedDatesForSelectedDock.get(d.dateStr) || 0;
+                    const isSelected = selectedClosureDate === d.dateStr;
+
+                    return (
+                      <button
+                        key={d.dateStr}
+                        type="button"
+                        disabled={isBooked || isSubmittingClosure}
+                        onClick={() => handleSelectClosureDate(d.dateStr)}
+                        className={`p-1.5 rounded-md text-center flex flex-col items-center justify-center transition-all ${
+                          isSelected
+                            ? 'bg-[#2F4F4F] text-white font-bold ring-2 ring-[#2F4F4F] shadow-sm'
+                            : isBooked
+                            ? 'bg-rose-50 text-rose-400 border border-rose-200 cursor-not-allowed opacity-70'
+                            : 'bg-white text-gray-800 border border-gray-200 hover:border-[#2F4F4F] hover:bg-emerald-50/50'
+                        }`}
+                        title={
+                          isBooked
+                            ? `Disabled: ${bookingCount} active booking(s) exist on ${d.dateStr}. Maintenance cannot be scheduled on this day.`
+                            : `Select ${d.dateStr}`
+                        }
+                      >
+                        <span className="text-[10px] uppercase font-semibold">{d.dayOfWeekShort}</span>
+                        <span className="text-xs font-bold my-0.5">{d.dayOfMonth}</span>
+                        {isBooked ? (
+                          <span className="text-[9px] font-semibold text-rose-600 bg-rose-100/90 px-1 rounded truncate max-w-full">
+                            Booked
+                          </span>
+                        ) : isSelected ? (
+                          <span className="text-[9px] font-semibold text-emerald-200">Selected</span>
+                        ) : (
+                          <span className="text-[9px] text-emerald-600 font-medium">Free</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Custom Date Input for dates beyond 14 days */}
+                <div className="flex items-center space-x-2 mt-2">
+                  <span className="text-xs text-gray-500 whitespace-nowrap">Or pick date:</span>
+                  <input
+                    type="date"
+                    min={new Date().toISOString().slice(0, 10)}
+                    value={selectedClosureDate}
+                    onChange={(e) => handleSelectClosureDate(e.target.value)}
+                    disabled={isSubmittingClosure}
+                    className={`flex-1 text-xs px-2.5 py-1.5 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#2F4F4F] ${
+                      isSelectedDateBooked
+                        ? 'border-rose-400 bg-rose-50 text-rose-800'
+                        : 'border-gray-300 bg-white'
+                    }`}
+                  />
+                </div>
+
+                {isSelectedDateBooked && (
+                  <div className="mt-2 p-2.5 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-800 flex items-start space-x-2">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>Day Blocked:</strong> Dock bay has{' '}
+                      <strong>{bookedDatesForSelectedDock.get(selectedClosureDate)} active booking(s)</strong> scheduled on{' '}
+                      {selectedClosureDate}. Maintenance cannot be scheduled on this day.
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* 3. Maintenance Time Window */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="closure-start-time" required>
+                    Start Time
+                  </Label>
+                  <input
+                    id="closure-start-time"
+                    type="time"
+                    required
+                    value={closureStartTimeOnly}
+                    onChange={(e) => handleStartTimeChange(e.target.value)}
+                    disabled={isSubmittingClosure}
+                    className="w-full text-xs px-3 py-2 border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-[#2F4F4F]"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="closure-end-time" required>
+                    End Time
+                  </Label>
+                  <input
+                    id="closure-end-time"
+                    type="time"
+                    required
+                    value={closureEndTimeOnly}
+                    onChange={(e) => handleEndTimeChange(e.target.value)}
+                    disabled={isSubmittingClosure}
+                    className="w-full text-xs px-3 py-2 border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-[#2F4F4F]"
+                  />
+                </div>
+              </div>
+
+              {/* 4. Reason */}
               <div>
                 <Label htmlFor="closure-reason" required>
                   Maintenance Reason / Note
@@ -912,58 +1175,39 @@ export const DockManagerDashboard: React.FC = () => {
                 )}
               </div>
 
-              {/* 3. Start Time */}
-              <div>
-                <Label htmlFor="closure-start" required>
-                  Closure Start Time
-                </Label>
-                <Input
-                  id="closure-start"
-                  type="datetime-local"
-                  required
-                  min={getMinDateTime()}
-                  value={closureStartTime}
-                  onChange={(e) => setClosureStartTime(e.target.value)}
-                  disabled={isSubmittingClosure}
-                />
-                <p className="text-[11px] text-gray-500 mt-1">
-                  Cannot be in the past.
-                </p>
-              </div>
-
-              {/* 4. End Time */}
-              <div>
-                <Label htmlFor="closure-end" required>
-                  Closure End Time
-                </Label>
-                <Input
-                  id="closure-end"
-                  type="datetime-local"
-                  required
-                  min={closureStartTime || getMinDateTime()}
-                  value={closureEndTime}
-                  onChange={(e) => setClosureEndTime(e.target.value)}
-                  disabled={isSubmittingClosure}
-                />
-              </div>
-
               {/* Action Buttons */}
-              <div className="flex items-center justify-end space-x-2 pt-3 border-t border-gray-100">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsClosureModalOpen(false)}
-                  disabled={isSubmittingClosure}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  isLoading={isSubmittingClosure}
-                >
-                  Schedule Closure
-                </Button>
+              <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                <div className="text-[11px] text-gray-500">
+                  {hasBookingConflict ? (
+                    <span className="text-rose-600 font-medium">⚠️ Selected day has bookings</span>
+                  ) : (
+                    <span>Ready to schedule</span>
+                  )}
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsClosureModalOpen(false)}
+                    disabled={isSubmittingClosure}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    disabled={hasBookingConflict || isSubmittingClosure}
+                    isLoading={isSubmittingClosure}
+                    title={
+                      hasBookingConflict
+                        ? 'Cannot schedule maintenance: active bookings exist for this dock on this day.'
+                        : 'Schedule Closure'
+                    }
+                  >
+                    Schedule Closure
+                  </Button>
+                </div>
               </div>
             </form>
           </div>

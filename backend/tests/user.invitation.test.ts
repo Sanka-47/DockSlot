@@ -18,7 +18,7 @@ describe('Secure Token-Based Invitation & Account Creation Workflow Tests', () =
   let dispatcherToken: string;
   let dockManagerToken: string;
 
-  const testTimestamp = Date.now();
+  const testTimestamp = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
   beforeAll(async () => {
     // 1. Create a Carrier Admin with Organization
