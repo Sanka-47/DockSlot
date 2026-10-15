@@ -107,7 +107,8 @@ export class BookingService {
       throw { status: 400, message: 'driverPhone is required.' };
     }
 
-    // a. Validate that the target dock exists and is ACTIVE
+    // a. Validate that target dock exists and evaluate real-time dynamic effectiveStatus against now() and active closures
+    const now = new Date();
     const dock = await prisma.dock.findUnique({
       where: { id: data.dockId },
       include: {
@@ -117,6 +118,12 @@ export class BookingService {
             policy: true,
           },
         },
+        closures: {
+          where: {
+            startTime: { lte: now },
+            endTime: { gte: now },
+          },
+        },
       },
     });
 
@@ -124,7 +131,12 @@ export class BookingService {
       throw { status: 404, message: 'Dock not found.' };
     }
 
-    if (dock.status !== DockStatus.ACTIVE) {
+    const hasActiveClosureNow = dock.closures && dock.closures.length > 0;
+    const effectiveStatus = hasActiveClosureNow || dock.status === DockStatus.MAINTENANCE
+      ? DockStatus.MAINTENANCE
+      : dock.status;
+
+    if (effectiveStatus !== DockStatus.ACTIVE) {
       throw { status: 400, message: 'Dock is currently under maintenance and cannot be booked.' };
     }
 
@@ -338,6 +350,7 @@ export class BookingService {
     const targetDockId = data.dockId !== undefined ? data.dockId : booking.dockId;
     let targetDock = booking.dock;
 
+    const now = new Date();
     if (targetDockId !== booking.dockId) {
       const foundDock = await prisma.dock.findUnique({
         where: { id: targetDockId },
@@ -348,6 +361,12 @@ export class BookingService {
               policy: true,
             },
           },
+          closures: {
+            where: {
+              startTime: { lte: now },
+              endTime: { gte: now },
+            },
+          },
         },
       });
 
@@ -355,13 +374,26 @@ export class BookingService {
         throw { status: 404, message: 'Target dock not found.' };
       }
 
-      if (foundDock.status !== DockStatus.ACTIVE) {
+      const hasClosure = foundDock.closures && foundDock.closures.length > 0;
+      const targetEffectiveStatus = hasClosure || foundDock.status === DockStatus.MAINTENANCE
+        ? DockStatus.MAINTENANCE
+        : foundDock.status;
+
+      if (targetEffectiveStatus !== DockStatus.ACTIVE) {
         throw { status: 400, message: 'Target dock is currently under maintenance and cannot be booked.' };
       }
 
       targetDock = foundDock;
     } else {
-      if (booking.dock.status !== DockStatus.ACTIVE) {
+      const activeClosure = await prisma.dockClosure.findFirst({
+        where: {
+          dockId: booking.dockId,
+          startTime: { lte: now },
+          endTime: { gte: now },
+        },
+      });
+
+      if (booking.dock.status !== DockStatus.ACTIVE || activeClosure) {
         throw { status: 400, message: 'Dock is currently under maintenance and cannot be booked.' };
       }
     }

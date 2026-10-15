@@ -427,6 +427,7 @@ router.post(
  * /warehouses/{warehouseId}/docks:
  *   get:
  *     summary: List all docks for a warehouse
+ *     description: Retrieves docks for a warehouse with real-time dynamic effectiveStatus evaluation based on active dock maintenance closures and base database status.
  *     tags:
  *       - Warehouses
  *     security:
@@ -439,7 +440,7 @@ router.post(
  *           type: integer
  *     responses:
  *       200:
- *         description: List of docks
+ *         description: List of docks with dynamic effectiveStatus
  */
 router.get(
   '/:warehouseId/docks',

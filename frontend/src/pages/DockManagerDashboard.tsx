@@ -627,7 +627,16 @@ export const DockManagerDashboard: React.FC = () => {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5">
               {allDocks.map((dock) => {
-                const isUnderMaintenance = dock.status === 'MAINTENANCE';
+                const now = new Date();
+                const activeClosureNow = closures.find(
+                  (c) =>
+                    c.dockId === dock.id &&
+                    new Date(c.startTime) <= now &&
+                    new Date(c.endTime) >= now
+                );
+                const hasActiveClosureNow = !!activeClosureNow;
+                const isUnderMaintenance =
+                  (dock.effectiveStatus || dock.status) === 'MAINTENANCE' || hasActiveClosureNow;
                 // Check if dock has active/upcoming closures
                 const dockClosures = closures.filter((c) => c.dockId === dock.id);
                 const hasUpcomingClosures = dockClosures.length > 0;
@@ -646,13 +655,22 @@ export const DockManagerDashboard: React.FC = () => {
                         {dock.name}
                       </div>
                       <span
-                        className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                        className={`text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center space-x-1 ${
                           isUnderMaintenance
                             ? 'bg-amber-100 text-amber-800 border border-amber-200'
                             : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                         }`}
                       >
-                        {dock.status}
+                        {isUnderMaintenance ? (
+                          <>
+                            {hasActiveClosureNow && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse inline-block mr-1"></span>
+                            )}
+                            <span>Maintenance</span>
+                          </>
+                        ) : (
+                          'Active'
+                        )}
                       </span>
                     </div>
 
@@ -1028,11 +1046,14 @@ export const DockManagerDashboard: React.FC = () => {
                   disabled={isSubmittingClosure}
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#2F4F4F] focus:border-[#2F4F4F]"
                 >
-                  {allDocks.map((dock) => (
-                    <option key={dock.id} value={dock.id}>
-                      {dock.name} ({dock.warehouseName}) - Status: {dock.status}
-                    </option>
-                  ))}
+                  {allDocks.map((dock) => {
+                    const isMaint = (dock.effectiveStatus || dock.status) === 'MAINTENANCE';
+                    return (
+                      <option key={dock.id} value={dock.id}>
+                        {dock.name} ({dock.warehouseName}) - Status: {isMaint ? 'Maintenance' : 'Active'}
+                      </option>
+                    );
+                  })}
                 </select>
                 <p className="text-[11px] text-gray-500 mt-1">
                   Select the loading dock to reserve for scheduled maintenance.

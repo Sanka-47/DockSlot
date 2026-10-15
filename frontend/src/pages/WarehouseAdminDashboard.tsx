@@ -780,15 +780,27 @@ export const WarehouseAdminDashboard: React.FC = () => {
                       </div>
 
                       <div className="flex items-center space-x-2 shrink-0">
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            dock.status === 'ACTIVE'
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                              : 'bg-amber-100 text-amber-800 border border-amber-200'
-                          }`}
-                        >
-                          {dock.status}
-                        </span>
+                        {dock.effectiveStatus === 'MAINTENANCE' && dock.status === 'ACTIVE' ? (
+                          <div className="flex items-center space-x-1.5">
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 flex items-center space-x-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                              <span>Maintenance</span>
+                            </span>
+                            <span className="text-[9px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/60" title="Active scheduled maintenance closure window">
+                              Active Closure
+                            </span>
+                          </div>
+                        ) : (
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              (dock.effectiveStatus || dock.status) === 'ACTIVE'
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                : 'bg-amber-100 text-amber-800 border border-amber-200'
+                            }`}
+                          >
+                            {(dock.effectiveStatus || dock.status) === 'ACTIVE' ? 'Active' : 'Maintenance'}
+                          </span>
+                        )}
 
                         <button
                           onClick={() => handleToggleDockStatus(dock)}

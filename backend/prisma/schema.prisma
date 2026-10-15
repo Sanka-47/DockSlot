@@ -121,6 +121,7 @@ model DockClosure {
   dock      Dock     @relation(fields: [dockId], references: [id], onDelete: Cascade)
 
   @@index([dockId])
+  @@index([dockId, startTime, endTime], map: "dock_closures_active_check_idx")
   @@map("dock_closures")
 }
 

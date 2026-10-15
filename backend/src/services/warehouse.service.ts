@@ -1,5 +1,6 @@
 import { DockStatus, BookingStatus } from '@prisma/client';
 import { prisma } from '../config/db.config';
+import { dockService } from './dock.service';
 import {
   isValidIanaTimeZone,
   isValidDateString,
@@ -137,18 +138,41 @@ export class WarehouseService {
     }
 
     const whereClause = isCarrier ? {} : { organizationId };
+    const now = new Date();
 
     const warehouses = await prisma.warehouse.findMany({
       where: whereClause,
       include: {
-        docks: true,
+        docks: {
+          include: {
+            closures: {
+              where: {
+                startTime: { lte: now },
+                endTime: { gte: now },
+              },
+            },
+          },
+          orderBy: { id: 'asc' },
+        },
         operatingHours: true,
         policy: true,
       },
       orderBy: { id: 'asc' },
     });
 
-    return warehouses;
+    return warehouses.map((wh) => ({
+      ...wh,
+      docks: wh.docks.map((dock) => {
+        const isUnderClosure = dock.closures && dock.closures.length > 0;
+        const effectiveStatus: 'ACTIVE' | 'MAINTENANCE' = isUnderClosure
+          ? 'MAINTENANCE'
+          : (dock.status as 'ACTIVE' | 'MAINTENANCE');
+        return {
+          ...dock,
+          effectiveStatus,
+        };
+      }),
+    }));
   }
 
   /**
@@ -159,10 +183,21 @@ export class WarehouseService {
       throw { status: 400, message: 'Invalid warehouse ID.' };
     }
 
+    const now = new Date();
     const warehouse = await prisma.warehouse.findUnique({
       where: { id: warehouseId },
       include: {
-        docks: true,
+        docks: {
+          include: {
+            closures: {
+              where: {
+                startTime: { lte: now },
+                endTime: { gte: now },
+              },
+            },
+          },
+          orderBy: { id: 'asc' },
+        },
         operatingHours: true,
         policy: true,
       },
@@ -176,7 +211,19 @@ export class WarehouseService {
       throw { status: 403, message: 'Forbidden. You do not have access to this warehouse.' };
     }
 
-    return warehouse;
+    return {
+      ...warehouse,
+      docks: warehouse.docks.map((dock) => {
+        const isUnderClosure = dock.closures && dock.closures.length > 0;
+        const effectiveStatus: 'ACTIVE' | 'MAINTENANCE' = isUnderClosure
+          ? 'MAINTENANCE'
+          : (dock.status as 'ACTIVE' | 'MAINTENANCE');
+        return {
+          ...dock,
+          effectiveStatus,
+        };
+      }),
+    };
   }
 
   /**
@@ -397,35 +444,18 @@ export class WarehouseService {
       },
     });
 
-    return dock;
+    return {
+      ...dock,
+      effectiveStatus: dock.status as 'ACTIVE' | 'MAINTENANCE',
+    };
   }
 
   /**
-   * Lists docks for a warehouse, enforcing strict tenant isolation for warehouse operators.
+   * Lists docks for a warehouse, enforcing strict tenant isolation for warehouse operators,
+   * using an optimized single-query with Prisma include to evaluate dynamic real-time effectiveStatus.
    */
   async getDocks(warehouseId: number, organizationId: number, isCarrier: boolean = false) {
-    if (!warehouseId || isNaN(warehouseId)) {
-      throw { status: 400, message: 'Invalid warehouse ID.' };
-    }
-
-    const warehouse = await prisma.warehouse.findUnique({
-      where: { id: warehouseId },
-    });
-
-    if (!warehouse) {
-      throw { status: 404, message: 'Warehouse not found.' };
-    }
-
-    if (!isCarrier && warehouse.organizationId !== organizationId) {
-      throw { status: 403, message: 'Forbidden. You do not have access to docks for this warehouse.' };
-    }
-
-    const docks = await prisma.dock.findMany({
-      where: { warehouseId },
-      orderBy: { id: 'asc' },
-    });
-
-    return docks;
+    return dockService.getDocksByWarehouse(warehouseId, organizationId, isCarrier);
   }
 
   /**
@@ -454,12 +484,29 @@ export class WarehouseService {
       throw { status: 403, message: 'Forbidden. You do not have permission to modify this dock.' };
     }
 
+    const now = new Date();
     const updatedDock = await prisma.dock.update({
       where: { id: dockId },
       data: { status },
+      include: {
+        closures: {
+          where: {
+            startTime: { lte: now },
+            endTime: { gte: now },
+          },
+        },
+      },
     });
 
-    return updatedDock;
+    const isUnderClosure = updatedDock.closures && updatedDock.closures.length > 0;
+    const effectiveStatus: 'ACTIVE' | 'MAINTENANCE' = isUnderClosure
+      ? 'MAINTENANCE'
+      : (updatedDock.status as 'ACTIVE' | 'MAINTENANCE');
+
+    return {
+      ...updatedDock,
+      effectiveStatus,
+    };
   }
 
   /**
@@ -515,6 +562,7 @@ export class WarehouseService {
       }
     }
 
+    const now = new Date();
     const updatedDock = await prisma.dock.update({
       where: { id: dockId },
       data: {
@@ -523,10 +571,24 @@ export class WarehouseService {
       },
       include: {
         warehouse: true,
+        closures: {
+          where: {
+            startTime: { lte: now },
+            endTime: { gte: now },
+          },
+        },
       },
     });
 
-    return updatedDock;
+    const isUnderClosure = updatedDock.closures && updatedDock.closures.length > 0;
+    const effectiveStatus: 'ACTIVE' | 'MAINTENANCE' = isUnderClosure
+      ? 'MAINTENANCE'
+      : (updatedDock.status as 'ACTIVE' | 'MAINTENANCE');
+
+    return {
+      ...updatedDock,
+      effectiveStatus,
+    };
   }
 
   /**
@@ -684,13 +746,28 @@ export class WarehouseService {
       throw { status: 404, message: 'Warehouse not found.' };
     }
 
-    // b. Fetch all active docks for this warehouse (ignoring docks whose status is MAINTENANCE)
-    const activeDocks = await prisma.dock.findMany({
-      where: {
-        warehouseId,
-        status: DockStatus.ACTIVE,
+    // b. Fetch docks for this warehouse with active closures at now() to dynamically evaluate effectiveStatus
+    const now = new Date();
+    const docks = await prisma.dock.findMany({
+      where: { warehouseId },
+      include: {
+        closures: {
+          where: {
+            startTime: { lte: now },
+            endTime: { gte: now },
+          },
+        },
       },
       orderBy: { id: 'asc' },
+    });
+
+    // Exclude docks currently undergoing maintenance or whose base status is MAINTENANCE
+    const activeDocks = docks.filter((dock) => {
+      const isUnderClosure = dock.closures && dock.closures.length > 0;
+      const effectiveStatus = isUnderClosure || dock.status === DockStatus.MAINTENANCE
+        ? DockStatus.MAINTENANCE
+        : dock.status;
+      return effectiveStatus === DockStatus.ACTIVE;
     });
 
     if (activeDocks.length === 0) {

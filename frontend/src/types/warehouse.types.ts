@@ -9,6 +9,7 @@ export interface Dock {
   warehouseId: number;
   name: string;
   status: DockStatus;
+  effectiveStatus?: DockStatus;
   createdAt?: string;
   updatedAt?: string;
   warehouse?: {

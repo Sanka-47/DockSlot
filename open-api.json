@@ -493,6 +493,7 @@
             },
             "get": {
                 "summary": "List all docks for a warehouse",
+                "description": "Retrieves docks for a warehouse with real-time dynamic effectiveStatus evaluation based on active dock maintenance closures and base database status.",
                 "tags": ["Warehouses"],
                 "security": [{
                     "bearerAuth": []
@@ -507,7 +508,32 @@
                 }],
                 "responses": {
                     "200": {
-                        "description": "List of docks"
+                        "description": "List of docks with real-time dynamic effectiveStatus",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": { "type": "boolean", "example": true },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "id": { "type": "integer", "example": 1 },
+                                                    "warehouseId": { "type": "integer", "example": 1 },
+                                                    "name": { "type": "string", "example": "Dock A1" },
+                                                    "status": { "type": "string", "enum": ["ACTIVE", "MAINTENANCE"], "example": "ACTIVE" },
+                                                    "effectiveStatus": { "type": "string", "enum": ["ACTIVE", "MAINTENANCE"], "example": "MAINTENANCE", "description": "Dynamically evaluated status based on active time-bounded maintenance closures." },
+                                                    "createdAt": { "type": "string", "format": "date-time" },
+                                                    "updatedAt": { "type": "string", "format": "date-time" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
