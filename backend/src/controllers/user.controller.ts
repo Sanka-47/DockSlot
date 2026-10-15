@@ -14,7 +14,11 @@ export const deactivateUser = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const targetUserId = parseInt(req.params.id, 10);
+    const targetUserIdParam = req.params.id;
+    const targetUserId = parseInt(
+      typeof targetUserIdParam === 'string' ? targetUserIdParam : '',
+      10
+    );
     if (isNaN(targetUserId)) {
       res.status(400).json({
         success: false,

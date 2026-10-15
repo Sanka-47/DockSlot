@@ -236,6 +236,29 @@ export class WarehouseService {
       }
     }
 
+    const isNameChanging = data.name !== undefined && data.name.trim() !== warehouse.name;
+    const isAddressChanging = data.address !== undefined && data.address.trim() !== warehouse.address;
+    const isTimezoneChanging = data.timezone !== undefined && data.timezone.trim() !== warehouse.timezone;
+    const isCoreInfoChanging = isNameChanging || isAddressChanging || isTimezoneChanging;
+
+    if (isCoreInfoChanging) {
+      const activeBookedCount = await prisma.booking.count({
+        where: {
+          dock: {
+            warehouseId,
+          },
+          status: BookingStatus.BOOKED,
+        },
+      });
+
+      if (activeBookedCount > 0) {
+        throw {
+          status: 400,
+          message: `Cannot update warehouse name, address, or timezone while there are active bookings with status 'BOOKED'.`,
+        };
+      }
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       const updated = await tx.warehouse.update({
         where: { id: warehouseId },

@@ -44,6 +44,30 @@ export interface UpdateWarehousePolicyRequest {
   bookingLockWindowHours?: number;
 }
 
+export interface CreateWarehouseRequest {
+  name: string;
+  address: string;
+  timezone: string;
+  slotLengthMinutes?: number;
+}
+
+export interface UpdateWarehouseRequest {
+  name?: string;
+  address?: string;
+  timezone?: string;
+  slotLengthMinutes?: number;
+}
+
+export interface CreateDockRequest {
+  name: string;
+  status?: DockStatus;
+}
+
+export interface UpdateDockRequest {
+  name?: string;
+  status?: DockStatus;
+}
+
 export interface Warehouse {
   id: number;
   organizationId: number;

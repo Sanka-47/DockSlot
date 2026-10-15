@@ -33,9 +33,7 @@ app.get('/api-docs.json', (_req, res) => {
 
 // Application Routes
 app.use('/api/auth', authRoutes);
-app.use('/auth', authRoutes);
 app.use('/api/users', userRoutes);
-app.use('/users', userRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/warehouses', warehouseRoutes);
 app.use('/api/docks', dockRoutes);

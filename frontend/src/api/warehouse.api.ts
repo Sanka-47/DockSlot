@@ -8,6 +8,10 @@ import type {
   AvailableDockSlots,
   WarehousePolicy,
   UpdateWarehousePolicyRequest,
+  CreateWarehouseRequest,
+  UpdateWarehouseRequest,
+  CreateDockRequest,
+  UpdateDockRequest,
 } from '../types/warehouse.types';
 
 export const warehouseApi = {
@@ -21,9 +25,56 @@ export const warehouseApi = {
     return response.data;
   },
 
+  create: async (
+    data: CreateWarehouseRequest
+  ): Promise<{ success: boolean; message: string; data: Warehouse }> => {
+    const response = await apiClient.post<{ success: boolean; message: string; data: Warehouse }>(
+      '/warehouses',
+      data
+    );
+    return response.data;
+  },
+
+  update: async (
+    warehouseId: number,
+    data: UpdateWarehouseRequest
+  ): Promise<{ success: boolean; message: string; data: Warehouse }> => {
+    const response = await apiClient.put<{ success: boolean; message: string; data: Warehouse }>(
+      `/warehouses/${warehouseId}`,
+      data
+    );
+    return response.data;
+  },
+
   getDocks: async (warehouseId: number): Promise<{ success: boolean; data: Dock[] }> => {
     const response = await apiClient.get<{ success: boolean; data: Dock[] }>(
       `/warehouses/${warehouseId}/docks`
+    );
+    return response.data;
+  },
+
+  createDock: async (
+    warehouseId: number,
+    data: CreateDockRequest
+  ): Promise<{ success: boolean; message: string; data: Dock }> => {
+    const response = await apiClient.post<{ success: boolean; message: string; data: Dock }>(
+      `/warehouses/${warehouseId}/docks`,
+      data
+    );
+    return response.data;
+  },
+
+  updateDock: async (
+    dockId: number,
+    data: UpdateDockRequest,
+    warehouseId?: number
+  ): Promise<{ success: boolean; message: string; data: Dock }> => {
+    const path = warehouseId
+      ? `/warehouses/${warehouseId}/docks/${dockId}`
+      : `/warehouses/docks/${dockId}`;
+    const response = await apiClient.patch<{ success: boolean; message: string; data: Dock }>(
+      path,
+      data
     );
     return response.data;
   },
