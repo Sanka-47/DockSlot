@@ -9,6 +9,7 @@ import {
   verifyEmail,
   resendVerification,
   acceptInvite,
+  logoutAll,
 } from '../controllers/auth.controller';
 import { authenticate } from '../middleware/auth.middleware';
 import { authRateLimiter } from '../middleware/rateLimit.middleware';
@@ -284,5 +285,34 @@ router.get('/me', authenticate, getMe);
  *         description: Unauthorized or invalid old password
  */
 router.post('/change-password', authenticate, changePassword);
+
+/**
+ * @openapi
+ * /auth/logout-all:
+ *   post:
+ *     summary: Log out of all devices by invalidating all active sessions
+ *     description: Increments the user's token version in Redis, instantly invalidating all active JWTs across every device.
+ *     tags:
+ *       - Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successfully logged out of all devices
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Successfully logged out of all devices.
+ *       401:
+ *         description: Unauthorized. Missing or invalid token.
+ */
+router.post('/logout-all', authenticate, logoutAll);
 
 export default router;

@@ -23,6 +23,7 @@ export interface User {
   email: string;
   role: UserRole;
   organizationId: number;
+  isActive?: boolean;
   isEmailVerified: boolean;
   createdAt?: string;
   updatedAt?: string;

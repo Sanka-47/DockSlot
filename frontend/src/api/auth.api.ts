@@ -26,6 +26,11 @@ export const authApi = {
     const response = await apiClient.post<{ success: boolean; message: string }>('/auth/reset-password', { token, newPassword });
     return response.data;
   },
+
+  logoutAll: async (): Promise<{ success: boolean; message: string }> => {
+    const response = await apiClient.post<{ success: boolean; message: string }>('/auth/logout-all');
+    return response.data;
+  },
 };
 
 export default authApi;

@@ -1312,8 +1312,116 @@
                     }
                 }
             }
+        },
+        "/auth/logout-all": {
+            "post": {
+                "summary": "Log out of all devices by invalidating all active sessions",
+                "description": "Increments the user's token version in Redis, instantly invalidating all active JWTs across every device.",
+                "tags": ["Authentication"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "responses": {
+                    "200": {
+                        "description": "Successfully logged out of all devices",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": { "type": "boolean", "example": true },
+                                        "message": { "type": "string", "example": "Successfully logged out of all devices." }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized. Missing or invalid token."
+                    }
+                }
+            }
+        },
+        "/users": {
+            "get": {
+                "summary": "List all users in the authenticated admin's organization",
+                "description": "Restricted strictly to CARRIER_ADMIN or WAREHOUSE_ADMIN.",
+                "tags": ["Users & Invitations"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "responses": {
+                    "200": {
+                        "description": "List of organization users"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    }
+                }
+            }
+        },
+        "/users/{id}/deactivate": {
+            "patch": {
+                "summary": "Deactivate an organization user and sever active sessions",
+                "description": "Restricted to CARRIER_ADMIN or WAREHOUSE_ADMIN managing users within their organization. Sets isActive = 0 in MySQL and increments the tokenVersion in Redis to sever access immediately.",
+                "tags": ["Users & Invitations"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "description": "Target User ID to deactivate",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "User deactivated successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": { "type": "boolean", "example": true },
+                                        "message": { "type": "string", "example": "User deactivated successfully." },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "id": { "type": "integer" },
+                                                "email": { "type": "string" },
+                                                "role": { "type": "string" },
+                                                "organizationId": { "type": "integer" },
+                                                "isActive": { "type": "boolean", "example": false }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid user ID"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    },
+                    "403": {
+                        "description": "Forbidden. Requester is not an admin or target belongs to another organization"
+                    },
+                    "404": {
+                        "description": "User not found"
+                    }
+                }
+            }
         }
-       
     },
     "tags": []
 }

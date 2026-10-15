@@ -7,11 +7,13 @@ import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { CarrierDashboard } from './pages/CarrierDashboard';
 import { WarehouseDashboard } from './pages/WarehouseDashboard';
 import { DockManagerDashboard } from './pages/DockManagerDashboard';
-import { Warehouse, LogOut } from 'lucide-react';
+import { TeamManagementModal } from './components/TeamManagementModal';
+import { Warehouse, LogOut, Users, ShieldAlert } from 'lucide-react';
 
 const AppContent: React.FC = () => {
-  const { user, isAuthenticated, logout, isLoading } = useAuth();
+  const { user, isAuthenticated, logout, logoutAll, isLoading } = useAuth();
   const [activeView, setActiveView] = useState<'auto' | 'carrier' | 'warehouse'>('auto');
+  const [isTeamModalOpen, setIsTeamModalOpen] = useState<boolean>(false);
 
   if (isLoading) {
     return (
@@ -98,10 +100,38 @@ const AppContent: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center space-x-4">
-          <span className="text-xs text-gray-200 hidden sm:inline">
+        <div className="flex items-center space-x-3">
+          <span className="text-xs text-gray-200 hidden md:inline">
             Logged in as <strong className="text-white">{user.email}</strong>
           </span>
+
+          {(user.role === 'CARRIER_ADMIN' || user.role === 'WAREHOUSE_ADMIN') && (
+            <button
+              onClick={() => setIsTeamModalOpen(true)}
+              className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600/80 hover:bg-emerald-600 text-white rounded-md transition-colors shadow-sm"
+              title="Manage organization team members and deactivations"
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Team & Access</span>
+            </button>
+          )}
+
+          <button
+            onClick={async () => {
+              const confirmed = window.confirm(
+                'Are you sure you want to log out of all devices? This will invalidate all active sessions across every browser and device.'
+              );
+              if (confirmed) {
+                await logoutAll();
+              }
+            }}
+            className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold bg-amber-600/30 hover:bg-amber-600/50 text-amber-100 border border-amber-400/30 rounded-md transition-colors"
+            title="Invalidate all active sessions across all devices"
+          >
+            <ShieldAlert className="w-3.5 h-3.5" />
+            <span>Log Out All Devices</span>
+          </button>
+
           <button
             onClick={logout}
             className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold bg-white/10 hover:bg-white/20 rounded-md transition-colors"
@@ -122,6 +152,17 @@ const AppContent: React.FC = () => {
           <WarehouseDashboard />
         )}
       </main>
+
+      {/* Admin Team & Session Control Modal */}
+      {isTeamModalOpen && (
+        <TeamManagementModal
+          isOpen={isTeamModalOpen}
+          onClose={() => setIsTeamModalOpen(false)}
+          currentUserId={user.id}
+          currentUserRole={user.role}
+          organizationName={user.organization?.name}
+        />
+      )}
     </div>
   );
 };
