@@ -4,6 +4,7 @@ import { UserRole } from '@prisma/client';
 import { prisma } from '../config/db.config';
 import { securityConfig } from '../config/security.config';
 import { emailService } from './email.service';
+import redis from '../config/redis';
 
 export interface InviteUserInput {
   email: string;
@@ -137,6 +138,168 @@ export class UserService {
       user: newUser,
       message: `Invitation successfully sent to ${newUser.email} as ${targetRole}.`,
     };
+  }
+
+  /**
+   * Deactivate a user belonging to the requester's organization and invalidate their active sessions.
+   * Restricted strictly to CARRIER_ADMIN or WAREHOUSE_ADMIN.
+   */
+  public async deactivateUser(
+    requester: RequesterContext,
+    targetUserId: number
+  ): Promise<{ user: { id: number; email: string; role: UserRole; organizationId: number; isActive: boolean }; message: string }> {
+    if (!targetUserId || isNaN(targetUserId)) {
+      throw { status: 400, message: 'A valid target user ID is required.' };
+    }
+
+    if (requester.role !== 'CARRIER_ADMIN' && requester.role !== 'WAREHOUSE_ADMIN') {
+      throw {
+        status: 403,
+        message: `Forbidden. Role '${requester.role}' cannot deactivate users. Only CARRIER_ADMIN and WAREHOUSE_ADMIN are authorized.`,
+      };
+    }
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        organizationId: true,
+        isActive: true,
+      },
+    });
+
+    if (!targetUser) {
+      throw { status: 404, message: 'User not found.' };
+    }
+
+    // Tenant isolation: Admin can only deactivate users in their own organization
+    if (targetUser.organizationId !== requester.organizationId) {
+      throw {
+        status: 403,
+        message: 'Forbidden. You cannot deactivate users belonging to another organization.',
+      };
+    }
+
+    // Step 1: Update MySQL to set isActive = false
+    const updatedUser = await prisma.user.update({
+      where: { id: targetUserId },
+      data: { isActive: false },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        organizationId: true,
+        isActive: true,
+      },
+    });
+
+    // Step 2: Sever access immediately via Redis cache & token version increment
+    await redis.set(`user:${targetUserId}:isActive`, '0');
+    await redis.incr(`user:${targetUserId}:tokenVersion`);
+
+    return {
+      user: updatedUser,
+      message: `User ${updatedUser.email} has been deactivated successfully.`,
+    };
+  }
+
+  /**
+   * Reactivate a previously deactivated user belonging to the requester's organization.
+   * Restricted strictly to CARRIER_ADMIN or WAREHOUSE_ADMIN.
+   */
+  public async reactivateUser(
+    requester: RequesterContext,
+    targetUserId: number
+  ): Promise<{ user: { id: number; email: string; role: UserRole; organizationId: number; isActive: boolean }; message: string }> {
+    if (!targetUserId || isNaN(targetUserId)) {
+      throw { status: 400, message: 'A valid target user ID is required.' };
+    }
+
+    if (requester.role !== 'CARRIER_ADMIN' && requester.role !== 'WAREHOUSE_ADMIN') {
+      throw {
+        status: 403,
+        message: `Forbidden. Role '${requester.role}' cannot reactivate users. Only CARRIER_ADMIN and WAREHOUSE_ADMIN are authorized.`,
+      };
+    }
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        organizationId: true,
+        isActive: true,
+      },
+    });
+
+    if (!targetUser) {
+      throw { status: 404, message: 'User not found.' };
+    }
+
+    // Tenant isolation: Admin can only reactivate users in their own organization
+    if (targetUser.organizationId !== requester.organizationId) {
+      throw {
+        status: 403,
+        message: 'Forbidden. You cannot reactivate users belonging to another organization.',
+      };
+    }
+
+    // Step 1: Update MySQL to set isActive = true and clear failed login locks
+    const updatedUser = await prisma.user.update({
+      where: { id: targetUserId },
+      data: {
+        isActive: true,
+        failedLoginAttempts: 0,
+        lockUntil: null,
+      },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        organizationId: true,
+        isActive: true,
+      },
+    });
+
+    // Step 2: Update Redis cache to reflect active status
+    await redis.set(`user:${targetUserId}:isActive`, '1');
+
+    return {
+      user: updatedUser,
+      message: `User ${updatedUser.email} has been reactivated successfully.`,
+    };
+  }
+
+  /**
+   * Retrieve all users belonging to the requester's organization.
+   * Restricted to organization admins.
+   */
+  public async getOrganizationUsers(requester: RequesterContext) {
+    if (requester.role !== 'CARRIER_ADMIN' && requester.role !== 'WAREHOUSE_ADMIN') {
+      throw {
+        status: 403,
+        message: `Forbidden. Role '${requester.role}' cannot list organization users.`,
+      };
+    }
+
+    const users = await prisma.user.findMany({
+      where: { organizationId: requester.organizationId },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        organizationId: true,
+        isActive: true,
+        isEmailVerified: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return users;
   }
 }
 

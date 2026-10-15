@@ -9,11 +9,14 @@ export type BookingStatus =
   | 'CANCELLED'
   | 'NO_SHOW';
 
+import type { WarehousePolicy } from './warehouse.types';
+
 export interface BookingDockWarehouse {
   id: number;
   name: string;
   address?: string;
   timezone?: string;
+  policy?: WarehousePolicy;
 }
 
 export interface BookingDock {

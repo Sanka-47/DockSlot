@@ -124,10 +124,58 @@
                 }
             }
         },
+        "/warehouses/docks/{dockId}": {
+            "patch": {
+                "summary": "Update dock name or details",
+                "description": "Restricted to WAREHOUSE_ADMIN. To avoid driver confusion, the name can only be updated if there are no active bookings with status 'BOOKED'.",
+                "tags": ["Warehouses"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [{
+                    "in": "path",
+                    "name": "dockId",
+                    "required": true,
+                    "schema": {
+                        "type": "integer"
+                    }
+                }],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "example": "Dock A1 (Renamed)"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Dock updated successfully"
+                    },
+                    "400": {
+                        "description": "Cannot update dock name while active BOOKED bookings exist"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "404": {
+                        "description": "Dock not found"
+                    }
+                }
+            }
+        },
         "/warehouses/docks/{dockId}/closures": {
             "post": {
                 "summary": "Schedule a maintenance closure window for a dock",
-                "description": "Blocks out a specific time range from slot generation for maintenance or repairs.",
+                "description": "Blocks out a specific time range from slot generation for maintenance or repairs. Maintenance cannot be scheduled if active bookings exist on this dock for that day.",
                 "tags": ["Warehouses"],
                 "security": [{
                     "bearerAuth": []
@@ -172,7 +220,10 @@
                         "description": "Maintenance closure scheduled"
                     },
                     "400": {
-                        "description": "Invalid time range or conflicts with confirmed bookings"
+                        "description": "Invalid time range"
+                    },
+                    "409": {
+                        "description": "Conflict: Active bookings exist on this dock for that day"
                     }
                 }
             },
@@ -223,6 +274,7 @@
             },
             "put": {
                 "summary": "Update warehouse general info",
+                "description": "Updates warehouse name, address, or timezone. Disallowed if active bookings with status BOOKED exist.",
                 "tags": ["Warehouses"],
                 "security": [{
                     "bearerAuth": []
@@ -238,6 +290,9 @@
                 "responses": {
                     "200": {
                         "description": "Warehouse updated"
+                    },
+                    "400": {
+                        "description": "Cannot update warehouse core details when active BOOKED bookings exist"
                     }
                 }
             }
@@ -289,6 +344,115 @@
                 }
             }
         },
+        "/warehouses/{warehouseId}/policy": {
+            "get": {
+                "summary": "Get warehouse booking and anti-hogging policy",
+                "description": "Restricted to WAREHOUSE_ADMIN of the owning organization.",
+                "tags": ["Warehouses"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [{
+                    "in": "path",
+                    "name": "warehouseId",
+                    "required": true,
+                    "schema": {
+                        "type": "integer"
+                    }
+                }],
+                "responses": {
+                    "200": {
+                        "description": "Warehouse policy configuration",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "id": { "type": "integer", "example": 1 },
+                                                "warehouseId": { "type": "integer", "example": 1 },
+                                                "maxConcurrentBookings": { "type": "integer", "example": 3 },
+                                                "maxAdvanceDays": { "type": "integer", "example": 14 },
+                                                "bookingLockWindowHours": { "type": "integer", "example": 24 }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden. Tenant boundary violation"
+                    },
+                    "404": {
+                        "description": "Warehouse not found"
+                    }
+                }
+            },
+            "put": {
+                "summary": "Update warehouse booking and anti-hogging policy",
+                "description": "Configures maximum concurrent active bookings per carrier, maximum advance reservation days, and hard-lock window hours. Restricted to WAREHOUSE_ADMIN.",
+                "tags": ["Warehouses"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [{
+                    "in": "path",
+                    "name": "warehouseId",
+                    "required": true,
+                    "schema": {
+                        "type": "integer"
+                    }
+                }],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "maxConcurrentBookings": {
+                                        "type": "integer",
+                                        "example": 3,
+                                        "description": "Max active uncompleted bookings a single carrier organization can hold simultaneously"
+                                    },
+                                    "maxAdvanceDays": {
+                                        "type": "integer",
+                                        "example": 14,
+                                        "description": "Max advance days into the future carriers can reserve slots"
+                                    },
+                                    "bookingLockWindowHours": {
+                                        "type": "integer",
+                                        "example": 24,
+                                        "description": "Hard-lock window hours before slot start preventing standard cancellations"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Warehouse policy updated successfully"
+                    },
+                    "400": {
+                        "description": "Invalid policy configuration parameters"
+                    },
+                    "403": {
+                        "description": "Forbidden. Tenant boundary violation"
+                    },
+                    "404": {
+                        "description": "Warehouse not found"
+                    }
+                }
+            }
+        },
         "/warehouses/{warehouseId}/docks": {
             "post": {
                 "summary": "Add a new dock to a warehouse",
@@ -329,6 +493,7 @@
             },
             "get": {
                 "summary": "List all docks for a warehouse",
+                "description": "Retrieves docks for a warehouse with real-time dynamic effectiveStatus evaluation based on active dock maintenance closures and base database status.",
                 "tags": ["Warehouses"],
                 "security": [{
                     "bearerAuth": []
@@ -343,7 +508,32 @@
                 }],
                 "responses": {
                     "200": {
-                        "description": "List of docks"
+                        "description": "List of docks with real-time dynamic effectiveStatus",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": { "type": "boolean", "example": true },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "id": { "type": "integer", "example": 1 },
+                                                    "warehouseId": { "type": "integer", "example": 1 },
+                                                    "name": { "type": "string", "example": "Dock A1" },
+                                                    "status": { "type": "string", "enum": ["ACTIVE", "MAINTENANCE"], "example": "ACTIVE" },
+                                                    "effectiveStatus": { "type": "string", "enum": ["ACTIVE", "MAINTENANCE"], "example": "MAINTENANCE", "description": "Dynamically evaluated status based on active time-bounded maintenance closures." },
+                                                    "createdAt": { "type": "string", "format": "date-time" },
+                                                    "updatedAt": { "type": "string", "format": "date-time" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -608,7 +798,7 @@
                         "description": "Booking confirmed and outbox event created"
                     },
                     "400": {
-                        "description": "Slot out of operating hours, past date, or invalid payload"
+                        "description": "Slot out of operating hours, past date, invalid payload, maxAdvanceDays horizon exceeded, or carrier maxConcurrentBookings policy reached"
                     },
                     "401": {
                         "description": "Authentication required"
@@ -625,7 +815,7 @@
         "/bookings/{id}/reschedule": {
             "patch": {
                 "summary": "Reschedule a confirmed booking",
-                "description": "Moves an existing confirmed booking to a new time slot (and optionally a new dock).\nReleases the old slot atomically and logs an audit log entry.\n",
+                "description": "Moves an existing confirmed booking to a new time slot (and optionally a new dock). Enforces warehouse booking policies. If within the 24-hour lock window, only same-day emergency rescheduling is permitted.",
                 "tags": ["Bookings"],
                 "security": [{
                     "bearerAuth": []
@@ -671,7 +861,68 @@
                         "description": "Booking successfully rescheduled"
                     },
                     "400": {
-                        "description": "Invalid slot times or booking cannot be rescheduled"
+                        "description": "Invalid slot times, max advance days exceeded, or cross-date rescheduling attempted within lock window"
+                    },
+                    "403": {
+                        "description": "Forbidden. Tenant boundary violation"
+                    },
+                    "404": {
+                        "description": "Booking not found"
+                    },
+                    "409": {
+                        "description": "Target slot already occupied"
+                    }
+                }
+            },
+            "put": {
+                "summary": "Reschedule a confirmed booking",
+                "description": "Moves an existing confirmed booking to a new time slot (and optionally a new dock). Enforces warehouse booking policies. If within the 24-hour lock window, only same-day emergency rescheduling is permitted.",
+                "tags": ["Bookings"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [{
+                    "in": "path",
+                    "name": "id",
+                    "required": true,
+                    "schema": {
+                        "type": "integer"
+                    },
+                    "description": "Booking ID"
+                }],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["slotStartTime", "slotEndTime"],
+                                "properties": {
+                                    "slotStartTime": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "example": "2026-11-15T05:00:00.000Z"
+                                    },
+                                    "slotEndTime": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "example": "2026-11-15T05:30:00.000Z"
+                                    },
+                                    "newDockId": {
+                                        "type": "integer",
+                                        "example": 2
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Booking successfully rescheduled"
+                    },
+                    "400": {
+                        "description": "Invalid slot times, max advance days exceeded, or cross-date rescheduling attempted within lock window"
                     },
                     "403": {
                         "description": "Forbidden. Tenant boundary violation"
@@ -688,7 +939,7 @@
         "/bookings/{id}/cancel": {
             "patch": {
                 "summary": "Cancel a confirmed booking",
-                "description": "Cancels the booking, releases the time slot for other carriers, and creates an audit log.",
+                "description": "Cancels the booking, releases the time slot for other carriers, and creates an audit log. Blocked within the bookingLockWindowHours window.",
                 "tags": ["Bookings"],
                 "security": [{
                     "bearerAuth": []
@@ -722,10 +973,10 @@
                         "description": "Booking cancelled and slot released"
                     },
                     "400": {
-                        "description": "Booking already cancelled or completed"
+                        "description": "Booking is already cancelled/arrived, or cancellation attempted within the lock window"
                     },
                     "403": {
-                        "description": "Forbidden. Not the owning carrier"
+                        "description": "Forbidden. Tenant boundary violation"
                     },
                     "404": {
                         "description": "Booking not found"
@@ -975,6 +1226,31 @@
                 }
             }
         },
+        "/auth/invitation": {
+            "get": {
+                "summary": "Retrieve invitation details by token to verify before registering",
+                "tags": ["Authentication"],
+                "parameters": [{
+                    "in": "query",
+                    "name": "token",
+                    "required": true,
+                    "schema": {
+                        "type": "string"
+                    }
+                }],
+                "responses": {
+                    "200": {
+                        "description": "Invitation details retrieved successfully"
+                    },
+                    "400": {
+                        "description": "Invalid or expired token"
+                    },
+                    "404": {
+                        "description": "Invitation not found"
+                    }
+                }
+            }
+        },
         "/auth/verify": {
             "get": {
                 "summary": "Verify user email address with email token",
@@ -1138,8 +1414,175 @@
                     }
                 }
             }
+        },
+        "/auth/logout-all": {
+            "post": {
+                "summary": "Log out of all devices by invalidating all active sessions",
+                "description": "Increments the user's token version in Redis, instantly invalidating all active JWTs across every device.",
+                "tags": ["Authentication"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "responses": {
+                    "200": {
+                        "description": "Successfully logged out of all devices",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": { "type": "boolean", "example": true },
+                                        "message": { "type": "string", "example": "Successfully logged out of all devices." }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized. Missing or invalid token."
+                    }
+                }
+            }
+        },
+        "/users": {
+            "get": {
+                "summary": "List all users in the authenticated admin's organization",
+                "description": "Restricted strictly to CARRIER_ADMIN or WAREHOUSE_ADMIN.",
+                "tags": ["Users & Invitations"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "responses": {
+                    "200": {
+                        "description": "List of organization users"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    }
+                }
+            }
+        },
+        "/users/{id}/deactivate": {
+            "patch": {
+                "summary": "Deactivate an organization user and sever active sessions",
+                "description": "Restricted to CARRIER_ADMIN or WAREHOUSE_ADMIN managing users within their organization. Sets isActive = 0 in MySQL and increments the tokenVersion in Redis to sever access immediately.",
+                "tags": ["Users & Invitations"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "description": "Target User ID to deactivate",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "User deactivated successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": { "type": "boolean", "example": true },
+                                        "message": { "type": "string", "example": "User deactivated successfully." },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "id": { "type": "integer" },
+                                                "email": { "type": "string" },
+                                                "role": { "type": "string" },
+                                                "organizationId": { "type": "integer" },
+                                                "isActive": { "type": "boolean", "example": false }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid user ID"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    },
+                    "403": {
+                        "description": "Forbidden. Requester is not an admin or target belongs to another organization"
+                    },
+                    "404": {
+                        "description": "User not found"
+                    }
+                }
+            }
+        },
+        "/users/{id}/reactivate": {
+            "patch": {
+                "summary": "Reactivate a previously deactivated organization user",
+                "description": "Restricted to CARRIER_ADMIN or WAREHOUSE_ADMIN managing users within their organization. Sets isActive = 1 in MySQL and updates Redis cache to allow user authentication.",
+                "tags": ["Users & Invitations"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "description": "Target User ID to reactivate",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "User reactivated successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": { "type": "boolean", "example": true },
+                                        "message": { "type": "string", "example": "User reactivated successfully." },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "id": { "type": "integer" },
+                                                "email": { "type": "string" },
+                                                "role": { "type": "string" },
+                                                "organizationId": { "type": "integer" },
+                                                "isActive": { "type": "boolean", "example": true }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid user ID"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    },
+                    "403": {
+                        "description": "Forbidden. Requester is not an admin or target belongs to another organization"
+                    },
+                    "404": {
+                        "description": "User not found"
+                    }
+                }
+            }
         }
-       
     },
     "tags": []
 }

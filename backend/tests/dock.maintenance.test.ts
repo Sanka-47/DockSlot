@@ -244,6 +244,23 @@ describe('Dock Maintenance Closures & Booking Status Management Tests', () => {
     expect(res.body.message).toContain('active booking exists');
   });
 
+  it('rejects dock closure scheduling if an active booking exists on that dock for that day even outside closure hours', async () => {
+    // Slot 1 is 04:00 - 04:30. Attempt to schedule closure much later on the same day (08:00 - 10:00)
+    const res = await request(app)
+      .post(`/api/docks/${dock1Id}/closures`)
+      .set('Authorization', `Bearer ${dockManagerAToken}`)
+      .send({
+        startTime: '2026-11-15T08:00:00.000Z',
+        endTime: '2026-11-15T10:00:00.000Z',
+        reason: 'Afternoon lift maintenance',
+      });
+
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toContain('active booking exists');
+    expect(res.body.message).toContain('for that day');
+  });
+
   it('rejects dock closure creation from unauthorized organization (strict tenant isolation)', async () => {
     const res = await request(app)
       .post(`/api/docks/${dock1Id}/closures`)
@@ -259,9 +276,9 @@ describe('Dock Maintenance Closures & Booking Status Management Tests', () => {
     expect(res.body.message).toContain('Forbidden');
   });
 
-  it('successfully creates a scheduled dock maintenance closure (201 Created)', async () => {
+  it('successfully creates a scheduled dock maintenance closure on a dock without bookings for that day (201 Created)', async () => {
     const res = await request(app)
-      .post(`/api/docks/${dock1Id}/closures`)
+      .post(`/api/docks/${dock2Id}/closures`)
       .set('Authorization', `Bearer ${warehouseAdminAToken}`)
       .send({
         startTime: closureStart,
@@ -276,7 +293,7 @@ describe('Dock Maintenance Closures & Booking Status Management Tests', () => {
 
     // Verify GET /api/docks/:dockId/closures
     const getRes = await request(app)
-      .get(`/api/docks/${dock1Id}/closures`)
+      .get(`/api/docks/${dock2Id}/closures`)
       .set('Authorization', `Bearer ${dockManagerAToken}`);
 
     expect(getRes.status).toBe(200);
@@ -292,22 +309,22 @@ describe('Dock Maintenance Closures & Booking Status Management Tests', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
 
-    const dock1Mapping = res.body.data.find((d: any) => d.dockId === dock1Id);
-    expect(dock1Mapping).toBeDefined();
-
-    // slot2Start (05:00 - 05:30) falls strictly inside closure (04:45 - 05:45) -> MUST BE BLOCKED
-    const slot2InDock1 = dock1Mapping.slots.find(
-      (s: any) => s.slotStartTime === slot2Start
-    );
-    expect(slot2InDock1).toBeUndefined();
-
-    // Dock 2 (Control dock) does NOT have closure -> slot2Start MUST be available on Dock 2
     const dock2Mapping = res.body.data.find((d: any) => d.dockId === dock2Id);
     expect(dock2Mapping).toBeDefined();
+
+    // slot2Start (05:00 - 05:30) falls strictly inside closure (04:45 - 05:45) on Dock 2 -> MUST BE BLOCKED
     const slot2InDock2 = dock2Mapping.slots.find(
       (s: any) => s.slotStartTime === slot2Start
     );
-    expect(slot2InDock2).toBeDefined();
+    expect(slot2InDock2).toBeUndefined();
+
+    // Dock 1 does NOT have closure during slot2Start -> slot2Start MUST be available on Dock 1
+    const dock1Mapping = res.body.data.find((d: any) => d.dockId === dock1Id);
+    expect(dock1Mapping).toBeDefined();
+    const slot2InDock1 = dock1Mapping.slots.find(
+      (s: any) => s.slotStartTime === slot2Start
+    );
+    expect(slot2InDock1).toBeDefined();
   });
 
   it('rejects direct booking creation attempt on a slot during scheduled maintenance', async () => {
@@ -315,7 +332,7 @@ describe('Dock Maintenance Closures & Booking Status Management Tests', () => {
       .post('/api/bookings')
       .set('Authorization', `Bearer ${dispatcherToken}`)
       .send({
-        dockId: dock1Id,
+        dockId: dock2Id,
         slotStartTime: slot2Start,
         slotEndTime: slot2End,
         truckPlate: 'TRK-MNT-99',

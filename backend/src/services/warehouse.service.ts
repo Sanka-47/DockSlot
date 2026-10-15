@@ -1,5 +1,6 @@
 import { DockStatus, BookingStatus } from '@prisma/client';
 import { prisma } from '../config/db.config';
+import { dockService } from './dock.service';
 import {
   isValidIanaTimeZone,
   isValidDateString,
@@ -7,6 +8,7 @@ import {
   generateTimeIntervals,
   zonedDateAndTimeToUtc,
   getZonedDayBounds,
+  formatInTimeZone,
 } from '../utils/time.utils';
 
 export interface CreateWarehouseInput {
@@ -30,8 +32,19 @@ export interface UpdateWarehouseSettingsInput {
   timezone?: string;
 }
 
+export interface UpdateWarehousePolicyInput {
+  maxConcurrentBookings?: number;
+  maxAdvanceDays?: number;
+  bookingLockWindowHours?: number;
+}
+
 export interface CreateDockInput {
   name: string;
+  status?: DockStatus;
+}
+
+export interface UpdateDockInput {
+  name?: string;
   status?: DockStatus;
 }
 
@@ -99,9 +112,17 @@ export class WarehouseService {
         address: data.address.trim(),
         timezone: trimmedTimezone,
         slotLengthMinutes: data.slotLengthMinutes || 30,
+        policy: {
+          create: {
+            maxConcurrentBookings: 3,
+            maxAdvanceDays: 14,
+            bookingLockWindowHours: 24,
+          },
+        },
       },
       include: {
         docks: true,
+        policy: true,
       },
     });
 
@@ -117,17 +138,41 @@ export class WarehouseService {
     }
 
     const whereClause = isCarrier ? {} : { organizationId };
+    const now = new Date();
 
     const warehouses = await prisma.warehouse.findMany({
       where: whereClause,
       include: {
-        docks: true,
+        docks: {
+          include: {
+            closures: {
+              where: {
+                startTime: { lte: now },
+                endTime: { gte: now },
+              },
+            },
+          },
+          orderBy: { id: 'asc' },
+        },
         operatingHours: true,
+        policy: true,
       },
       orderBy: { id: 'asc' },
     });
 
-    return warehouses;
+    return warehouses.map((wh) => ({
+      ...wh,
+      docks: wh.docks.map((dock) => {
+        const isUnderClosure = dock.closures && dock.closures.length > 0;
+        const effectiveStatus: 'ACTIVE' | 'MAINTENANCE' = isUnderClosure
+          ? 'MAINTENANCE'
+          : (dock.status as 'ACTIVE' | 'MAINTENANCE');
+        return {
+          ...dock,
+          effectiveStatus,
+        };
+      }),
+    }));
   }
 
   /**
@@ -138,11 +183,23 @@ export class WarehouseService {
       throw { status: 400, message: 'Invalid warehouse ID.' };
     }
 
+    const now = new Date();
     const warehouse = await prisma.warehouse.findUnique({
       where: { id: warehouseId },
       include: {
-        docks: true,
+        docks: {
+          include: {
+            closures: {
+              where: {
+                startTime: { lte: now },
+                endTime: { gte: now },
+              },
+            },
+          },
+          orderBy: { id: 'asc' },
+        },
         operatingHours: true,
+        policy: true,
       },
     });
 
@@ -154,7 +211,19 @@ export class WarehouseService {
       throw { status: 403, message: 'Forbidden. You do not have access to this warehouse.' };
     }
 
-    return warehouse;
+    return {
+      ...warehouse,
+      docks: warehouse.docks.map((dock) => {
+        const isUnderClosure = dock.closures && dock.closures.length > 0;
+        const effectiveStatus: 'ACTIVE' | 'MAINTENANCE' = isUnderClosure
+          ? 'MAINTENANCE'
+          : (dock.status as 'ACTIVE' | 'MAINTENANCE');
+        return {
+          ...dock,
+          effectiveStatus,
+        };
+      }),
+    };
   }
 
   /**
@@ -212,6 +281,29 @@ export class WarehouseService {
       const trimmedTz = data.timezone.trim();
       if (!isValidIanaTimeZone(trimmedTz)) {
         throw { status: 400, message: `Invalid IANA timezone string: '${trimmedTz}'.` };
+      }
+    }
+
+    const isNameChanging = data.name !== undefined && data.name.trim() !== warehouse.name;
+    const isAddressChanging = data.address !== undefined && data.address.trim() !== warehouse.address;
+    const isTimezoneChanging = data.timezone !== undefined && data.timezone.trim() !== warehouse.timezone;
+    const isCoreInfoChanging = isNameChanging || isAddressChanging || isTimezoneChanging;
+
+    if (isCoreInfoChanging) {
+      const activeBookedCount = await prisma.booking.count({
+        where: {
+          dock: {
+            warehouseId,
+          },
+          status: BookingStatus.BOOKED,
+        },
+      });
+
+      if (activeBookedCount > 0) {
+        throw {
+          status: 400,
+          message: `Cannot update warehouse name, address, or timezone while there are active bookings with status 'BOOKED'.`,
+        };
       }
     }
 
@@ -276,6 +368,30 @@ export class WarehouseService {
       }
     }
 
+    // Determine if core identification fields (name, address, timezone) are changing
+    const isNameChanging = data.name !== undefined && data.name.trim() !== existing.name;
+    const isAddressChanging = data.address !== undefined && data.address.trim() !== existing.address;
+    const isTimezoneChanging = data.timezone !== undefined && data.timezone.trim() !== existing.timezone;
+    const isCoreInfoChanging = isNameChanging || isAddressChanging || isTimezoneChanging;
+
+    if (isCoreInfoChanging) {
+      const activeBookedCount = await prisma.booking.count({
+        where: {
+          dock: {
+            warehouseId,
+          },
+          status: BookingStatus.BOOKED,
+        },
+      });
+
+      if (activeBookedCount > 0) {
+        throw {
+          status: 400,
+          message: `Cannot update warehouse name, address, or timezone while there are active bookings with status 'BOOKED'.`,
+        };
+      }
+    }
+
     const updated = await prisma.warehouse.update({
       where: { id: warehouseId },
       data: {
@@ -328,35 +444,18 @@ export class WarehouseService {
       },
     });
 
-    return dock;
+    return {
+      ...dock,
+      effectiveStatus: dock.status as 'ACTIVE' | 'MAINTENANCE',
+    };
   }
 
   /**
-   * Lists docks for a warehouse, enforcing strict tenant isolation for warehouse operators.
+   * Lists docks for a warehouse, enforcing strict tenant isolation for warehouse operators,
+   * using an optimized single-query with Prisma include to evaluate dynamic real-time effectiveStatus.
    */
   async getDocks(warehouseId: number, organizationId: number, isCarrier: boolean = false) {
-    if (!warehouseId || isNaN(warehouseId)) {
-      throw { status: 400, message: 'Invalid warehouse ID.' };
-    }
-
-    const warehouse = await prisma.warehouse.findUnique({
-      where: { id: warehouseId },
-    });
-
-    if (!warehouse) {
-      throw { status: 404, message: 'Warehouse not found.' };
-    }
-
-    if (!isCarrier && warehouse.organizationId !== organizationId) {
-      throw { status: 403, message: 'Forbidden. You do not have access to docks for this warehouse.' };
-    }
-
-    const docks = await prisma.dock.findMany({
-      where: { warehouseId },
-      orderBy: { id: 'asc' },
-    });
-
-    return docks;
+    return dockService.getDocksByWarehouse(warehouseId, organizationId, isCarrier);
   }
 
   /**
@@ -385,12 +484,111 @@ export class WarehouseService {
       throw { status: 403, message: 'Forbidden. You do not have permission to modify this dock.' };
     }
 
+    const now = new Date();
     const updatedDock = await prisma.dock.update({
       where: { id: dockId },
       data: { status },
+      include: {
+        closures: {
+          where: {
+            startTime: { lte: now },
+            endTime: { gte: now },
+          },
+        },
+      },
     });
 
-    return updatedDock;
+    const isUnderClosure = updatedDock.closures && updatedDock.closures.length > 0;
+    const effectiveStatus: 'ACTIVE' | 'MAINTENANCE' = isUnderClosure
+      ? 'MAINTENANCE'
+      : (updatedDock.status as 'ACTIVE' | 'MAINTENANCE');
+
+    return {
+      ...updatedDock,
+      effectiveStatus,
+    };
+  }
+
+  /**
+   * Updates a dock's name (and optional status), strictly verifying organization ownership.
+   * To prevent driver and carrier confusion, the dock name can only be updated if there are
+   * no active bookings with status 'BOOKED' for this dock.
+   */
+  async updateDock(dockId: number, organizationId: number, data: UpdateDockInput, warehouseId?: number) {
+    if (!dockId || isNaN(dockId)) {
+      throw { status: 400, message: 'Invalid dock ID.' };
+    }
+
+    if (data.name !== undefined && (!data.name || typeof data.name !== 'string' || !data.name.trim())) {
+      throw { status: 400, message: 'Dock name cannot be empty.' };
+    }
+
+    if (data.status && !Object.values(DockStatus).includes(data.status)) {
+      throw { status: 400, message: `Invalid dock status: '${data.status}'. Must be ACTIVE or MAINTENANCE.` };
+    }
+
+    const dock = await prisma.dock.findUnique({
+      where: { id: dockId },
+      include: { warehouse: true },
+    });
+
+    if (!dock) {
+      throw { status: 404, message: 'Dock not found.' };
+    }
+
+    if (warehouseId && dock.warehouseId !== warehouseId) {
+      throw { status: 400, message: 'Dock does not belong to the specified warehouse.' };
+    }
+
+    if (dock.warehouse.organizationId !== organizationId) {
+      throw { status: 403, message: 'Forbidden. You do not have permission to modify this dock.' };
+    }
+
+    const isNameChanging = data.name !== undefined && data.name.trim() !== dock.name;
+
+    if (isNameChanging) {
+      const activeBookedCount = await prisma.booking.count({
+        where: {
+          dockId,
+          status: BookingStatus.BOOKED,
+        },
+      });
+
+      if (activeBookedCount > 0) {
+        throw {
+          status: 400,
+          message: `Cannot update dock name while there are active bookings with status 'BOOKED'.`,
+        };
+      }
+    }
+
+    const now = new Date();
+    const updatedDock = await prisma.dock.update({
+      where: { id: dockId },
+      data: {
+        ...(data.name !== undefined && { name: data.name.trim() }),
+        ...(data.status !== undefined && { status: data.status }),
+      },
+      include: {
+        warehouse: true,
+        closures: {
+          where: {
+            startTime: { lte: now },
+            endTime: { gte: now },
+          },
+        },
+      },
+    });
+
+    const isUnderClosure = updatedDock.closures && updatedDock.closures.length > 0;
+    const effectiveStatus: 'ACTIVE' | 'MAINTENANCE' = isUnderClosure
+      ? 'MAINTENANCE'
+      : (updatedDock.status as 'ACTIVE' | 'MAINTENANCE');
+
+    return {
+      ...updatedDock,
+      effectiveStatus,
+    };
   }
 
   /**
@@ -442,20 +640,28 @@ export class WarehouseService {
       };
     }
 
-    // Validate that the closure does not overlap with active bookings that cannot be fulfilled
-    const overlappingBooking = await prisma.booking.findFirst({
+    // Validate that the closure does not fall on days with active bookings
+    const timeZone = dock.warehouse.timezone || 'UTC';
+    const startDateStr = formatInTimeZone(closureStart, timeZone, 'yyyy-MM-dd');
+    const effectiveEnd = new Date(closureEnd.getTime() - 1);
+    const endDateStr = formatInTimeZone(effectiveEnd, timeZone, 'yyyy-MM-dd');
+
+    const { startOfDayUtc } = getZonedDayBounds(startDateStr, timeZone);
+    const { endOfDayUtc } = getZonedDayBounds(endDateStr, timeZone);
+
+    const bookingOnDay = await prisma.booking.findFirst({
       where: {
         dockId,
         status: { in: [BookingStatus.BOOKED, BookingStatus.ARRIVED] },
-        slotStartTime: { lt: closureEnd },
-        slotEndTime: { gt: closureStart },
+        slotStartTime: { lt: endOfDayUtc },
+        slotEndTime: { gt: startOfDayUtc },
       },
     });
 
-    if (overlappingBooking) {
+    if (bookingOnDay) {
       throw {
         status: 409,
-        message: 'Cannot schedule maintenance closure: an active booking exists on this dock during the requested time window.',
+        message: 'Cannot schedule maintenance closure: an active booking exists on this dock for that day.',
       };
     }
 
@@ -540,13 +746,28 @@ export class WarehouseService {
       throw { status: 404, message: 'Warehouse not found.' };
     }
 
-    // b. Fetch all active docks for this warehouse (ignoring docks whose status is MAINTENANCE)
-    const activeDocks = await prisma.dock.findMany({
-      where: {
-        warehouseId,
-        status: DockStatus.ACTIVE,
+    // b. Fetch docks for this warehouse with active closures at now() to dynamically evaluate effectiveStatus
+    const now = new Date();
+    const docks = await prisma.dock.findMany({
+      where: { warehouseId },
+      include: {
+        closures: {
+          where: {
+            startTime: { lte: now },
+            endTime: { gte: now },
+          },
+        },
       },
       orderBy: { id: 'asc' },
+    });
+
+    // Exclude docks currently undergoing maintenance or whose base status is MAINTENANCE
+    const activeDocks = docks.filter((dock) => {
+      const isUnderClosure = dock.closures && dock.closures.length > 0;
+      const effectiveStatus = isUnderClosure || dock.status === DockStatus.MAINTENANCE
+        ? DockStatus.MAINTENANCE
+        : dock.status;
+      return effectiveStatus === DockStatus.ACTIVE;
     });
 
     if (activeDocks.length === 0) {
@@ -661,6 +882,134 @@ export class WarehouseService {
     });
 
     return dockSlotMappings;
+  }
+
+  /**
+   * Retrieves the booking policy for a warehouse.
+   * If no policy exists yet, creates one with default values.
+   */
+  async getWarehousePolicy(warehouseId: number, organizationId: number) {
+    if (!warehouseId || isNaN(warehouseId)) {
+      throw { status: 400, message: 'Invalid warehouse ID.' };
+    }
+
+    const warehouse = await prisma.warehouse.findUnique({
+      where: { id: warehouseId },
+      include: { policy: true },
+    });
+
+    if (!warehouse) {
+      throw { status: 404, message: 'Warehouse not found.' };
+    }
+
+    if (warehouse.organizationId !== organizationId) {
+      throw { status: 403, message: 'Forbidden. You do not have access to this warehouse.' };
+    }
+
+    if (!warehouse.policy) {
+      const policy = await prisma.warehousePolicy.create({
+        data: {
+          warehouseId,
+          maxConcurrentBookings: 3,
+          maxAdvanceDays: 14,
+          bookingLockWindowHours: 24,
+        },
+      });
+      return policy;
+    }
+
+    return warehouse.policy;
+  }
+
+  /**
+   * Updates the configurable booking policy for a warehouse.
+   * Restricted to WAREHOUSE_ADMIN of the owning organization.
+   */
+  async updateWarehousePolicy(
+    warehouseId: number,
+    organizationId: number,
+    data: UpdateWarehousePolicyInput
+  ) {
+    if (!warehouseId || isNaN(warehouseId)) {
+      throw { status: 400, message: 'Invalid warehouse ID.' };
+    }
+
+    const warehouse = await prisma.warehouse.findUnique({
+      where: { id: warehouseId },
+      include: { policy: true },
+    });
+
+    if (!warehouse) {
+      throw { status: 404, message: 'Warehouse not found.' };
+    }
+
+    if (warehouse.organizationId !== organizationId) {
+      throw { status: 403, message: 'Forbidden. You do not have access to this warehouse.' };
+    }
+
+    if (
+      data.maxConcurrentBookings === undefined &&
+      data.maxAdvanceDays === undefined &&
+      data.bookingLockWindowHours === undefined
+    ) {
+      throw {
+        status: 400,
+        message: 'At least one policy field (maxConcurrentBookings, maxAdvanceDays, bookingLockWindowHours) must be provided.',
+      };
+    }
+
+    if (data.maxConcurrentBookings !== undefined) {
+      if (
+        typeof data.maxConcurrentBookings !== 'number' ||
+        !Number.isInteger(data.maxConcurrentBookings) ||
+        data.maxConcurrentBookings < 1
+      ) {
+        throw { status: 400, message: 'maxConcurrentBookings must be a positive integer.' };
+      }
+    }
+
+    if (data.maxAdvanceDays !== undefined) {
+      if (
+        typeof data.maxAdvanceDays !== 'number' ||
+        !Number.isInteger(data.maxAdvanceDays) ||
+        data.maxAdvanceDays < 1
+      ) {
+        throw { status: 400, message: 'maxAdvanceDays must be a positive integer.' };
+      }
+    }
+
+    if (data.bookingLockWindowHours !== undefined) {
+      if (
+        typeof data.bookingLockWindowHours !== 'number' ||
+        !Number.isInteger(data.bookingLockWindowHours) ||
+        data.bookingLockWindowHours < 0
+      ) {
+        throw { status: 400, message: 'bookingLockWindowHours must be a non-negative integer.' };
+      }
+    }
+
+    const updatedPolicy = await prisma.warehousePolicy.upsert({
+      where: { warehouseId },
+      create: {
+        warehouseId,
+        maxConcurrentBookings: data.maxConcurrentBookings ?? 3,
+        maxAdvanceDays: data.maxAdvanceDays ?? 14,
+        bookingLockWindowHours: data.bookingLockWindowHours ?? 24,
+      },
+      update: {
+        ...(data.maxConcurrentBookings !== undefined && {
+          maxConcurrentBookings: data.maxConcurrentBookings,
+        }),
+        ...(data.maxAdvanceDays !== undefined && {
+          maxAdvanceDays: data.maxAdvanceDays,
+        }),
+        ...(data.bookingLockWindowHours !== undefined && {
+          bookingLockWindowHours: data.bookingLockWindowHours,
+        }),
+      },
+    });
+
+    return updatedPolicy;
   }
 }
 

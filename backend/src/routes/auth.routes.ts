@@ -9,6 +9,8 @@ import {
   verifyEmail,
   resendVerification,
   acceptInvite,
+  getInvitationDetails,
+  logoutAll,
 } from '../controllers/auth.controller';
 import { authenticate } from '../middleware/auth.middleware';
 import { authRateLimiter } from '../middleware/rateLimit.middleware';
@@ -137,6 +139,29 @@ router.post('/login', authRateLimiter, login);
  *         description: User email already registered
  */
 router.post('/accept-invite', acceptInvite);
+
+/**
+ * @openapi
+ * /auth/invitation:
+ *   get:
+ *     summary: Retrieve invitation details by token to verify before registering
+ *     tags:
+ *       - Authentication
+ *     parameters:
+ *       - in: query
+ *         name: token
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Invitation details retrieved successfully
+ *       400:
+ *         description: Invalid or expired token
+ *       404:
+ *         description: Invitation not found
+ */
+router.get('/invitation', getInvitationDetails);
 
 /**
  * @openapi
@@ -284,5 +309,34 @@ router.get('/me', authenticate, getMe);
  *         description: Unauthorized or invalid old password
  */
 router.post('/change-password', authenticate, changePassword);
+
+/**
+ * @openapi
+ * /auth/logout-all:
+ *   post:
+ *     summary: Log out of all devices by invalidating all active sessions
+ *     description: Increments the user's token version in Redis, instantly invalidating all active JWTs across every device.
+ *     tags:
+ *       - Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successfully logged out of all devices
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Successfully logged out of all devices.
+ *       401:
+ *         description: Unauthorized. Missing or invalid token.
+ */
+router.post('/logout-all', authenticate, logoutAll);
 
 export default router;

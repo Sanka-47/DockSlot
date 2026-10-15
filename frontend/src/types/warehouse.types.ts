@@ -9,6 +9,7 @@ export interface Dock {
   warehouseId: number;
   name: string;
   status: DockStatus;
+  effectiveStatus?: DockStatus;
   createdAt?: string;
   updatedAt?: string;
   warehouse?: {
@@ -28,6 +29,46 @@ export interface OperatingHour {
   slotLengthMinutes: number;
 }
 
+export interface WarehousePolicy {
+  id: number;
+  warehouseId: number;
+  maxConcurrentBookings: number;
+  maxAdvanceDays: number;
+  bookingLockWindowHours: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface UpdateWarehousePolicyRequest {
+  maxConcurrentBookings?: number;
+  maxAdvanceDays?: number;
+  bookingLockWindowHours?: number;
+}
+
+export interface CreateWarehouseRequest {
+  name: string;
+  address: string;
+  timezone: string;
+  slotLengthMinutes?: number;
+}
+
+export interface UpdateWarehouseRequest {
+  name?: string;
+  address?: string;
+  timezone?: string;
+  slotLengthMinutes?: number;
+}
+
+export interface CreateDockRequest {
+  name: string;
+  status?: DockStatus;
+}
+
+export interface UpdateDockRequest {
+  name?: string;
+  status?: DockStatus;
+}
+
 export interface Warehouse {
   id: number;
   organizationId: number;
@@ -39,6 +80,7 @@ export interface Warehouse {
   updatedAt?: string;
   docks?: Dock[];
   operatingHours?: OperatingHour[];
+  policy?: WarehousePolicy;
 }
 
 export interface DockClosure {

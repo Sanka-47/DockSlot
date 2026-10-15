@@ -5,6 +5,7 @@ import { UserRole } from '@prisma/client';
 import { prisma } from '../config/db.config';
 import { securityConfig } from '../config/security.config';
 import { emailService } from './email.service';
+import redis from '../config/redis';
 
 export interface CreateInvitationInput {
   email: string;
@@ -55,13 +56,17 @@ export class InvitationService {
   /**
    * Helper to issue a signed JWT token containing user ID, organization ID, and role.
    */
-  public generateToken(user: { id: number; organizationId: number; role: UserRole; email: string }): string {
+  public generateToken(
+    user: { id: number; organizationId: number; role: UserRole; email: string },
+    tokenVersion: number = 0
+  ): string {
     return jwt.sign(
       {
         userId: user.id,
         organizationId: user.organizationId,
         role: user.role,
         email: user.email,
+        tokenVersion,
       },
       securityConfig.jwtSecret,
       { expiresIn: securityConfig.jwtExpiresIn as any }
@@ -226,7 +231,9 @@ export class InvitationService {
       return { user: newUser, organization: invitation.organization };
     });
 
-    const jwtToken = this.generateToken(user);
+    const version = await redis.get(`user:${user.id}:tokenVersion`);
+    const tokenVersion = version !== null ? parseInt(version, 10) : 0;
+    const jwtToken = this.generateToken(user, tokenVersion);
 
     return {
       token: jwtToken,
@@ -242,6 +249,46 @@ export class InvitationService {
           type: organization.type,
         },
       },
+    };
+  }
+
+  /**
+   * Get public invitation details by secure token to populate registration modal.
+   */
+  public async getInvitationByToken(token: string) {
+    if (!token || typeof token !== 'string') {
+      throw { status: 400, message: 'Invitation token is required.' };
+    }
+
+    const invitation = await prisma.invitation.findUnique({
+      where: { token },
+      include: { organization: true },
+    });
+
+    if (!invitation) {
+      throw { status: 404, message: 'Invalid or non-existent invitation token.' };
+    }
+
+    if (invitation.status !== 'PENDING') {
+      throw {
+        status: 400,
+        message: `Invitation cannot be accepted. Current status is ${invitation.status}.`,
+      };
+    }
+
+    if (new Date(invitation.expiresAt) <= new Date()) {
+      await prisma.invitation.update({
+        where: { id: invitation.id },
+        data: { status: 'EXPIRED' },
+      }).catch(() => {});
+      throw { status: 400, message: 'Invitation token has expired.' };
+    }
+
+    return {
+      email: invitation.email,
+      role: invitation.role,
+      organizationName: invitation.organization?.name || 'Organization',
+      expiresAt: invitation.expiresAt,
     };
   }
 }

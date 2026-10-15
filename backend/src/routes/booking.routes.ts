@@ -174,6 +174,13 @@ router.patch(
   requireCarrierRole,
   rescheduleBooking
 );
+router.put(
+  '/:id/reschedule',
+  authMiddleware,
+  requireVerifiedEmail,
+  requireCarrierRole,
+  rescheduleBooking
+);
 
 /**
  * @openapi

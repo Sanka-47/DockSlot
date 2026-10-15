@@ -20,3 +20,9 @@ Ai fixed this by -
 
 added back end and front end validation so maintainance reasone is required and we can't choose past dates, and add validation so we are only able to change booking status on Arrive/ No Show after the the schedule start time has passed.
 ![alt text](image.png)
+
+
+Dispatcher Dash baord -
+
+ui implemented without any issues 
+![alt text](image-1.png)

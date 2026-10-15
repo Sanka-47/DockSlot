@@ -21,6 +21,7 @@ import { storage } from '../utils/storage';
 import { useAuth } from '../hooks/useAuth';
 import { ForgotPasswordPage } from './ForgotPasswordPage';
 import { ResetPasswordPage } from './ResetPasswordPage';
+import { UserRegisterModal } from '../components/UserRegisterModal';
 import type {
   OrganizationType,
   User,
@@ -33,6 +34,8 @@ export type AuthTab = 'signin' | 'register' | 'forgot' | 'reset';
 export interface AuthPageProps {
   initialTab?: AuthTab;
   resetToken?: string;
+  inviteToken?: string;
+  showInviteModal?: boolean;
   onSuccess?: (user: User, token: string) => void;
   onNavigate?: (route: 'carrier' | 'warehouse') => void;
 }
@@ -40,6 +43,8 @@ export interface AuthPageProps {
 export const AuthPage: React.FC<AuthPageProps> = ({
   initialTab = 'signin',
   resetToken,
+  inviteToken,
+  showInviteModal = false,
   onSuccess,
   onNavigate,
 }) => {
@@ -92,6 +97,52 @@ export const AuthPage: React.FC<AuthPageProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState<boolean>(false);
+
+  // User Register Modal (for invitation links)
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState<boolean>(() => {
+    if (showInviteModal) return true;
+    if (typeof window !== 'undefined') {
+      return window.location.pathname.includes('accept-invite');
+    }
+    return false;
+  });
+
+  const effectiveInviteToken =
+    inviteToken ||
+    (typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('token') || undefined
+      : undefined);
+
+  // Sync invite modal if showInviteModal or URL changes
+  React.useEffect(() => {
+    if (showInviteModal) {
+      setIsInviteModalOpen(true);
+    } else if (typeof window !== 'undefined' && window.location.pathname.includes('accept-invite')) {
+      setIsInviteModalOpen(true);
+    }
+  }, [showInviteModal]);
+
+  // Handle invite modal success and redirect to AuthPage sign in
+  const handleInviteSuccess = (registeredEmail?: string, message?: string) => {
+    setIsInviteModalOpen(false);
+    if (typeof window !== 'undefined') {
+      window.history.pushState(null, '', '/');
+    }
+    setActiveTab('signin');
+    if (registeredEmail) {
+      setSignInEmail(registeredEmail);
+    }
+    setSuccessMessage(
+      message || 'Registration completed successfully! Please sign in with your new password.'
+    );
+  };
+
+  const handleInviteClose = () => {
+    setIsInviteModalOpen(false);
+    if (typeof window !== 'undefined') {
+      window.history.pushState(null, '', '/');
+    }
+  };
 
   // Sign In Form State
   const [signInEmail, setSignInEmail] = useState<string>('');
@@ -545,6 +596,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({
       <div className="mt-8 text-center text-xs text-gray-500">
         &copy; {new Date().getFullYear()} DockSlot Inc. Multi-tenant Logistics Platform.
       </div>
+
+      {/* User Registration Modal for Invitations */}
+      <UserRegisterModal
+        isOpen={isInviteModalOpen}
+        token={effectiveInviteToken}
+        onClose={handleInviteClose}
+        onSuccess={handleInviteSuccess}
+      />
     </div>
   );
 };

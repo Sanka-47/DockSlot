@@ -8,6 +8,7 @@ export interface AuthContextType {
   token: string | null;
   login: (token: string, user: User) => void;
   logout: () => void;
+  logoutAll: () => Promise<void>;
   isAuthenticated: boolean;
   isLoading: boolean;
 }
@@ -54,6 +55,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setUser(null);
   };
 
+  const logoutAll = async () => {
+    try {
+      await authApi.logoutAll();
+    } catch {
+      // Continue client cleanup even if network fails
+    } finally {
+      storage.removeToken();
+      setToken(null);
+      setUser(null);
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -61,6 +74,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         token,
         login,
         logout,
+        logoutAll,
         isAuthenticated: !!token,
         isLoading,
       }}

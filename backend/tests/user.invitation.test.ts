@@ -18,7 +18,7 @@ describe('Secure Token-Based Invitation & Account Creation Workflow Tests', () =
   let dispatcherToken: string;
   let dockManagerToken: string;
 
-  const testTimestamp = Date.now();
+  const testTimestamp = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
   beforeAll(async () => {
     // 1. Create a Carrier Admin with Organization
@@ -481,6 +481,35 @@ describe('Secure Token-Based Invitation & Account Creation Workflow Tests', () =
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
       expect(res.body.message).toMatch(/already been accepted|cannot be accepted/i);
+    });
+
+    it('should retrieve invitation details via GET /api/auth/invitation for a pending token', async () => {
+      const testEmail = `get_invite_${Date.now()}@apexstorage.com`;
+      const inviteRes = await request(app)
+        .post('/api/users/invite')
+        .set('Authorization', `Bearer ${warehouseAdminToken}`)
+        .send({ email: testEmail });
+
+      const token = inviteRes.body.data?.token || inviteRes.body.invitation?.token;
+
+      const res = await request(app)
+        .get('/api/auth/invitation')
+        .query({ token });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.email).toBe(testEmail);
+      expect(res.body.data.role).toBe('DOCK_MANAGER');
+      expect(res.body.data.organizationName).toBeDefined();
+    });
+
+    it('should return 404 for invalid invitation token via GET /api/auth/invitation', async () => {
+      const res = await request(app)
+        .get('/api/auth/invitation')
+        .query({ token: 'unknown_token_abc' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.success).toBe(false);
     });
   });
 });

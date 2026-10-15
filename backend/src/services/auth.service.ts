@@ -5,6 +5,7 @@ import { UserRole, OrganizationType } from '@prisma/client';
 import { prisma } from '../config/db.config';
 import { securityConfig } from '../config/security.config';
 import { emailService } from './email.service';
+import redis from '../config/redis';
 
 export interface RegisterInput {
   email: string;
@@ -65,17 +66,36 @@ export class AuthService {
   /**
    * Helper to issue a signed JWT token containing user ID, organization ID, and role.
    */
-  public generateToken(user: { id: number; organizationId: number; role: UserRole; email: string }): string {
+  public generateToken(
+    user: { id: number; organizationId: number; role: UserRole; email: string },
+    tokenVersion: number = 0
+  ): string {
     return jwt.sign(
       {
         userId: user.id,
         organizationId: user.organizationId,
         role: user.role,
         email: user.email,
+        tokenVersion,
       },
       securityConfig.jwtSecret,
       { expiresIn: securityConfig.jwtExpiresIn as any }
     );
+  }
+
+  /**
+   * Fetch user's current token version from Redis (defaults to 0 if not set).
+   */
+  public async getUserTokenVersion(userId: number): Promise<number> {
+    const version = await redis.get(`user:${userId}:tokenVersion`);
+    return version !== null ? parseInt(version, 10) : 0;
+  }
+
+  /**
+   * Invalidate all active sessions for a user by incrementing their token version in Redis.
+   */
+  public async logoutAll(userId: number): Promise<void> {
+    await redis.incr(`user:${userId}:tokenVersion`);
   }
 
   /**
@@ -180,7 +200,8 @@ export class AuthService {
         console.error('[AuthService] Error dispatching verification email:', err);
       });
 
-      const token = this.generateToken(user);
+      const tokenVersion = await this.getUserTokenVersion(user.id);
+      const token = this.generateToken(user, tokenVersion);
 
       return {
         token,
@@ -231,7 +252,8 @@ export class AuthService {
       console.error('[AuthService] Error dispatching verification email:', err);
     });
 
-    const token = this.generateToken(user);
+    const tokenVersion = await this.getUserTokenVersion(user.id);
+    const token = this.generateToken(user, tokenVersion);
 
     return {
       token,
@@ -406,7 +428,8 @@ export class AuthService {
       });
     }
 
-    const token = this.generateToken(user);
+    const tokenVersion = await this.getUserTokenVersion(user.id);
+    const token = this.generateToken(user, tokenVersion);
 
     return {
       token,

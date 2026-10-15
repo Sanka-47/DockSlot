@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { invitationService } from '../services/invitation.service';
+import { mailConfig } from '../config/mail.config';
 
 export const inviteUser = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -14,7 +15,7 @@ export const inviteUser = async (req: Request, res: Response): Promise<void> => 
     // Accepts only email from request body
     const { email } = req.body;
 
-    const result = await invitationService.createInvitation(
+  const result = await invitationService.createInvitation(
       {
         userId: req.user.userId,
         organizationId: req.user.organizationId,
@@ -23,11 +24,20 @@ export const inviteUser = async (req: Request, res: Response): Promise<void> => 
       { email }
     );
 
+    const inviteUrl = `${mailConfig.frontendUrl}/accept-invite?token=${result.invitation.token}`;
+    console.log(`[InvitationController] Invitation link for ${email} (${result.invitation.role}): ${inviteUrl}`);
+
     res.status(201).json({
       success: true,
       message: result.message,
-      data: result.invitation,
-      invitation: result.invitation,
+      data: {
+        ...result.invitation,
+        inviteUrl,
+      },
+      invitation: {
+        ...result.invitation,
+        inviteUrl,
+      },
     });
   } catch (error: any) {
     const status = error.status || 500;

@@ -8,9 +8,13 @@ import {
   createDock,
   getDocks,
   updateDockStatus,
+  updateDock,
+  updateDockName,
   getAvailableSlots,
   createDockClosure,
   getDockClosures,
+  getWarehousePolicy,
+  updateWarehousePolicy,
 } from '../controllers/warehouse.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { requireVerifiedEmail } from '../middleware/verification.middleware';
@@ -229,6 +233,9 @@ router.get(
  * /warehouses/{warehouseId}:
  *   put:
  *     summary: Update warehouse general info
+ *     description: |
+ *       Updates warehouse name, address, or timezone.
+ *       Cannot be updated when active bookings with status BOOKED exist.
  *     tags:
  *       - Warehouses
  *     security:
@@ -242,6 +249,8 @@ router.get(
  *     responses:
  *       200:
  *         description: Warehouse updated
+ *       400:
+ *         description: Cannot update warehouse core details when active BOOKED bookings exist
  */
 router.put('/:warehouseId', authMiddleware, requireVerifiedEmail, authorize(['WAREHOUSE_ADMIN']), updateWarehouse);
 
@@ -289,6 +298,93 @@ router.patch('/:warehouseId/settings', authMiddleware, requireVerifiedEmail, aut
 
 /**
  * @openapi
+ * /warehouses/{warehouseId}/policy:
+ *   get:
+ *     summary: Get warehouse booking and anti-hogging policy
+ *     description: Restricted to WAREHOUSE_ADMIN of the owning organization.
+ *     tags:
+ *       - Warehouses
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: warehouseId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Warehouse policy configuration
+ *       403:
+ *         description: Forbidden. Tenant boundary violation
+ *       404:
+ *         description: Warehouse not found
+ */
+router.get(
+  '/:warehouseId/policy',
+  authMiddleware,
+  requireVerifiedEmail,
+  authorize(['WAREHOUSE_ADMIN']),
+  getWarehousePolicy
+);
+
+/**
+ * @openapi
+ * /warehouses/{warehouseId}/policy:
+ *   put:
+ *     summary: Update warehouse booking and anti-hogging policy
+ *     description: |
+ *       Configures maximum concurrent active bookings per carrier, maximum advance reservation days,
+ *       and hard-lock window hours before slot start. Restricted to WAREHOUSE_ADMIN.
+ *     tags:
+ *       - Warehouses
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: warehouseId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               maxConcurrentBookings:
+ *                 type: integer
+ *                 example: 3
+ *                 description: Max active uncompleted bookings a single carrier can hold simultaneously
+ *               maxAdvanceDays:
+ *                 type: integer
+ *                 example: 14
+ *                 description: Max advance days into the future carriers can reserve slots
+ *               bookingLockWindowHours:
+ *                 type: integer
+ *                 example: 24
+ *                 description: Hard-lock window hours before slot start preventing standard cancellations
+ *     responses:
+ *       200:
+ *         description: Warehouse policy updated successfully
+ *       400:
+ *         description: Invalid policy configuration parameters
+ *       403:
+ *         description: Forbidden. Tenant boundary violation
+ *       404:
+ *         description: Warehouse not found
+ */
+router.put(
+  '/:warehouseId/policy',
+  authMiddleware,
+  requireVerifiedEmail,
+  authorize(['WAREHOUSE_ADMIN']),
+  updateWarehousePolicy
+);
+
+/**
+ * @openapi
  * /warehouses/{warehouseId}/docks:
  *   post:
  *     summary: Add a new dock to a warehouse
@@ -331,6 +427,7 @@ router.post(
  * /warehouses/{warehouseId}/docks:
  *   get:
  *     summary: List all docks for a warehouse
+ *     description: Retrieves docks for a warehouse with real-time dynamic effectiveStatus evaluation based on active dock maintenance closures and base database status.
  *     tags:
  *       - Warehouses
  *     security:
@@ -343,7 +440,7 @@ router.post(
  *           type: integer
  *     responses:
  *       200:
- *         description: List of docks
+ *         description: List of docks with dynamic effectiveStatus
  */
 router.get(
   '/:warehouseId/docks',
@@ -358,6 +455,81 @@ router.patch(
   requireVerifiedEmail,
   authorize(['WAREHOUSE_ADMIN', 'DOCK_MANAGER']),
   updateDockStatus
+);
+
+/**
+ * @openapi
+ * /warehouses/{warehouseId}/docks/{dockId}:
+ *   patch:
+ *     summary: Update dock name or details
+ *     description: |
+ *       Restricted to WAREHOUSE_ADMIN.
+ *       To avoid driver confusion, the dock name can only be updated if there are no active bookings with status 'BOOKED'.
+ *     tags:
+ *       - Warehouses
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: warehouseId
+ *         required: false
+ *         schema:
+ *           type: integer
+ *       - in: path
+ *         name: dockId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: Dock A1 (Refrigerated Express)
+ *     responses:
+ *       200:
+ *         description: Dock updated successfully
+ *       400:
+ *         description: Cannot update dock name while active BOOKED bookings exist, or invalid name
+ *       403:
+ *         description: Forbidden. Tenant boundary violation or insufficient role
+ *       404:
+ *         description: Dock not found
+ */
+router.patch(
+  '/:warehouseId/docks/:dockId',
+  authMiddleware,
+  requireVerifiedEmail,
+  authorize(['WAREHOUSE_ADMIN']),
+  updateDock
+);
+
+router.put(
+  '/:warehouseId/docks/:dockId',
+  authMiddleware,
+  requireVerifiedEmail,
+  authorize(['WAREHOUSE_ADMIN']),
+  updateDock
+);
+
+router.patch(
+  '/docks/:dockId',
+  authMiddleware,
+  requireVerifiedEmail,
+  authorize(['WAREHOUSE_ADMIN']),
+  updateDock
+);
+
+router.put(
+  '/docks/:dockId',
+  authMiddleware,
+  requireVerifiedEmail,
+  authorize(['WAREHOUSE_ADMIN']),
+  updateDock
 );
 
 /**
