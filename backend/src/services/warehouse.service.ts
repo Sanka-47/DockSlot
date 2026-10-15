@@ -276,6 +276,30 @@ export class WarehouseService {
       }
     }
 
+    // Determine if core identification fields (name, address, timezone) are changing
+    const isNameChanging = data.name !== undefined && data.name.trim() !== existing.name;
+    const isAddressChanging = data.address !== undefined && data.address.trim() !== existing.address;
+    const isTimezoneChanging = data.timezone !== undefined && data.timezone.trim() !== existing.timezone;
+    const isCoreInfoChanging = isNameChanging || isAddressChanging || isTimezoneChanging;
+
+    if (isCoreInfoChanging) {
+      const activeBookedCount = await prisma.booking.count({
+        where: {
+          dock: {
+            warehouseId,
+          },
+          status: BookingStatus.BOOKED,
+        },
+      });
+
+      if (activeBookedCount > 0) {
+        throw {
+          status: 400,
+          message: `Cannot update warehouse name, address, or timezone while there are active bookings with status 'BOOKED'.`,
+        };
+      }
+    }
+
     const updated = await prisma.warehouse.update({
       where: { id: warehouseId },
       data: {

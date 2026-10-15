@@ -223,6 +223,7 @@
             },
             "put": {
                 "summary": "Update warehouse general info",
+                "description": "Updates warehouse name, address, or timezone. Disallowed if active bookings with status BOOKED exist.",
                 "tags": ["Warehouses"],
                 "security": [{
                     "bearerAuth": []
@@ -238,6 +239,9 @@
                 "responses": {
                     "200": {
                         "description": "Warehouse updated"
+                    },
+                    "400": {
+                        "description": "Cannot update warehouse core details when active BOOKED bookings exist"
                     }
                 }
             }

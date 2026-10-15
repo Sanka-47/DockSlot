@@ -339,4 +339,40 @@ describe('Warehouse Settings Update & Slot Length Safeguarding Integration Tests
     expect(res.body.success).toBe(true);
     expect(res.body.data.id).toBeDefined();
   });
+
+  it('rejects warehouse name, address, or timezone update when active BOOKED bookings exist', async () => {
+    // testWarehouseId has active BOOKED bookings from previous tests
+    const res = await request(app)
+      .put(`/api/warehouses/${testWarehouseId}`)
+      .set('Authorization', `Bearer ${warehouseAdminAToken}`)
+      .send({
+        name: 'Relocated Facility Name',
+        address: '999 New Road, Colombo',
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toMatch(/active bookings with status 'BOOKED'/i);
+  });
+
+  it('allows warehouse name, address, or timezone update once there are no active BOOKED bookings', async () => {
+    // Delete all bookings on this warehouse to simulate zero BOOKED bookings
+    await prisma.booking.deleteMany({
+      where: { dock: { warehouseId: testWarehouseId } },
+    });
+
+    const res = await request(app)
+      .put(`/api/warehouses/${testWarehouseId}`)
+      .set('Authorization', `Bearer ${warehouseAdminAToken}`)
+      .send({
+        name: 'Renamed Hub',
+        address: '999 New Road, Colombo',
+        timezone: 'Asia/Colombo',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.name).toBe('Renamed Hub');
+    expect(res.body.data.address).toBe('999 New Road, Colombo');
+  });
 });

@@ -229,6 +229,9 @@ router.get(
  * /warehouses/{warehouseId}:
  *   put:
  *     summary: Update warehouse general info
+ *     description: |
+ *       Updates warehouse name, address, or timezone.
+ *       Cannot be updated when active bookings with status BOOKED exist.
  *     tags:
  *       - Warehouses
  *     security:
@@ -242,6 +245,8 @@ router.get(
  *     responses:
  *       200:
  *         description: Warehouse updated
+ *       400:
+ *         description: Cannot update warehouse core details when active BOOKED bookings exist
  */
 router.put('/:warehouseId', authMiddleware, requireVerifiedEmail, authorize(['WAREHOUSE_ADMIN']), updateWarehouse);
 
