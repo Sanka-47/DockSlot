@@ -28,9 +28,14 @@ export class EmailService {
       console.log(`[EmailService] Email sent to ${options.to}: ${options.subject}`);
       return true;
     } catch (error: any) {
-      if (error?.code === 'ECONNREFUSED') {
+      const isConnRefused =
+        error?.code === 'ECONNREFUSED' ||
+        error?.cause?.code === 'ECONNREFUSED' ||
+        (typeof error?.message === 'string' && error.message.includes('ECONNREFUSED'));
+
+      if (isConnRefused) {
         console.warn(
-          `[EmailService] SMTP server is not running on ${mailConfig.host}:${mailConfig.port}. (Email to ${options.to} not sent via SMTP).`
+          `[EmailService:LocalDev] SMTP server is not running on ${mailConfig.host}:${mailConfig.port}. (Email dispatched to console in dev mode).`
         );
       } else {
         console.error(`[EmailService] Failed to send email to ${options.to}:`, error?.message || error);
@@ -44,6 +49,11 @@ export class EmailService {
    */
   public async sendVerificationEmail(email: string, token: string): Promise<boolean> {
     const verificationUrl = `${mailConfig.appUrl}/api/auth/verify?token=${token}`;
+
+    console.log(`\n============== [EMAIL VERIFICATION: DEV PREVIEW] ==============`);
+    console.log(`To:                ${email}`);
+    console.log(`Verification Link: ${verificationUrl}`);
+    console.log(`================================================================\n`);
 
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[EmailService:DevPreview] Verification link for ${email}: ${verificationUrl}`);
@@ -74,6 +84,11 @@ export class EmailService {
    */
   public async sendPasswordResetEmail(email: string, token: string): Promise<boolean> {
     const resetUrl = `${mailConfig.frontendUrl}/reset-password?token=${token}`;
+
+    console.log(`\n================ [PASSWORD RESET: DEV PREVIEW] ================`);
+    console.log(`To:                ${email}`);
+    console.log(`Reset Link:        ${resetUrl}`);
+    console.log(`================================================================\n`);
 
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[EmailService:DevPreview] Password reset link for ${email}: ${resetUrl}`);
@@ -110,6 +125,13 @@ export class EmailService {
     token: string
   ): Promise<boolean> {
     const inviteUrl = `${mailConfig.frontendUrl}/accept-invite?token=${token}`;
+
+    console.log(`\n================== [INVITATION EMAIL: DEV PREVIEW] ==================`);
+    console.log(`To:               ${email}`);
+    console.log(`Organization:     ${organizationName}`);
+    console.log(`Assigned Role:    ${role}`);
+    console.log(`Invitation Link:  ${inviteUrl}`);
+    console.log(`====================================================================\n`);
 
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[EmailService:DevPreview] Invitation link for ${email}: ${inviteUrl}`);

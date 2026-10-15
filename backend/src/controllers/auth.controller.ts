@@ -193,6 +193,23 @@ export const acceptInvite = async (req: Request, res: Response): Promise<void> =
   }
 };
 
+export const getInvitationDetails = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const token = (req.query.token as string) || (req.params.token as string);
+    const result = await invitationService.getInvitationByToken(token);
+    res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (error: any) {
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Failed to retrieve invitation details.',
+    });
+  }
+};
+
 export const logoutAll = async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = req.user?.userId;

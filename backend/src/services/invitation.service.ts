@@ -251,6 +251,46 @@ export class InvitationService {
       },
     };
   }
+
+  /**
+   * Get public invitation details by secure token to populate registration modal.
+   */
+  public async getInvitationByToken(token: string) {
+    if (!token || typeof token !== 'string') {
+      throw { status: 400, message: 'Invitation token is required.' };
+    }
+
+    const invitation = await prisma.invitation.findUnique({
+      where: { token },
+      include: { organization: true },
+    });
+
+    if (!invitation) {
+      throw { status: 404, message: 'Invalid or non-existent invitation token.' };
+    }
+
+    if (invitation.status !== 'PENDING') {
+      throw {
+        status: 400,
+        message: `Invitation cannot be accepted. Current status is ${invitation.status}.`,
+      };
+    }
+
+    if (new Date(invitation.expiresAt) <= new Date()) {
+      await prisma.invitation.update({
+        where: { id: invitation.id },
+        data: { status: 'EXPIRED' },
+      }).catch(() => {});
+      throw { status: 400, message: 'Invitation token has expired.' };
+    }
+
+    return {
+      email: invitation.email,
+      role: invitation.role,
+      organizationName: invitation.organization?.name || 'Organization',
+      expiresAt: invitation.expiresAt,
+    };
+  }
 }
 
 export const invitationService = new InvitationService();

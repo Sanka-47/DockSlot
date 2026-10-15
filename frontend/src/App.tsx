@@ -67,6 +67,18 @@ const AppContent: React.FC = () => {
     );
   }
 
+  // Handle invitation link: /accept-invite?token=...
+  if (pathname.includes('accept-invite')) {
+    return (
+      <AuthPage
+        initialTab="signin"
+        inviteToken={urlToken}
+        showInviteModal={true}
+        onNavigate={(route) => setActiveView(route)}
+      />
+    );
+  }
+
   if (!isAuthenticated || !user) {
     return (
       <AuthPage

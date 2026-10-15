@@ -9,6 +9,7 @@ import {
   verifyEmail,
   resendVerification,
   acceptInvite,
+  getInvitationDetails,
   logoutAll,
 } from '../controllers/auth.controller';
 import { authenticate } from '../middleware/auth.middleware';
@@ -138,6 +139,29 @@ router.post('/login', authRateLimiter, login);
  *         description: User email already registered
  */
 router.post('/accept-invite', acceptInvite);
+
+/**
+ * @openapi
+ * /auth/invitation:
+ *   get:
+ *     summary: Retrieve invitation details by token to verify before registering
+ *     tags:
+ *       - Authentication
+ *     parameters:
+ *       - in: query
+ *         name: token
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Invitation details retrieved successfully
+ *       400:
+ *         description: Invalid or expired token
+ *       404:
+ *         description: Invitation not found
+ */
+router.get('/invitation', getInvitationDetails);
 
 /**
  * @openapi

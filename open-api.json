@@ -1226,6 +1226,31 @@
                 }
             }
         },
+        "/auth/invitation": {
+            "get": {
+                "summary": "Retrieve invitation details by token to verify before registering",
+                "tags": ["Authentication"],
+                "parameters": [{
+                    "in": "query",
+                    "name": "token",
+                    "required": true,
+                    "schema": {
+                        "type": "string"
+                    }
+                }],
+                "responses": {
+                    "200": {
+                        "description": "Invitation details retrieved successfully"
+                    },
+                    "400": {
+                        "description": "Invalid or expired token"
+                    },
+                    "404": {
+                        "description": "Invitation not found"
+                    }
+                }
+            }
+        },
         "/auth/verify": {
             "get": {
                 "summary": "Verify user email address with email token",

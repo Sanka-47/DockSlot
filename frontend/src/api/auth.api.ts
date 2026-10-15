@@ -31,6 +31,21 @@ export const authApi = {
     const response = await apiClient.post<{ success: boolean; message: string }>('/auth/logout-all');
     return response.data;
   },
+
+  acceptInvite: async (
+    token: string,
+    password: string
+  ): Promise<{ success: boolean; message: string; data?: any; token?: string; user?: User }> => {
+    const response = await apiClient.post('/auth/accept-invite', { token, password });
+    return response.data;
+  },
+
+  getInvitationDetails: async (
+    token: string
+  ): Promise<{ success: boolean; data: { email: string; role: string; organizationName?: string } }> => {
+    const response = await apiClient.get('/auth/invitation', { params: { token } });
+    return response.data;
+  },
 };
 
 export default authApi;
