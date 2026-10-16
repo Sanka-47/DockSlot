@@ -308,9 +308,50 @@ export const DispatcherDashboard: React.FC = () => {
   }, []);
 
   // ---------------------------------------------------------------------------
-  // Slot Search Handler
+  // Slot Search & Normalization Helpers
   // ---------------------------------------------------------------------------
-  const handleSearchSlots = async (e?: React.FormEvent) => {
+  const normalizeSlotResponse = useCallback(
+    (rawData: unknown, dockIdFilter?: number): AvailableDockSlots[] => {
+      if (!Array.isArray(rawData) || rawData.length === 0) {
+        return [];
+      }
+
+      if ("slots" in rawData[0]) {
+        return (rawData as AvailableDockSlots[]).map((group) => ({
+          ...group,
+          slots: dockIdFilter
+            ? group.dockId === dockIdFilter
+              ? group.slots
+              : []
+            : group.slots,
+        }));
+      }
+
+      if ("slotStartTime" in rawData[0]) {
+        const flatList = rawData as unknown as AvailableSlot[];
+        const grouped: Record<number, AvailableDockSlots> = {};
+        flatList.forEach((slot) => {
+          const dId = slot.dockId || 0;
+          const dName = slot.dockName || `Dock #${dId}`;
+          if (!grouped[dId]) {
+            grouped[dId] = { dockId: dId, dockName: dName, slots: [] };
+          }
+          if (!dockIdFilter || dId === dockIdFilter) {
+            grouped[dId].slots.push(slot);
+          }
+        });
+        return Object.values(grouped);
+      }
+
+      return [];
+    },
+    [],
+  );
+
+  const handleSearchSlots = async (
+    e?: React.FormEvent,
+    options?: { preserveError?: boolean },
+  ) => {
     if (e) e.preventDefault();
     if (!selectedWarehouseId) {
       setErrorMessage("Please select a target warehouse.");
@@ -322,7 +363,9 @@ export const DispatcherDashboard: React.FC = () => {
     }
 
     setIsSearchingSlots(true);
-    setErrorMessage(null);
+    if (!options?.preserveError) {
+      setErrorMessage(null);
+    }
     setHasSearchedSlots(true);
 
     try {
@@ -335,51 +378,17 @@ export const DispatcherDashboard: React.FC = () => {
         targetDate,
         dockIdFilter,
       );
-      const rawData = res.data;
-
-      // Normalize response data: backend returns AvailableDockSlots[]:
-      // [{ dockId, dockName, slots: [...] }]
-      // or openapi flat list: [{ dockId, dockName, slotStartTime, slotEndTime }]
-      let normalized: AvailableDockSlots[] = [];
-
-      if (Array.isArray(rawData)) {
-        if (rawData.length > 0 && "slots" in rawData[0]) {
-          normalized = (rawData as AvailableDockSlots[]).map((group) => ({
-            ...group,
-            slots: dockIdFilter
-              ? group.dockId === dockIdFilter
-                ? group.slots
-                : []
-              : group.slots,
-          }));
-        } else if (rawData.length > 0 && "slotStartTime" in rawData[0]) {
-          // Flat list format
-          const flatList = rawData as unknown as AvailableSlot[];
-          const grouped: Record<number, AvailableDockSlots> = {};
-          flatList.forEach((slot) => {
-            const dId = slot.dockId || 0;
-            const dName = slot.dockName || `Dock #${dId}`;
-            if (!grouped[dId]) {
-              grouped[dId] = { dockId: dId, dockName: dName, slots: [] };
-            }
-            if (!dockIdFilter || dId === dockIdFilter) {
-              grouped[dId].slots.push(slot);
-            }
-          });
-          normalized = Object.values(grouped);
-        } else {
-          normalized = [];
-        }
-      }
-
+      const normalized = normalizeSlotResponse(res.data, dockIdFilter);
       setSearchedSlots(normalized);
     } catch (err: any) {
-      const msg =
-        err.response?.data?.message ||
-        err.message ||
-        "Failed to search available slots.";
-      setErrorMessage(msg);
-      setSearchedSlots([]);
+      if (!options?.preserveError) {
+        const msg =
+          err.response?.data?.message ||
+          err.message ||
+          "Failed to search available slots.";
+        setErrorMessage(msg);
+        setSearchedSlots([]);
+      }
     } finally {
       setIsSearchingSlots(false);
     }
@@ -474,11 +483,47 @@ export const DispatcherDashboard: React.FC = () => {
         `Booking #${createdBooking.id} created successfully for ${selectedSlotForBooking.dockName} (${truckPlate.trim()})!`,
       );
     } catch (err: any) {
-      const msg =
-        err.response?.data?.message ||
-        err.message ||
-        "Failed to create booking.";
-      setBookingModalError(msg);
+      const status = err?.response?.status;
+      const rawMsg: string =
+        err?.response?.data?.message || err?.message || "";
+      const isSlotTakenConflict =
+        status === 409 ||
+        /conflict|already booked|already taken|unavailable/i.test(rawMsg);
+
+      if (isSlotTakenConflict) {
+        const slotWindowLabel = `${formatDateTime(
+          selectedSlotForBooking.slotStartTime,
+          "h:mm a",
+        )} – ${formatDateTime(selectedSlotForBooking.slotEndTime, "h:mm a")}`;
+        const clearConflictMessage = `The selected slot (${slotWindowLabel} on ${selectedSlotForBooking.dockName}) was just booked by another carrier while you were viewing it. Available slots have been updated — please select another open slot.`;
+
+        // Immediately remove the taken slot from current view
+        setSearchedSlots((prev) => {
+          if (!prev) return prev;
+          return prev.map((dockGroup) => {
+            if (dockGroup.dockId === selectedSlotForBooking.dockId) {
+              return {
+                ...dockGroup,
+                slots: dockGroup.slots.filter(
+                  (s) =>
+                    s.slotStartTime !== selectedSlotForBooking.slotStartTime,
+                ),
+              };
+            }
+            return dockGroup;
+          });
+        });
+
+        setBookingModalError(clearConflictMessage);
+        setErrorMessage(clearConflictMessage);
+        setIsBookingModalOpen(false);
+
+        // Fetch fresh updated slots from backend while preserving the clear alert message
+        await handleSearchSlots(undefined, { preserveError: true });
+      } else {
+        const msg = rawMsg || "Failed to create booking.";
+        setBookingModalError(msg);
+      }
     } finally {
       setIsSubmittingBooking(false);
     }
@@ -507,40 +552,28 @@ export const DispatcherDashboard: React.FC = () => {
     }
   };
 
-  const fetchRescheduleSlots = async (warehouseId: number, dateStr: string) => {
+  const fetchRescheduleSlots = async (
+    warehouseId: number,
+    dateStr: string,
+    options?: { preserveError?: boolean },
+  ) => {
     setIsLoadingRescheduleSlots(true);
-    setRescheduleError(null);
+    if (!options?.preserveError) {
+      setRescheduleError(null);
+    }
     try {
       const res = await warehouseApi.getAvailableSlots(warehouseId, dateStr);
-      const rawData = res.data;
-      let normalized: AvailableDockSlots[] = [];
-
-      if (Array.isArray(rawData)) {
-        if (rawData.length > 0 && "slots" in rawData[0]) {
-          normalized = rawData as AvailableDockSlots[];
-        } else if (rawData.length > 0 && "slotStartTime" in rawData[0]) {
-          const flatList = rawData as unknown as AvailableSlot[];
-          const grouped: Record<number, AvailableDockSlots> = {};
-          flatList.forEach((slot) => {
-            const dId = slot.dockId || 0;
-            const dName = slot.dockName || `Dock #${dId}`;
-            if (!grouped[dId]) {
-              grouped[dId] = { dockId: dId, dockName: dName, slots: [] };
-            }
-            grouped[dId].slots.push(slot);
-          });
-          normalized = Object.values(grouped);
-        }
-      }
-
+      const normalized = normalizeSlotResponse(res.data);
       setRescheduleSlots(normalized);
     } catch (err: any) {
-      const msg =
-        err.response?.data?.message ||
-        err.message ||
-        "Failed to fetch slots for rescheduling.";
-      setRescheduleError(msg);
-      setRescheduleSlots([]);
+      if (!options?.preserveError) {
+        const msg =
+          err.response?.data?.message ||
+          err.message ||
+          "Failed to fetch slots for rescheduling.";
+        setRescheduleError(msg);
+        setRescheduleSlots([]);
+      }
     } finally {
       setIsLoadingRescheduleSlots(false);
     }
@@ -595,11 +628,53 @@ export const DispatcherDashboard: React.FC = () => {
         handleSearchSlots();
       }
     } catch (err: any) {
-      const msg =
-        err.response?.data?.message ||
-        err.message ||
-        "Failed to reschedule booking.";
-      setRescheduleError(msg);
+      const status = err?.response?.status;
+      const rawMsg: string =
+        err?.response?.data?.message || err?.message || "";
+      const isSlotTakenConflict =
+        status === 409 ||
+        /conflict|already booked|already taken|unavailable/i.test(rawMsg);
+
+      if (isSlotTakenConflict && selectedRescheduleSlot) {
+        const takenSlot = selectedRescheduleSlot;
+        const slotWindowLabel = `${formatDateTime(
+          takenSlot.slotStartTime,
+          "h:mm a",
+        )} – ${formatDateTime(takenSlot.slotEndTime, "h:mm a")}`;
+        const clearConflictMessage = `The selected slot (${slotWindowLabel} on ${takenSlot.dockName}) was just booked by another carrier while you were viewing it. Available slots have been updated — please choose another open slot.`;
+
+        setSelectedRescheduleSlot(null);
+        setRescheduleSlots((prev) => {
+          if (!prev) return prev;
+          return prev.map((dockGroup) => {
+            if (dockGroup.dockId === takenSlot.dockId) {
+              return {
+                ...dockGroup,
+                slots: dockGroup.slots.filter(
+                  (s) => s.slotStartTime !== takenSlot.slotStartTime,
+                ),
+              };
+            }
+            return dockGroup;
+          });
+        });
+        setRescheduleError(clearConflictMessage);
+
+        const warehouseId =
+          bookingToReschedule.dock?.warehouseId ||
+          Number(selectedWarehouseId);
+        if (warehouseId) {
+          await fetchRescheduleSlots(warehouseId, rescheduleDate, {
+            preserveError: true,
+          });
+        }
+        if (hasSearchedSlots && targetDate === rescheduleDate) {
+          await handleSearchSlots(undefined, { preserveError: true });
+        }
+      } else {
+        const msg = rawMsg || "Failed to reschedule booking.";
+        setRescheduleError(msg);
+      }
     } finally {
       setIsSubmittingReschedule(false);
     }
