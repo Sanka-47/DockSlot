@@ -10,7 +10,6 @@ import {
   CheckCircle2,
   X,
   Building2,
-  ShieldCheck,
   Search,
 } from 'lucide-react';
 import { userApi } from '../api/user.api';

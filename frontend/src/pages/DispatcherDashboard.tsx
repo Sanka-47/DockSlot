@@ -18,6 +18,7 @@ import {
   CalendarX,
   Check,
   RotateCcw,
+  Globe,
   Warehouse as WarehouseIcon,
 } from "lucide-react";
 import {
@@ -272,6 +273,39 @@ export const DispatcherDashboard: React.FC = () => {
   const currentWarehouseDocks = useMemo<Dock[]>(() => {
     return selectedWarehouse?.docks || [];
   }, [selectedWarehouse]);
+
+  // Browser Local Timezone
+  const browserTimezone = useMemo<string>(() => {
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Local";
+      const offsetMinutes = -new Date().getTimezoneOffset();
+      const sign = offsetMinutes >= 0 ? "+" : "-";
+      const absMinutes = Math.abs(offsetMinutes);
+      const hours = String(Math.floor(absMinutes / 60)).padStart(2, "0");
+      const mins = String(absMinutes % 60).padStart(2, "0");
+      return `${tz} (UTC${sign}${hours}:${mins})`;
+    } catch {
+      return "UTC";
+    }
+  }, []);
+
+  // Format IANA timezone string with UTC offset
+  const formatTimezoneLabel = useCallback((tz?: string): string => {
+    if (!tz) return "UTC";
+    try {
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: tz,
+        timeZoneName: "shortOffset",
+      }).formatToParts(new Date());
+      const offsetPart = parts.find((p) => p.type === "timeZoneName")?.value;
+      if (offsetPart && offsetPart !== tz) {
+        return `${tz} (${offsetPart.replace("GMT", "UTC")})`;
+      }
+      return tz;
+    } catch {
+      return tz;
+    }
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Slot Search Handler
@@ -717,7 +751,7 @@ export const DispatcherDashboard: React.FC = () => {
   return (
     <div className="space-y-6 pb-12">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-gray-200 pb-5">
+      <header className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 border-b border-gray-200 pb-5">
         <div>
           <div className="flex items-center space-x-2">
             <div className="p-2 bg-[#2F4F4F] text-white rounded-lg shadow-sm">
@@ -733,7 +767,19 @@ export const DispatcherDashboard: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Browser Local Timezone Badge */}
+          <div
+            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-xs text-slate-700 shadow-xs"
+            title="Your browser's local timezone"
+          >
+            <Globe className="w-3.5 h-3.5 text-[#2F4F4F] shrink-0" />
+            <span className="text-slate-500 font-medium">Local Timezone:</span>
+            <strong className="font-bold text-slate-900">
+              {browserTimezone}
+            </strong>
+          </div>
+
           <Button
             variant="outline"
             size="sm"
@@ -748,7 +794,7 @@ export const DispatcherDashboard: React.FC = () => {
             <span>Refresh</span>
           </Button>
         </div>
-      </div>
+      </header>
 
       {/* Global Alert Banners */}
       {errorMessage && (
@@ -789,15 +835,29 @@ export const DispatcherDashboard: React.FC = () => {
       {/* SECTION 1: Slot Search & Filter Section                                   */}
       {/* ========================================================================= */}
       <Card className="bg-white shadow-sm border border-gray-200">
-        <CardHeader className="border-b border-gray-100 pb-4">
-          <CardTitle className="text-base font-bold text-gray-900 flex items-center space-x-2">
-            <Calendar className="w-4 h-4 text-[#2F4F4F]" />
-            <span>Search & Filter Available Dock Slots</span>
-          </CardTitle>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Select a target warehouse, appointment date, and optional dock bay
-            to query open time windows.
-          </p>
+        <CardHeader className="border-b border-gray-100 pb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <CardTitle className="text-base font-bold text-gray-900 flex items-center space-x-2">
+              <Calendar className="w-4 h-4 text-[#2F4F4F]" />
+              <span>Search & Filter Available Dock Slots</span>
+            </CardTitle>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Select a target warehouse, appointment date, and optional dock bay
+              to query open time windows.
+            </p>
+          </div>
+
+          {selectedWarehouse && (
+            <div className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 self-start sm:self-auto">
+              <Clock className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span>
+                {selectedWarehouse.name} Timezone:{" "}
+                <strong className="font-bold">
+                  {formatTimezoneLabel(selectedWarehouse.timezone)}
+                </strong>
+              </span>
+            </div>
+          )}
         </CardHeader>
 
         <CardContent className="pt-5 space-y-6">
@@ -809,12 +869,19 @@ export const DispatcherDashboard: React.FC = () => {
             <div>
               <Label
                 htmlFor="search-warehouse"
-                className="text-xs font-semibold text-gray-700 mb-1.5 flex items-center space-x-1"
+                className="text-xs font-semibold text-gray-700 mb-1.5 flex items-center justify-between"
               >
-                <Building className="w-3.5 h-3.5 text-gray-500" />
-                <span>
-                  Target Warehouse <span className="text-red-500">*</span>
+                <span className="flex items-center space-x-1">
+                  <Building className="w-3.5 h-3.5 text-gray-500" />
+                  <span>
+                    Target Warehouse <span className="text-red-500">*</span>
+                  </span>
                 </span>
+                {selectedWarehouse?.timezone && (
+                  <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                    {selectedWarehouse.timezone}
+                  </span>
+                )}
               </Label>
               <select
                 id="search-warehouse"
@@ -831,7 +898,7 @@ export const DispatcherDashboard: React.FC = () => {
                 ) : (
                   warehouses.map((wh) => (
                     <option key={wh.id} value={wh.id}>
-                      {wh.name} ({wh.address})
+                      {wh.name} ({wh.address}) — [{wh.timezone || "UTC"}]
                     </option>
                   ))
                 )}
