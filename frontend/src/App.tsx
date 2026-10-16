@@ -8,12 +8,14 @@ import { CarrierDashboard } from './pages/CarrierDashboard';
 import { WarehouseDashboard } from './pages/WarehouseDashboard';
 import { DockManagerDashboard } from './pages/DockManagerDashboard';
 import { TeamManagementModal } from './components/TeamManagementModal';
-import { Warehouse, LogOut, Users, ShieldAlert } from 'lucide-react';
+import { SecuritySettingsModal } from './components/SecuritySettingsModal';
+import { Warehouse, LogOut, Users, ShieldAlert, ShieldCheck } from 'lucide-react';
 
 const AppContent: React.FC = () => {
-  const { user, isAuthenticated, logout, logoutAll, isLoading } = useAuth();
+  const { user, isAuthenticated, logout, logoutAll, refreshUser, isLoading } = useAuth();
   const [activeView, setActiveView] = useState<'auto' | 'carrier' | 'warehouse'>('auto');
   const [isTeamModalOpen, setIsTeamModalOpen] = useState<boolean>(false);
+  const [isSecurityModalOpen, setIsSecurityModalOpen] = useState<boolean>(false);
 
   if (isLoading) {
     return (
@@ -130,6 +132,15 @@ const AppContent: React.FC = () => {
           )}
 
           <button
+            onClick={() => setIsSecurityModalOpen(true)}
+            className="flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold bg-white/10 hover:bg-white/20 rounded-md transition-colors"
+            title="Account security settings, including two-factor authentication"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+            <span className="hidden sm:inline">Security</span>
+          </button>
+
+          <button
             onClick={async () => {
               const confirmed = window.confirm(
                 'Are you sure you want to log out of all devices? This will invalidate all active sessions across every browser and device.'
@@ -175,6 +186,18 @@ const AppContent: React.FC = () => {
           currentUserId={user.id}
           currentUserRole={user.role}
           organizationName={user.organization?.name}
+        />
+      )}
+
+      {/* Account Security Settings (Two-Factor Authentication) */}
+      {isSecurityModalOpen && (
+        <SecuritySettingsModal
+          isOpen={isSecurityModalOpen}
+          onClose={() => setIsSecurityModalOpen(false)}
+          user={user}
+          onStatusChange={() => {
+            refreshUser();
+          }}
         />
       )}
     </div>

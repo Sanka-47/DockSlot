@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import { UserRole, OrganizationType } from '@prisma/client';
 import { prisma } from '../config/db.config';
 import { securityConfig } from '../config/security.config';
-import { signAccessToken, signRefreshToken, verifyJwtToken } from '../utils/jwt.utils';
+import { signAccessToken, signRefreshToken, verifyJwtToken, signTemp2faToken } from '../utils/jwt.utils';
 import { emailService } from './email.service';
 import redis from '../config/redis';
 
@@ -48,14 +48,17 @@ export interface AcceptInviteInput {
 }
 
 export interface AuthResponse {
-  token: string;
+  token?: string;
   refreshToken?: string;
+  requires2FA?: boolean;
+  tempToken?: string;
   user: {
     id: number;
     email: string;
     role: UserRole;
     organizationId: number;
     isEmailVerified: boolean;
+    isTwoFactorEnabled?: boolean;
     organization?: {
       id: number;
       name: string;
@@ -234,6 +237,7 @@ export class AuthService {
           role: user.role,
           organizationId: user.organizationId,
           isEmailVerified: user.isEmailVerified,
+          isTwoFactorEnabled: user.isTwoFactorEnabled,
           organization: {
             id: organization.id,
             name: organization.name,
@@ -288,6 +292,7 @@ export class AuthService {
         role: user.role,
         organizationId: user.organizationId,
         isEmailVerified: user.isEmailVerified,
+        isTwoFactorEnabled: user.isTwoFactorEnabled,
         organization: {
           id: existingOrg.id,
           name: existingOrg.name,
@@ -460,6 +465,24 @@ export class AuthService {
       });
     }
 
+    // 4. Two-Factor Authentication Check
+    if (user.isTwoFactorEnabled && user.totpSecret) {
+      const tempToken = signTemp2faToken(user.id, user.email);
+      return {
+        requires2FA: true,
+        tempToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          organizationId: user.organizationId,
+          isEmailVerified: user.isEmailVerified,
+          isTwoFactorEnabled: user.isTwoFactorEnabled,
+          organization: user.organization,
+        },
+      };
+    }
+
     const tokenVersion = await this.getUserTokenVersion(user.id);
     const token = this.generateToken(user, tokenVersion);
     const refreshToken = this.generateRefreshToken(user, tokenVersion);
@@ -473,6 +496,7 @@ export class AuthService {
         role: user.role,
         organizationId: user.organizationId,
         isEmailVerified: user.isEmailVerified,
+        isTwoFactorEnabled: user.isTwoFactorEnabled,
         organization: user.organization,
       },
     };
@@ -609,6 +633,7 @@ export class AuthService {
         organizationId: true,
         isActive: true,
         isEmailVerified: true,
+        isTwoFactorEnabled: true,
         createdAt: true,
         updatedAt: true,
         organization: {

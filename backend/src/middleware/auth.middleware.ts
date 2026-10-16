@@ -62,6 +62,16 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     const userId = decoded.userId || decoded.id;
     const organizationId = decoded.organizationId || decoded.organization_id;
 
+    // Reject short-lived intermediate tokens (2FA login challenge, refresh tokens).
+    // Only a fully authenticated access token may pass this middleware.
+    if (decoded.type === '2fa_temp' || decoded.type === 'refresh') {
+      res.status(401).json({
+        success: false,
+        message: 'Invalid authorization token.',
+      });
+      return;
+    }
+
     // Step 2: Check MySQL/Prisma or Redis for isActive status
     const cachedActive = await redis.get(`user:${userId}:isActive`);
     if (cachedActive === '0' || cachedActive === 'false') {

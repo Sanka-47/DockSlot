@@ -9,6 +9,8 @@ export interface AuthContextType {
   login: (token: string, user: User) => void;
   logout: () => void;
   logoutAll: () => Promise<void>;
+  /** Re-reads the current user from the server (e.g. after a 2FA change). */
+  refreshUser: () => Promise<void>;
   isAuthenticated: boolean;
   isLoading: boolean;
 }
@@ -67,6 +69,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  const refreshUser = async () => {
+    const savedToken = storage.getToken();
+    if (!savedToken) return;
+    try {
+      const res = await authApi.getMe();
+      if (res?.data) {
+        setUser(res.data);
+      }
+    } catch {
+      // Leave existing state untouched; an expired session is handled by the 401 interceptor.
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -75,6 +90,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         login,
         logout,
         logoutAll,
+        refreshUser,
         isAuthenticated: !!token,
         isLoading,
       }}

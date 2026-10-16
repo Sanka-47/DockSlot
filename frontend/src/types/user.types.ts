@@ -25,6 +25,7 @@ export interface User {
   organizationId: number;
   isActive?: boolean;
   isEmailVerified: boolean;
+  isTwoFactorEnabled?: boolean;
   createdAt?: string;
   updatedAt?: string;
   organization?: Organization;
@@ -48,9 +49,48 @@ export interface AuthResponse {
   success?: boolean;
   message?: string;
   token?: string;
+  refreshToken?: string;
+  requires2FA?: boolean;
+  tempToken?: string;
   user?: User;
   data?: {
-    token: string;
+    token?: string;
+    refreshToken?: string;
+    requires2FA?: boolean;
+    tempToken?: string;
     user: User;
   };
+}
+
+/* ------------------------------------------------------------------ *
+ * Two-Factor Authentication (TOTP)
+ * ------------------------------------------------------------------ */
+
+export interface TwoFactorStatus {
+  isTwoFactorEnabled: boolean;
+  /** True when a secret was generated but never confirmed with a valid code. */
+  isSetupPending: boolean;
+}
+
+export interface TwoFactorSetupResponse {
+  secret: string;
+  /** PNG data URL suitable for an <img src="..."> tag. */
+  qrCode: string;
+  otpauthUrl: string;
+}
+
+export interface TwoFactorVerifyRequest {
+  token: string;
+}
+
+export interface TwoFactorDisableRequest {
+  password?: string;
+  token?: string;
+}
+
+export interface TwoFactorLoginVerifyRequest {
+  token: string;
+  tempToken?: string;
+  email?: string;
+  password?: string;
 }

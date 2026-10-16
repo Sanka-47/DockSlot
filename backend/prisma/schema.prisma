@@ -65,6 +65,8 @@ model User {
   resetPasswordExpires DateTime?
   failedLoginAttempts  Int       @default(0)
   lockUntil            DateTime?
+  totpSecret           String?
+  isTwoFactorEnabled   Boolean   @default(false)
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 

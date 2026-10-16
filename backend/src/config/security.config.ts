@@ -37,6 +37,9 @@ export const securityConfig = {
   get rateLimitBookingMax(): number {
     return parseEnvInt(process.env.RATE_LIMIT_BOOKING_MAX, 10);
   },
+  get rateLimit2faMax(): number {
+    return parseEnvInt(process.env.RATE_LIMIT_2FA_MAX, 5);
+  },
   get maxFailedLoginAttempts(): number {
     return parseEnvInt(process.env.MAX_FAILED_LOGIN_ATTEMPTS, 5);
   },
@@ -63,6 +66,9 @@ export const securityConfig = {
   get RATE_LIMIT_BOOKING_MAX(): number {
     return this.rateLimitBookingMax;
   },
+  get RATE_LIMIT_2FA_MAX(): number {
+    return this.rateLimit2faMax;
+  },
   get MAX_FAILED_LOGIN_ATTEMPTS(): number {
     return this.maxFailedLoginAttempts;
   },
@@ -77,6 +83,7 @@ export const JWT_REFRESH_EXPIRES_IN = securityConfig.jwtRefreshExpiresIn;
 export const RATE_LIMIT_WINDOW_MS = securityConfig.rateLimitWindowMs;
 export const RATE_LIMIT_API_MAX = securityConfig.rateLimitApiMax;
 export const RATE_LIMIT_BOOKING_MAX = securityConfig.rateLimitBookingMax;
+export const RATE_LIMIT_2FA_MAX = securityConfig.rateLimit2faMax;
 export const MAX_FAILED_LOGIN_ATTEMPTS = securityConfig.maxFailedLoginAttempts;
 export const LOGIN_LOCKOUT_DURATION_MINUTES = securityConfig.loginLockoutDurationMinutes;
 

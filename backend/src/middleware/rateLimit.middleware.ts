@@ -115,4 +115,38 @@ export const authRateLimiter = rateLimit({
   },
 });
 
+/**
+ * Two-Factor Authentication Rate Limiter:
+ * Throttles TOTP code submission to `RATE_LIMIT_2FA_MAX` per IP within the
+ * `RATE_LIMIT_WINDOW_MS` window.
+ *
+ * Without this, a 6-digit code (10^6 combinations) spread across the ~10 code
+ * windows covered by a 5-minute temp token would be brute-forceable. The key is
+ * IP-based because the temp token itself is not yet an authenticated principal,
+ * and is scoped per endpoint so throttling one route does not lock the others.
+ */
+export const twoFactorRateLimiter = rateLimit({
+  windowMs: securityConfig.rateLimitWindowMs,
+  limit: () => securityConfig.rateLimit2faMax,
+  standardHeaders: true,
+  legacyHeaders: true,
+  statusCode: 429,
+  keyGenerator: (req: Request) => {
+    const rawIp = req.ip || req.socket?.remoteAddress || '127.0.0.1';
+    // req.route is not populated before the handler runs, so use the raw path.
+    const route = (req.originalUrl || req.url || '').split('?')[0];
+    return `2fa:${route}:ip:${ipKeyGenerator(rawIp)}`;
+  },
+  store: new ConfigurableRedisStore({
+    sendCommand: (...args: string[]) => redis.call(...args),
+    prefix: 'rl:2fa:',
+  }),
+  validate: false,
+  message: {
+    success: false,
+    message:
+      'Too many two-factor authentication attempts. Please wait a moment before trying again.',
+  },
+});
+
 export default apiRateLimiter;

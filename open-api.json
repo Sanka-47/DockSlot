@@ -5,13 +5,16 @@
         "version": "1.0.0",
         "description": "API documentation for multi-tenant logistics platform."
     },
-    "servers": [{
-        "url": "http://localhost:5000/api",
-        "description": "Local development API server"
-    }, {
-        "url": "http://localhost:5000",
-        "description": "Root server"
-    }],
+    "servers": [
+        {
+            "url": "http://localhost:5000/api",
+            "description": "Local development API server"
+        },
+        {
+            "url": "http://localhost:5000",
+            "description": "Root server"
+        }
+    ],
     "components": {
         "securitySchemes": {
             "bearerAuth": {
@@ -22,17 +25,23 @@
             }
         }
     },
-    "security": [{
-        "bearerAuth": []
-    }],
+    "security": [
+        {
+            "bearerAuth": []
+        }
+    ],
     "paths": {
         "/warehouses": {
             "get": {
                 "summary": "List all warehouses for the authenticated warehouse operator",
-                "tags": ["Warehouses"],
-                "security": [{
-                    "bearerAuth": []
-                }],
+                "tags": [
+                    "Warehouses"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "List of warehouses"
@@ -44,17 +53,25 @@
             },
             "post": {
                 "summary": "Create a new warehouse facility",
-                "tags": ["Warehouses"],
-                "security": [{
-                    "bearerAuth": []
-                }],
+                "tags": [
+                    "Warehouses"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
                                 "type": "object",
-                                "required": ["name", "address", "timezone"],
+                                "required": [
+                                    "name",
+                                    "address",
+                                    "timezone"
+                                ],
                                 "properties": {
                                     "name": {
                                         "type": "string",
@@ -70,7 +87,11 @@
                                     },
                                     "slotLengthMinutes": {
                                         "type": "integer",
-                                        "enum": [30, 45, 60],
+                                        "enum": [
+                                            30,
+                                            45,
+                                            60
+                                        ],
                                         "example": 30
                                     }
                                 }
@@ -88,29 +109,40 @@
         "/warehouses/docks/{dockId}/status": {
             "patch": {
                 "summary": "Update dock status (ACTIVE or MAINTENANCE)",
-                "tags": ["Warehouses"],
-                "security": [{
-                    "bearerAuth": []
-                }],
-                "parameters": [{
-                    "in": "path",
-                    "name": "dockId",
-                    "required": true,
-                    "schema": {
-                        "type": "integer"
+                "tags": [
+                    "Warehouses"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
                     }
-                }],
+                ],
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "dockId",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
                                 "type": "object",
-                                "required": ["status"],
+                                "required": [
+                                    "status"
+                                ],
                                 "properties": {
                                     "status": {
                                         "type": "string",
-                                        "enum": ["ACTIVE", "MAINTENANCE"]
+                                        "enum": [
+                                            "ACTIVE",
+                                            "MAINTENANCE"
+                                        ]
                                     }
                                 }
                             }
@@ -128,18 +160,24 @@
             "patch": {
                 "summary": "Update dock name or details",
                 "description": "Restricted to WAREHOUSE_ADMIN. To avoid driver confusion, the name can only be updated if there are no active bookings with status 'BOOKED'.",
-                "tags": ["Warehouses"],
-                "security": [{
-                    "bearerAuth": []
-                }],
-                "parameters": [{
-                    "in": "path",
-                    "name": "dockId",
-                    "required": true,
-                    "schema": {
-                        "type": "integer"
+                "tags": [
+                    "Warehouses"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
                     }
-                }],
+                ],
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "dockId",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -176,25 +214,35 @@
             "post": {
                 "summary": "Schedule a maintenance closure window for a dock",
                 "description": "Blocks out a specific time range from slot generation for maintenance or repairs. Maintenance cannot be scheduled if active bookings exist on this dock for that day.",
-                "tags": ["Warehouses"],
-                "security": [{
-                    "bearerAuth": []
-                }],
-                "parameters": [{
-                    "in": "path",
-                    "name": "dockId",
-                    "required": true,
-                    "schema": {
-                        "type": "integer"
+                "tags": [
+                    "Warehouses"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
                     }
-                }],
+                ],
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "dockId",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
                                 "type": "object",
-                                "required": ["startTime", "endTime", "reason"],
+                                "required": [
+                                    "startTime",
+                                    "endTime",
+                                    "reason"
+                                ],
                                 "properties": {
                                     "startTime": {
                                         "type": "string",
@@ -229,18 +277,24 @@
             },
             "get": {
                 "summary": "List maintenance closures for a dock",
-                "tags": ["Warehouses"],
-                "security": [{
-                    "bearerAuth": []
-                }],
-                "parameters": [{
-                    "in": "path",
-                    "name": "dockId",
-                    "required": true,
-                    "schema": {
-                        "type": "integer"
+                "tags": [
+                    "Warehouses"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
                     }
-                }],
+                ],
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "dockId",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "List of scheduled dock closures"
@@ -251,18 +305,24 @@
         "/warehouses/{warehouseId}": {
             "get": {
                 "summary": "Get warehouse details by ID",
-                "tags": ["Warehouses"],
-                "security": [{
-                    "bearerAuth": []
-                }],
-                "parameters": [{
-                    "in": "path",
-                    "name": "warehouseId",
-                    "required": true,
-                    "schema": {
-                        "type": "integer"
+                "tags": [
+                    "Warehouses"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
                     }
-                }],
+                ],
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "warehouseId",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Warehouse details"
@@ -275,18 +335,24 @@
             "put": {
                 "summary": "Update warehouse general info",
                 "description": "Updates warehouse name, address, or timezone. Disallowed if active bookings with status BOOKED exist.",
-                "tags": ["Warehouses"],
-                "security": [{
-                    "bearerAuth": []
-                }],
-                "parameters": [{
-                    "in": "path",
-                    "name": "warehouseId",
-                    "required": true,
-                    "schema": {
-                        "type": "integer"
+                "tags": [
+                    "Warehouses"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
                     }
-                }],
+                ],
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "warehouseId",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Warehouse updated"
@@ -301,29 +367,41 @@
             "patch": {
                 "summary": "Update warehouse default slot length",
                 "description": "Restricted to WAREHOUSE_ADMIN. Supported increments: 30, 45, 60 minutes.\nExisting confirmed bookings remain completely unaffected.\n",
-                "tags": ["Warehouses"],
-                "security": [{
-                    "bearerAuth": []
-                }],
-                "parameters": [{
-                    "in": "path",
-                    "name": "warehouseId",
-                    "required": true,
-                    "schema": {
-                        "type": "integer"
+                "tags": [
+                    "Warehouses"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
                     }
-                }],
+                ],
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "warehouseId",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
                                 "type": "object",
-                                "required": ["slotLengthMinutes"],
+                                "required": [
+                                    "slotLengthMinutes"
+                                ],
                                 "properties": {
                                     "slotLengthMinutes": {
                                         "type": "integer",
-                                        "enum": [30, 45, 60],
+                                        "enum": [
+                                            30,
+                                            45,
+                                            60
+                                        ],
                                         "example": 45
                                     }
                                 }
@@ -348,18 +426,24 @@
             "get": {
                 "summary": "Get warehouse booking and anti-hogging policy",
                 "description": "Restricted to WAREHOUSE_ADMIN of the owning organization.",
-                "tags": ["Warehouses"],
-                "security": [{
-                    "bearerAuth": []
-                }],
-                "parameters": [{
-                    "in": "path",
-                    "name": "warehouseId",
-                    "required": true,
-                    "schema": {
-                        "type": "integer"
+                "tags": [
+                    "Warehouses"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
                     }
-                }],
+                ],
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "warehouseId",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Warehouse policy configuration",
@@ -375,11 +459,26 @@
                                         "data": {
                                             "type": "object",
                                             "properties": {
-                                                "id": { "type": "integer", "example": 1 },
-                                                "warehouseId": { "type": "integer", "example": 1 },
-                                                "maxConcurrentBookings": { "type": "integer", "example": 3 },
-                                                "maxAdvanceDays": { "type": "integer", "example": 14 },
-                                                "bookingLockWindowHours": { "type": "integer", "example": 24 }
+                                                "id": {
+                                                    "type": "integer",
+                                                    "example": 1
+                                                },
+                                                "warehouseId": {
+                                                    "type": "integer",
+                                                    "example": 1
+                                                },
+                                                "maxConcurrentBookings": {
+                                                    "type": "integer",
+                                                    "example": 3
+                                                },
+                                                "maxAdvanceDays": {
+                                                    "type": "integer",
+                                                    "example": 14
+                                                },
+                                                "bookingLockWindowHours": {
+                                                    "type": "integer",
+                                                    "example": 24
+                                                }
                                             }
                                         }
                                     }
@@ -398,18 +497,24 @@
             "put": {
                 "summary": "Update warehouse booking and anti-hogging policy",
                 "description": "Configures maximum concurrent active bookings per carrier, maximum advance reservation days, and hard-lock window hours. Restricted to WAREHOUSE_ADMIN.",
-                "tags": ["Warehouses"],
-                "security": [{
-                    "bearerAuth": []
-                }],
-                "parameters": [{
-                    "in": "path",
-                    "name": "warehouseId",
-                    "required": true,
-                    "schema": {
-                        "type": "integer"
+                "tags": [
+                    "Warehouses"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
                     }
-                }],
+                ],
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "warehouseId",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -456,25 +561,33 @@
         "/warehouses/{warehouseId}/docks": {
             "post": {
                 "summary": "Add a new dock to a warehouse",
-                "tags": ["Warehouses"],
-                "security": [{
-                    "bearerAuth": []
-                }],
-                "parameters": [{
-                    "in": "path",
-                    "name": "warehouseId",
-                    "required": true,
-                    "schema": {
-                        "type": "integer"
+                "tags": [
+                    "Warehouses"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
                     }
-                }],
+                ],
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "warehouseId",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
                                 "type": "object",
-                                "required": ["name"],
+                                "required": [
+                                    "name"
+                                ],
                                 "properties": {
                                     "name": {
                                         "type": "string",
@@ -494,18 +607,24 @@
             "get": {
                 "summary": "List all docks for a warehouse",
                 "description": "Retrieves docks for a warehouse with real-time dynamic effectiveStatus evaluation based on active dock maintenance closures and base database status.",
-                "tags": ["Warehouses"],
-                "security": [{
-                    "bearerAuth": []
-                }],
-                "parameters": [{
-                    "in": "path",
-                    "name": "warehouseId",
-                    "required": true,
-                    "schema": {
-                        "type": "integer"
+                "tags": [
+                    "Warehouses"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
                     }
-                }],
+                ],
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "warehouseId",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "List of docks with real-time dynamic effectiveStatus",
@@ -514,19 +633,52 @@
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "success": { "type": "boolean", "example": true },
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
                                         "data": {
                                             "type": "array",
                                             "items": {
                                                 "type": "object",
                                                 "properties": {
-                                                    "id": { "type": "integer", "example": 1 },
-                                                    "warehouseId": { "type": "integer", "example": 1 },
-                                                    "name": { "type": "string", "example": "Dock A1" },
-                                                    "status": { "type": "string", "enum": ["ACTIVE", "MAINTENANCE"], "example": "ACTIVE" },
-                                                    "effectiveStatus": { "type": "string", "enum": ["ACTIVE", "MAINTENANCE"], "example": "MAINTENANCE", "description": "Dynamically evaluated status based on active time-bounded maintenance closures." },
-                                                    "createdAt": { "type": "string", "format": "date-time" },
-                                                    "updatedAt": { "type": "string", "format": "date-time" }
+                                                    "id": {
+                                                        "type": "integer",
+                                                        "example": 1
+                                                    },
+                                                    "warehouseId": {
+                                                        "type": "integer",
+                                                        "example": 1
+                                                    },
+                                                    "name": {
+                                                        "type": "string",
+                                                        "example": "Dock A1"
+                                                    },
+                                                    "status": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "ACTIVE",
+                                                            "MAINTENANCE"
+                                                        ],
+                                                        "example": "ACTIVE"
+                                                    },
+                                                    "effectiveStatus": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "ACTIVE",
+                                                            "MAINTENANCE"
+                                                        ],
+                                                        "example": "MAINTENANCE",
+                                                        "description": "Dynamically evaluated status based on active time-bounded maintenance closures."
+                                                    },
+                                                    "createdAt": {
+                                                        "type": "string",
+                                                        "format": "date-time"
+                                                    },
+                                                    "updatedAt": {
+                                                        "type": "string",
+                                                        "format": "date-time"
+                                                    }
                                                 }
                                             }
                                         }
@@ -542,37 +694,45 @@
             "get": {
                 "summary": "Slot Availability Search Engine",
                 "description": "Computes and returns available time slots for active docks on a target date.\nCorrectly evaluates IANA timezone conversions, 24/7 schedules, confirmed bookings, and dock maintenance closures.\n",
-                "tags": ["Warehouses"],
-                "security": [{
-                    "bearerAuth": []
-                }],
-                "parameters": [{
-                    "in": "path",
-                    "name": "warehouseId",
-                    "required": true,
-                    "schema": {
-                        "type": "integer"
+                "tags": [
+                    "Warehouses"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "warehouseId",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "description": "Warehouse ID"
                     },
-                    "description": "Warehouse ID"
-                }, {
-                    "in": "query",
-                    "name": "targetDate",
-                    "required": true,
-                    "schema": {
-                        "type": "string",
-                        "format": "date"
+                    {
+                        "in": "query",
+                        "name": "targetDate",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        },
+                        "description": "Target date in YYYY-MM-DD format",
+                        "example": "2026-11-15"
                     },
-                    "description": "Target date in YYYY-MM-DD format",
-                    "example": "2026-11-15"
-                }, {
-                    "in": "query",
-                    "name": "dockId",
-                    "required": false,
-                    "schema": {
-                        "type": "integer"
-                    },
-                    "description": "Filter slots by a specific dock ID"
-                }],
+                    {
+                        "in": "query",
+                        "name": "dockId",
+                        "required": false,
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "description": "Filter slots by a specific dock ID"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "List of available time slots",
@@ -628,17 +788,23 @@
             "post": {
                 "summary": "Invite a team member with auto-assigned role and organization",
                 "description": "Restricted strictly to CARRIER_ADMIN or WAREHOUSE_ADMIN.\n- CARRIER_ADMIN invites automatically assign the DISPATCHER role in the carrier organization.\n- WAREHOUSE_ADMIN invites automatically assign the DOCK_MANAGER role in the warehouse organization.\nGenerates a secure 32-byte hex token valid for 48 hours and dispatches an invitation email.\n",
-                "tags": ["Users & Invitations"],
-                "security": [{
-                    "bearerAuth": []
-                }],
+                "tags": [
+                    "Users & Invitations"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
                                 "type": "object",
-                                "required": ["email"],
+                                "required": [
+                                    "email"
+                                ],
                                 "properties": {
                                     "email": {
                                         "type": "string",
@@ -720,10 +886,14 @@
             "get": {
                 "summary": "List bookings for the authenticated user's organization",
                 "description": "Returns bookings filtered by carrier organization or warehouse operator organization.",
-                "tags": ["Bookings"],
-                "security": [{
-                    "bearerAuth": []
-                }],
+                "tags": [
+                    "Bookings"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "List of bookings"
@@ -739,27 +909,40 @@
             "post": {
                 "summary": "Create a confirmed dock booking",
                 "description": "Atomically reserves a dock time slot and schedules an asynchronous outbox event.\nProtected against concurrent double-booking and mobile network retries via Idempotency-Key.\nRestricted to users with DISPATCHER role in a CARRIER organization.\nProtected by a Redis-backed per-user booking rate limiter (RATE_LIMIT_BOOKING_MAX per RATE_LIMIT_WINDOW_MS).\n",
-                "tags": ["Bookings"],
-                "security": [{
-                    "bearerAuth": []
-                }],
-                "parameters": [{
-                    "in": "header",
-                    "name": "Idempotency-Key",
-                    "required": false,
-                    "schema": {
-                        "type": "string"
-                    },
-                    "description": "Unique key to ensure idempotent booking requests across retries",
-                    "example": "7f8a1b2c-3d4e-5f6a-7b8c-9d0e1f2a3b4c"
-                }],
+                "tags": [
+                    "Bookings"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "in": "header",
+                        "name": "Idempotency-Key",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Unique key to ensure idempotent booking requests across retries",
+                        "example": "7f8a1b2c-3d4e-5f6a-7b8c-9d0e1f2a3b4c"
+                    }
+                ],
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
                                 "type": "object",
-                                "required": ["dockId", "slotStartTime", "slotEndTime", "truckPlate", "driverName", "driverPhone"],
+                                "required": [
+                                    "dockId",
+                                    "slotStartTime",
+                                    "slotEndTime",
+                                    "truckPlate",
+                                    "driverName",
+                                    "driverPhone"
+                                ],
                                 "properties": {
                                     "dockId": {
                                         "type": "integer",
@@ -822,26 +1005,35 @@
             "patch": {
                 "summary": "Reschedule a confirmed booking",
                 "description": "Moves an existing confirmed booking to a new time slot (and optionally a new dock). Enforces warehouse booking policies. If within the 24-hour lock window, only same-day emergency rescheduling is permitted.",
-                "tags": ["Bookings"],
-                "security": [{
-                    "bearerAuth": []
-                }],
-                "parameters": [{
-                    "in": "path",
-                    "name": "id",
-                    "required": true,
-                    "schema": {
-                        "type": "integer"
-                    },
-                    "description": "Booking ID"
-                }],
+                "tags": [
+                    "Bookings"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "description": "Booking ID"
+                    }
+                ],
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
                                 "type": "object",
-                                "required": ["slotStartTime", "slotEndTime"],
+                                "required": [
+                                    "slotStartTime",
+                                    "slotEndTime"
+                                ],
                                 "properties": {
                                     "slotStartTime": {
                                         "type": "string",
@@ -883,26 +1075,35 @@
             "put": {
                 "summary": "Reschedule a confirmed booking",
                 "description": "Moves an existing confirmed booking to a new time slot (and optionally a new dock). Enforces warehouse booking policies. If within the 24-hour lock window, only same-day emergency rescheduling is permitted.",
-                "tags": ["Bookings"],
-                "security": [{
-                    "bearerAuth": []
-                }],
-                "parameters": [{
-                    "in": "path",
-                    "name": "id",
-                    "required": true,
-                    "schema": {
-                        "type": "integer"
-                    },
-                    "description": "Booking ID"
-                }],
+                "tags": [
+                    "Bookings"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "description": "Booking ID"
+                    }
+                ],
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
                                 "type": "object",
-                                "required": ["slotStartTime", "slotEndTime"],
+                                "required": [
+                                    "slotStartTime",
+                                    "slotEndTime"
+                                ],
                                 "properties": {
                                     "slotStartTime": {
                                         "type": "string",
@@ -946,19 +1147,25 @@
             "patch": {
                 "summary": "Cancel a confirmed booking",
                 "description": "Cancels the booking, releases the time slot for other carriers, and creates an audit log. Blocked within the bookingLockWindowHours window.",
-                "tags": ["Bookings"],
-                "security": [{
-                    "bearerAuth": []
-                }],
-                "parameters": [{
-                    "in": "path",
-                    "name": "id",
-                    "required": true,
-                    "schema": {
-                        "type": "integer"
-                    },
-                    "description": "Booking ID"
-                }],
+                "tags": [
+                    "Bookings"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "description": "Booking ID"
+                    }
+                ],
                 "requestBody": {
                     "content": {
                         "application/json": {
@@ -993,18 +1200,24 @@
         "/bookings/{id}": {
             "delete": {
                 "summary": "Cancel a confirmed booking (DELETE method alias)",
-                "tags": ["Bookings"],
-                "security": [{
-                    "bearerAuth": []
-                }],
-                "parameters": [{
-                    "in": "path",
-                    "name": "id",
-                    "required": true,
-                    "schema": {
-                        "type": "integer"
+                "tags": [
+                    "Bookings"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
                     }
-                }],
+                ],
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Booking cancelled successfully"
@@ -1016,18 +1229,24 @@
             "get": {
                 "summary": "View lifecycle audit logs for a booking",
                 "description": "Dual-sided audit trail visible to authorized roles on both sides (warehouse operator side: WAREHOUSE_ADMIN, DOCK_MANAGER; carrier side: DISPATCHER, CARRIER_ADMIN). Tracks and displays the complete lifecycle history of every booking (who created, changed, or cancelled it).",
-                "tags": ["Bookings"],
-                "security": [{
-                    "bearerAuth": []
-                }],
-                "parameters": [{
-                    "in": "path",
-                    "name": "id",
-                    "required": true,
-                    "schema": {
-                        "type": "integer"
+                "tags": [
+                    "Bookings"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
                     }
-                }],
+                ],
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Array of lifecycle audit log entries (CREATED, UPDATED, CANCELLED) with timestamps, actor metadata (userId, name, role), and change summaries.",
@@ -1036,31 +1255,69 @@
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "success": { "type": "boolean", "example": true },
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
                                         "data": {
                                             "type": "array",
                                             "items": {
                                                 "type": "object",
                                                 "properties": {
-                                                    "id": { "type": "integer" },
-                                                    "bookingId": { "type": "integer" },
-                                                    "action": { "type": "string", "example": "CREATED" },
-                                                    "actionType": { "type": "string", "example": "CREATED" },
-                                                    "summary": { "type": "string", "example": "Booking created for truck WP-CA-4029" },
-                                                    "createdAt": { "type": "string", "format": "date-time" },
-                                                    "userId": { "type": "integer" },
+                                                    "id": {
+                                                        "type": "integer"
+                                                    },
+                                                    "bookingId": {
+                                                        "type": "integer"
+                                                    },
+                                                    "action": {
+                                                        "type": "string",
+                                                        "example": "CREATED"
+                                                    },
+                                                    "actionType": {
+                                                        "type": "string",
+                                                        "example": "CREATED"
+                                                    },
+                                                    "summary": {
+                                                        "type": "string",
+                                                        "example": "Booking created for truck WP-CA-4029"
+                                                    },
+                                                    "createdAt": {
+                                                        "type": "string",
+                                                        "format": "date-time"
+                                                    },
+                                                    "userId": {
+                                                        "type": "integer"
+                                                    },
                                                     "actor": {
                                                         "type": "object",
                                                         "properties": {
-                                                            "userId": { "type": "integer" },
-                                                            "name": { "type": "string", "example": "Nuwan Perera" },
-                                                            "role": { "type": "string", "example": "DISPATCHER" },
-                                                            "email": { "type": "string", "example": "dispatcher@carrier.com" },
-                                                            "organizationId": { "type": "integer" },
-                                                            "organizationName": { "type": "string" }
+                                                            "userId": {
+                                                                "type": "integer"
+                                                            },
+                                                            "name": {
+                                                                "type": "string",
+                                                                "example": "Nuwan Perera"
+                                                            },
+                                                            "role": {
+                                                                "type": "string",
+                                                                "example": "DISPATCHER"
+                                                            },
+                                                            "email": {
+                                                                "type": "string",
+                                                                "example": "dispatcher@carrier.com"
+                                                            },
+                                                            "organizationId": {
+                                                                "type": "integer"
+                                                            },
+                                                            "organizationName": {
+                                                                "type": "string"
+                                                            }
                                                         }
                                                     },
-                                                    "details": { "type": "object" }
+                                                    "details": {
+                                                        "type": "object"
+                                                    }
                                                 }
                                             }
                                         }
@@ -1085,18 +1342,24 @@
             "get": {
                 "summary": "View lifecycle audit logs for a booking",
                 "description": "Dual-sided audit trail visible to both the carrier and the operating warehouse.",
-                "tags": ["Bookings"],
-                "security": [{
-                    "bearerAuth": []
-                }],
-                "parameters": [{
-                    "in": "path",
-                    "name": "id",
-                    "required": true,
-                    "schema": {
-                        "type": "integer"
+                "tags": [
+                    "Bookings"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
                     }
-                }],
+                ],
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Array of lifecycle audit log entries (CREATED, RESCHEDULED, CANCELLED, etc.)"
@@ -1114,29 +1377,41 @@
             "patch": {
                 "summary": "Update operational status of a booking (Yard check-in / check-out)",
                 "description": "Restricted strictly to DOCK_MANAGER in the warehouse operator organization. Status can only be changed after the scheduled slot start time has passed.",
-                "tags": ["Bookings"],
-                "security": [{
-                    "bearerAuth": []
-                }],
-                "parameters": [{
-                    "in": "path",
-                    "name": "id",
-                    "required": true,
-                    "schema": {
-                        "type": "integer"
+                "tags": [
+                    "Bookings"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
                     }
-                }],
+                ],
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
                                 "type": "object",
-                                "required": ["status"],
+                                "required": [
+                                    "status"
+                                ],
                                 "properties": {
                                     "status": {
                                         "type": "string",
-                                        "enum": ["ARRIVED", "NO_SHOW", "COMPLETED"],
+                                        "enum": [
+                                            "ARRIVED",
+                                            "NO_SHOW",
+                                            "COMPLETED"
+                                        ],
                                         "example": "ARRIVED"
                                     }
                                 }
@@ -1164,14 +1439,20 @@
             "post": {
                 "summary": "Register a new organization and admin user",
                 "description": "Creates an Organization (CARRIER or WAREHOUSE_OPERATOR) and assigns CARRIER_ADMIN or WAREHOUSE_ADMIN.",
-                "tags": ["Authentication"],
+                "tags": [
+                    "Authentication"
+                ],
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
                                 "type": "object",
-                                "required": ["email", "password", "organizationType"],
+                                "required": [
+                                    "email",
+                                    "password",
+                                    "organizationType"
+                                ],
                                 "properties": {
                                     "email": {
                                         "type": "string",
@@ -1194,12 +1475,18 @@
                                     },
                                     "organizationType": {
                                         "type": "string",
-                                        "enum": ["CARRIER", "WAREHOUSE_OPERATOR"],
+                                        "enum": [
+                                            "CARRIER",
+                                            "WAREHOUSE_OPERATOR"
+                                        ],
                                         "example": "CARRIER"
                                     },
                                     "orgType": {
                                         "type": "string",
-                                        "enum": ["CARRIER", "WAREHOUSE_OPERATOR"],
+                                        "enum": [
+                                            "CARRIER",
+                                            "WAREHOUSE_OPERATOR"
+                                        ],
                                         "example": "CARRIER"
                                     }
                                 }
@@ -1227,14 +1514,19 @@
             "post": {
                 "summary": "Authenticate user and issue JWT token",
                 "description": "Authenticates a user by email and password and issues signed JWT tokens (JWT_EXPIRES_IN, JWT_REFRESH_EXPIRES_IN). Tracks consecutive failed login attempts and locks the account for LOGIN_LOCKOUT_DURATION_MINUTES after MAX_FAILED_LOGIN_ATTEMPTS failures.",
-                "tags": ["Authentication"],
+                "tags": [
+                    "Authentication"
+                ],
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
                                 "type": "object",
-                                "required": ["email", "password"],
+                                "required": [
+                                    "email",
+                                    "password"
+                                ],
                                 "properties": {
                                     "email": {
                                         "type": "string",
@@ -1253,7 +1545,41 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Login successful, returns JWT token"
+                        "description": "Login successful and a JWT is issued. If the account has 2FA enabled, the access token is withheld and requires2FA/tempToken are returned instead.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Login successful."
+                                        },
+                                        "token": {
+                                            "type": "string",
+                                            "description": "Access JWT (absent when requires2FA is true)"
+                                        },
+                                        "user": {
+                                            "type": "object",
+                                            "description": "Authenticated user (absent when requires2FA is true)"
+                                        },
+                                        "requires2FA": {
+                                            "type": "boolean",
+                                            "description": "True when a 6-digit TOTP code is required to complete login.",
+                                            "example": false
+                                        },
+                                        "tempToken": {
+                                            "type": "string",
+                                            "description": "Short-lived (5 minute) token to pass to POST /auth/2fa/login-verify. Returned when requires2FA is true."
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     },
                     "401": {
                         "description": "Invalid credentials (with remaining attempts before lockout)"
@@ -1273,14 +1599,19 @@
         "/auth/accept-invite": {
             "post": {
                 "summary": "Accept a team member invitation and set account password",
-                "tags": ["Authentication"],
+                "tags": [
+                    "Authentication"
+                ],
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
                                 "type": "object",
-                                "required": ["token", "password"],
+                                "required": [
+                                    "token",
+                                    "password"
+                                ],
                                 "properties": {
                                     "token": {
                                         "type": "string",
@@ -1317,15 +1648,19 @@
         "/auth/invitation": {
             "get": {
                 "summary": "Retrieve invitation details by token to verify before registering",
-                "tags": ["Authentication"],
-                "parameters": [{
-                    "in": "query",
-                    "name": "token",
-                    "required": true,
-                    "schema": {
-                        "type": "string"
+                "tags": [
+                    "Authentication"
+                ],
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "token",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
                     }
-                }],
+                ],
                 "responses": {
                     "200": {
                         "description": "Invitation details retrieved successfully"
@@ -1342,15 +1677,19 @@
         "/auth/verify": {
             "get": {
                 "summary": "Verify user email address with email token",
-                "tags": ["Authentication"],
-                "parameters": [{
-                    "in": "query",
-                    "name": "token",
-                    "required": true,
-                    "schema": {
-                        "type": "string"
+                "tags": [
+                    "Authentication"
+                ],
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "token",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
                     }
-                }],
+                ],
                 "responses": {
                     "200": {
                         "description": "Email verified successfully"
@@ -1364,7 +1703,9 @@
         "/auth/resend-verification": {
             "post": {
                 "summary": "Resend verification email",
-                "tags": ["Authentication"],
+                "tags": [
+                    "Authentication"
+                ],
                 "requestBody": {
                     "content": {
                         "application/json": {
@@ -1390,14 +1731,18 @@
         "/auth/forgot-password": {
             "post": {
                 "summary": "Request a password reset link",
-                "tags": ["Authentication"],
+                "tags": [
+                    "Authentication"
+                ],
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
                                 "type": "object",
-                                "required": ["email"],
+                                "required": [
+                                    "email"
+                                ],
                                 "properties": {
                                     "email": {
                                         "type": "string",
@@ -1418,14 +1763,19 @@
         "/auth/reset-password": {
             "post": {
                 "summary": "Reset account password with reset token",
-                "tags": ["Authentication"],
+                "tags": [
+                    "Authentication"
+                ],
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
                                 "type": "object",
-                                "required": ["token", "newPassword"],
+                                "required": [
+                                    "token",
+                                    "newPassword"
+                                ],
                                 "properties": {
                                     "token": {
                                         "type": "string"
@@ -1452,10 +1802,14 @@
         "/auth/me": {
             "get": {
                 "summary": "Retrieve currently authenticated user profile and tenant context",
-                "tags": ["Authentication"],
-                "security": [{
-                    "bearerAuth": []
-                }],
+                "tags": [
+                    "Authentication"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Current user profile"
@@ -1469,17 +1823,24 @@
         "/auth/change-password": {
             "post": {
                 "summary": "Change password for currently authenticated user",
-                "tags": ["Authentication"],
-                "security": [{
-                    "bearerAuth": []
-                }],
+                "tags": [
+                    "Authentication"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
                                 "type": "object",
-                                "required": ["oldPassword", "newPassword"],
+                                "required": [
+                                    "oldPassword",
+                                    "newPassword"
+                                ],
                                 "properties": {
                                     "oldPassword": {
                                         "type": "string"
@@ -1507,10 +1868,14 @@
             "post": {
                 "summary": "Log out of all devices by invalidating all active sessions",
                 "description": "Increments the user's token version in Redis, instantly invalidating all active JWTs across every device.",
-                "tags": ["Authentication"],
-                "security": [{
-                    "bearerAuth": []
-                }],
+                "tags": [
+                    "Authentication"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Successfully logged out of all devices",
@@ -1519,8 +1884,14 @@
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "success": { "type": "boolean", "example": true },
-                                        "message": { "type": "string", "example": "Successfully logged out of all devices." }
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Successfully logged out of all devices."
+                                        }
                                     }
                                 }
                             }
@@ -1536,10 +1907,14 @@
             "get": {
                 "summary": "List all users in the authenticated admin's organization",
                 "description": "Restricted strictly to CARRIER_ADMIN or WAREHOUSE_ADMIN.",
-                "tags": ["Users & Invitations"],
-                "security": [{
-                    "bearerAuth": []
-                }],
+                "tags": [
+                    "Users & Invitations"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "List of organization users"
@@ -1557,10 +1932,14 @@
             "patch": {
                 "summary": "Deactivate an organization user and sever active sessions",
                 "description": "Restricted to CARRIER_ADMIN or WAREHOUSE_ADMIN managing users within their organization. Sets isActive = 0 in MySQL and increments the tokenVersion in Redis to sever access immediately.",
-                "tags": ["Users & Invitations"],
-                "security": [{
-                    "bearerAuth": []
-                }],
+                "tags": [
+                    "Users & Invitations"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
                 "parameters": [
                     {
                         "name": "id",
@@ -1580,16 +1959,33 @@
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "success": { "type": "boolean", "example": true },
-                                        "message": { "type": "string", "example": "User deactivated successfully." },
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "User deactivated successfully."
+                                        },
                                         "data": {
                                             "type": "object",
                                             "properties": {
-                                                "id": { "type": "integer" },
-                                                "email": { "type": "string" },
-                                                "role": { "type": "string" },
-                                                "organizationId": { "type": "integer" },
-                                                "isActive": { "type": "boolean", "example": false }
+                                                "id": {
+                                                    "type": "integer"
+                                                },
+                                                "email": {
+                                                    "type": "string"
+                                                },
+                                                "role": {
+                                                    "type": "string"
+                                                },
+                                                "organizationId": {
+                                                    "type": "integer"
+                                                },
+                                                "isActive": {
+                                                    "type": "boolean",
+                                                    "example": false
+                                                }
                                             }
                                         }
                                     }
@@ -1616,10 +2012,14 @@
             "patch": {
                 "summary": "Reactivate a previously deactivated organization user",
                 "description": "Restricted to CARRIER_ADMIN or WAREHOUSE_ADMIN managing users within their organization. Sets isActive = 1 in MySQL and updates Redis cache to allow user authentication.",
-                "tags": ["Users & Invitations"],
-                "security": [{
-                    "bearerAuth": []
-                }],
+                "tags": [
+                    "Users & Invitations"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
                 "parameters": [
                     {
                         "name": "id",
@@ -1639,16 +2039,33 @@
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "success": { "type": "boolean", "example": true },
-                                        "message": { "type": "string", "example": "User reactivated successfully." },
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "User reactivated successfully."
+                                        },
                                         "data": {
                                             "type": "object",
                                             "properties": {
-                                                "id": { "type": "integer" },
-                                                "email": { "type": "string" },
-                                                "role": { "type": "string" },
-                                                "organizationId": { "type": "integer" },
-                                                "isActive": { "type": "boolean", "example": true }
+                                                "id": {
+                                                    "type": "integer"
+                                                },
+                                                "email": {
+                                                    "type": "string"
+                                                },
+                                                "role": {
+                                                    "type": "string"
+                                                },
+                                                "organizationId": {
+                                                    "type": "integer"
+                                                },
+                                                "isActive": {
+                                                    "type": "boolean",
+                                                    "example": true
+                                                }
                                             }
                                         }
                                     }
@@ -1667,6 +2084,389 @@
                     },
                     "404": {
                         "description": "User not found"
+                    }
+                }
+            }
+        },
+        "/auth/2fa/status": {
+            "get": {
+                "summary": "Retrieve the two-factor authentication status of the current user",
+                "tags": [
+                    "Two-Factor Authentication"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "2FA status retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Two-factor authentication status retrieved successfully."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "isTwoFactorEnabled": {
+                                                    "type": "boolean",
+                                                    "example": false
+                                                },
+                                                "isSetupPending": {
+                                                    "type": "boolean",
+                                                    "description": "True when a TOTP secret was generated but never confirmed with a valid code.",
+                                                    "example": false
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized. Missing or invalid token."
+                    }
+                }
+            }
+        },
+        "/auth/2fa/setup": {
+            "post": {
+                "summary": "Generate a new TOTP secret and QR code for authenticator apps",
+                "description": "Generates a base32 TOTP secret for the authenticated user and returns a QR code data URL, the base32 secret string, and the otpauth:// provisioning URI. The secret is persisted on the user record but 2FA stays disabled until POST /auth/2fa/verify-and-enable confirms a valid code. Re-invoking this endpoint rotates the secret, invalidating any previously scanned QR code.",
+                "tags": [
+                    "Two-Factor Authentication"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Secret and QR code generated successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "TOTP 2FA secret and QR code generated successfully."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "secret": {
+                                                    "type": "string",
+                                                    "description": "Base32-encoded TOTP secret for manual entry",
+                                                    "example": "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+                                                },
+                                                "qrCode": {
+                                                    "type": "string",
+                                                    "description": "PNG data URL (data:image/png;base64,...) suitable for an <img src=\"...\"> tag",
+                                                    "example": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg..."
+                                                },
+                                                "otpauthUrl": {
+                                                    "type": "string",
+                                                    "example": "otpauth://totp/DockSlot%20(admin%40swiftlogistics.com)?secret=JBSWY3DPEHPK3PXP&issuer=DockSlot"
+                                                }
+                                            }
+                                        },
+                                        "secret": {
+                                            "type": "string",
+                                            "description": "Convenience mirror of data.secret"
+                                        },
+                                        "qrCode": {
+                                            "type": "string",
+                                            "description": "Convenience mirror of data.qrCode"
+                                        },
+                                        "otpauthUrl": {
+                                            "type": "string",
+                                            "description": "Convenience mirror of data.otpauthUrl"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized. Missing or invalid token."
+                    },
+                    "404": {
+                        "description": "User not found"
+                    }
+                }
+            }
+        },
+        "/auth/2fa/verify-and-enable": {
+            "post": {
+                "summary": "Confirm a 6-digit TOTP code and enable 2FA for the account",
+                "description": "Verifies the provided code against the stored TOTP secret and sets isTwoFactorEnabled to true. A ±1 step (30 second) window is allowed for clock drift.",
+                "tags": [
+                    "Two-Factor Authentication"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "token"
+                                ],
+                                "properties": {
+                                    "token": {
+                                        "type": "string",
+                                        "description": "The 6-digit code shown in the authenticator app",
+                                        "example": "123456"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "2FA enabled successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Two-factor authentication has been enabled successfully."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "message": {
+                                                    "type": "string"
+                                                },
+                                                "isTwoFactorEnabled": {
+                                                    "type": "boolean",
+                                                    "example": true
+                                                }
+                                            }
+                                        },
+                                        "isTwoFactorEnabled": {
+                                            "type": "boolean",
+                                            "example": true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Missing or malformed code, 2FA setup not initiated, or the code did not verify"
+                    },
+                    "401": {
+                        "description": "Unauthorized. Missing or invalid token."
+                    },
+                    "404": {
+                        "description": "User not found"
+                    }
+                }
+            }
+        },
+        "/auth/2fa/disable": {
+            "post": {
+                "summary": "Disable 2FA for the account",
+                "description": "Requires either the current account password or a valid 6-digit TOTP code as proof of possession. On success the stored TOTP secret is cleared.",
+                "tags": [
+                    "Two-Factor Authentication"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "password": {
+                                        "type": "string",
+                                        "format": "password",
+                                        "description": "Current account password (provide this or token)",
+                                        "example": "SecurePass123!"
+                                    },
+                                    "token": {
+                                        "type": "string",
+                                        "description": "Valid 6-digit TOTP code (provide this or password)",
+                                        "example": "123456"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "2FA disabled successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Two-factor authentication has been disabled successfully."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "message": {
+                                                    "type": "string"
+                                                },
+                                                "isTwoFactorEnabled": {
+                                                    "type": "boolean",
+                                                    "example": false
+                                                }
+                                            }
+                                        },
+                                        "isTwoFactorEnabled": {
+                                            "type": "boolean",
+                                            "example": false
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "2FA is not currently enabled, or neither a password nor a valid code was supplied"
+                    },
+                    "401": {
+                        "description": "Unauthorized, incorrect password, or invalid two-factor authentication code"
+                    },
+                    "404": {
+                        "description": "User not found"
+                    }
+                }
+            }
+        },
+        "/auth/2fa/login-verify": {
+            "post": {
+                "summary": "Complete a two-step login by verifying the 6-digit TOTP code",
+                "description": "Second step of the 2FA login flow. Supply the tempToken returned by POST /auth/login (mode A), or supply email + password together with the code (mode B). On success the final access and refresh JWTs are issued and any failed-login counters are reset.",
+                "tags": [
+                    "Two-Factor Authentication"
+                ],
+                "security": [],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "token"
+                                ],
+                                "properties": {
+                                    "token": {
+                                        "type": "string",
+                                        "description": "The 6-digit code shown in the authenticator app",
+                                        "example": "123456"
+                                    },
+                                    "tempToken": {
+                                        "type": "string",
+                                        "description": "Short-lived (5 minute) token returned by POST /auth/login when requires2FA is true",
+                                        "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                                    },
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email",
+                                        "description": "Alternative to tempToken — the account email"
+                                    },
+                                    "password": {
+                                        "type": "string",
+                                        "format": "password",
+                                        "description": "Alternative to tempToken — the account password"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "2FA verified, final JWT issued",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Two-factor authentication verified successfully. Logged in."
+                                        },
+                                        "token": {
+                                            "type": "string",
+                                            "description": "Final access JWT"
+                                        },
+                                        "refreshToken": {
+                                            "type": "string"
+                                        },
+                                        "user": {
+                                            "type": "object",
+                                            "description": "Authenticated user profile"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Missing or malformed code, no tempToken or credentials supplied, or 2FA is not enabled for the account"
+                    },
+                    "401": {
+                        "description": "Invalid or expired temp token, invalid credentials, or invalid TOTP code"
+                    },
+                    "403": {
+                        "description": "Account deactivated"
+                    },
+                    "404": {
+                        "description": "User not found"
+                    },
+                    "429": {
+                        "description": "Too many API requests (rate limit exceeded)"
                     }
                 }
             }

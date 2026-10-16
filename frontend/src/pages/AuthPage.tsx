@@ -10,6 +10,10 @@ import {
   Truck,
   Warehouse,
   ArrowRight,
+  ShieldCheck,
+  KeyRound,
+  ArrowLeft,
+  Loader2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -148,6 +152,35 @@ export const AuthPage: React.FC<AuthPageProps> = ({
   const [signInEmail, setSignInEmail] = useState<string>('');
   const [signInPassword, setSignInPassword] = useState<string>('');
 
+  // Two-Factor Authentication challenge state (set when the backend replies requires2FA)
+  const [pendingTempToken, setPendingTempToken] = useState<string | null>(null);
+  const [pendingEmail, setPendingEmail] = useState<string>('');
+  const [totpCode, setTotpCode] = useState<string>('');
+
+  const isTwoFactorStep = pendingTempToken !== null;
+
+  /**
+   * Stores the final JWT, syncs global auth context, and routes to the right dashboard.
+   */
+  const completeSignIn = (token: string, user: User, successText: string) => {
+    // Store JWT in HTTP cookies and localStorage
+    storage.setToken(token);
+
+    // Update global context
+    setAuthContextUser(token, user);
+
+    setSuccessMessage(successText);
+
+    if (onSuccess) {
+      onSuccess(user, token);
+    }
+
+    // Smooth redirection
+    setTimeout(() => {
+      handleDashboardRedirect(user);
+    }, 500);
+  };
+
   // Register Org Form State
   const [registerOrgType, setRegisterOrgType] = useState<OrganizationType>('CARRIER');
   const [registerOrgName, setRegisterOrgName] = useState<string>('');
@@ -181,6 +214,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
   /**
    * Form Submission: Sign In
+   *
+   * If the account has 2FA enabled the backend withholds the final JWT and
+   * returns { requires2FA: true, tempToken }. We then switch the card into the
+   * 6-digit code view and finish the handshake via handleVerify2FA.
    */
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -201,6 +238,21 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
       const response = await authApi.login(payload);
 
+      // Backend responded with a 2FA challenge instead of a session token
+      if (response.requires2FA || response.data?.requires2FA) {
+        const tempToken = response.tempToken || response.data?.tempToken;
+
+        if (!tempToken) {
+          throw new Error('Two-factor authentication is required but the challenge token is missing.');
+        }
+
+        setPendingTempToken(tempToken);
+        setPendingEmail(signInEmail.trim().toLowerCase());
+        setTotpCode('');
+        setSuccessMessage(null);
+        return;
+      }
+
       const token = response.token || response.data?.token;
       const user = response.user || response.data?.user;
 
@@ -208,22 +260,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
         throw new Error('Authentication succeeded but received an incomplete server response.');
       }
 
-      // Store JWT in HTTP cookies and localStorage
-      storage.setToken(token);
-
-      // Update global context
-      setAuthContextUser(token, user);
-
-      setSuccessMessage('Login successful! Redirecting to dashboard...');
-
-      if (onSuccess) {
-        onSuccess(user, token);
-      }
-
-      // Smooth redirection
-      setTimeout(() => {
-        handleDashboardRedirect(user);
-      }, 500);
+      completeSignIn(token, user, 'Login successful! Redirecting to dashboard...');
     } catch (err: any) {
       const serverMessage =
         err.response?.data?.message || err.message || 'Login failed. Please check your credentials.';
@@ -231,6 +268,69 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     } finally {
       setIsLoading(false);
     }
+  };
+
+  /**
+   * Step 2 of the 2FA login flow: exchange the temp token + 6-digit TOTP code
+   * for the final access JWT.
+   */
+  const handleVerify2FA = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    if (!pendingTempToken) {
+      setErrorMessage('Your 2FA session has expired. Please sign in again.');
+      return;
+    }
+
+    if (!/^\d{6}$/.test(totpCode.trim())) {
+      setErrorMessage('Please enter the 6-digit code from your authenticator app.');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const response = await authApi.verify2FALogin({
+        tempToken: pendingTempToken,
+        token: totpCode.trim(),
+      });
+
+      const token = response.token || response.data?.token;
+      const user = response.user || response.data?.user;
+
+      if (!token || !user) {
+        throw new Error('Verification succeeded but received an incomplete server response.');
+      }
+
+      setPendingTempToken(null);
+      setTotpCode('');
+      completeSignIn(token, user, 'Two-factor verification successful! Redirecting to dashboard...');
+    } catch (err: any) {
+      const serverMessage =
+        err.response?.data?.message ||
+        err.message ||
+        'That verification code was not accepted. Please try again.';
+
+      // An expired temp token cannot be retried — send the user back to the password step.
+      if (err.response?.status === 401 && /temp|session|expired/i.test(String(serverMessage))) {
+        setPendingTempToken(null);
+        setTotpCode('');
+        setErrorMessage('Your 2FA session expired. Please sign in again.');
+      } else {
+        setErrorMessage(serverMessage);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCancel2FA = () => {
+    setPendingTempToken(null);
+    setPendingEmail('');
+    setTotpCode('');
+    setErrorMessage(null);
+    setSuccessMessage(null);
   };
 
   /**
@@ -341,27 +441,33 @@ export const AuthPage: React.FC<AuthPageProps> = ({
       <Card className="w-full max-w-md bg-white shadow-xl rounded-lg border border-gray-300 overflow-hidden">
         <CardHeader className="text-center pb-2">
           <h1 className="text-xl font-bold text-[#2F4F4F]">
-            {activeTab === 'signin'
-              ? 'Sign In to Your Workspace'
-              : 'Register New Organization'}
+            {isTwoFactorStep
+              ? 'Two-Factor Verification'
+              : activeTab === 'signin'
+                ? 'Sign In to Your Workspace'
+                : 'Register New Organization'}
           </h1>
           <p className="text-xs text-gray-500 mt-1">
-            {activeTab === 'signin'
-              ? 'Access real-time dock availability and manage yard schedules'
-              : 'Create a top-level admin account for your carrier fleet or warehouse facility'}
+            {isTwoFactorStep
+              ? 'Enter the 6-digit code from your authenticator app to finish signing in'
+              : activeTab === 'signin'
+                ? 'Access real-time dock availability and manage yard schedules'
+                : 'Create a top-level admin account for your carrier fleet or warehouse facility'}
           </p>
 
-          {/* Interactive Tab Switcher */}
-          <div className="mt-5">
-            <Tabs
-              activeTab={activeTab}
-              onChange={handleTabChange}
-              tabs={[
-                { id: 'signin', label: 'Sign In' },
-                { id: 'register', label: 'Register Org' },
-              ]}
-            />
-          </div>
+          {/* Interactive Tab Switcher (hidden while completing a 2FA challenge) */}
+          {!isTwoFactorStep && (
+            <div className="mt-5">
+              <Tabs
+                activeTab={activeTab}
+                onChange={handleTabChange}
+                tabs={[
+                  { id: 'signin', label: 'Sign In' },
+                  { id: 'register', label: 'Register Org' },
+                ]}
+              />
+            </div>
+          )}
         </CardHeader>
 
         <CardContent className="pt-4">
@@ -391,8 +497,69 @@ export const AuthPage: React.FC<AuthPageProps> = ({
             </div>
           )}
 
+          {/* Two-Factor Challenge View */}
+          {isTwoFactorStep && (
+            <form onSubmit={handleVerify2FA} className="space-y-4" noValidate>
+              <div className="flex items-start space-x-3 p-3 bg-[#2F4F4F]/5 border border-[#2F4F4F]/15 rounded-md">
+                <ShieldCheck className="w-5 h-5 text-[#2F4F4F] flex-shrink-0 mt-0.5" />
+                <div className="text-xs text-gray-700 leading-snug">
+                  <p className="font-semibold text-[#2F4F4F]">
+                    Password verified — one more step
+                  </p>
+                  <p className="mt-0.5">
+                    Open <strong>Google Authenticator</strong> and enter the current 6-digit code for
+                    <span className="font-medium"> {pendingEmail || 'your account'}</span>.
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="signin-2fa-code" required>
+                  Authentication Code
+                </Label>
+                <Input
+                  id="signin-2fa-code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  required
+                  maxLength={6}
+                  placeholder="123456"
+                  icon={<KeyRound className="w-4 h-4" />}
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  disabled={isLoading}
+                  className="tracking-[0.4em] font-mono text-base"
+                />
+                <p className="text-[11px] text-gray-500 mt-1.5 flex items-center space-x-1">
+                  <Loader2 className="w-3 h-3 animate-spin text-gray-400" />
+                  <span>
+                    Codes rotate every 30 seconds. This challenge expires 5 minutes after your
+                    password was accepted.
+                  </span>
+                </p>
+              </div>
+
+              <Button type="submit" variant="primary" className="w-full mt-2" isLoading={isLoading}>
+                <span>Verify & Sign In</span>
+                {!isLoading && <ArrowRight className="w-4 h-4 ml-2" />}
+              </Button>
+
+              <button
+                type="button"
+                onClick={handleCancel2FA}
+                disabled={isLoading}
+                className="w-full flex items-center justify-center space-x-1.5 text-xs text-gray-500 hover:text-[#2F4F4F] font-medium focus:outline-none disabled:opacity-50"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back to sign in</span>
+              </button>
+            </form>
+          )}
+
           {/* Sign In View */}
-          {activeTab === 'signin' && (
+          {activeTab === 'signin' && !isTwoFactorStep && (
             <form onSubmit={handleSignIn} className="space-y-4" noValidate>
               <div>
                 <Label htmlFor="signin-email" required>

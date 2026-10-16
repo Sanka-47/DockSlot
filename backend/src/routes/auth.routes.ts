@@ -11,8 +11,14 @@ import {
   acceptInvite,
   getInvitationDetails,
   logoutAll,
+  setup2FA,
+  verifyAndEnable2FA,
+  disable2FA,
+  loginVerify2FA,
+  get2FAStatus,
 } from '../controllers/auth.controller';
 import { authenticate } from '../middleware/auth.middleware';
+import { twoFactorRateLimiter } from '../middleware/rateLimit.middleware';
 
 const router = Router();
 
@@ -348,5 +354,267 @@ router.post('/change-password', authenticate, changePassword);
  *         description: Unauthorized. Missing or invalid token.
  */
 router.post('/logout-all', authenticate, logoutAll);
+
+/**
+ * @openapi
+ * /auth/2fa/status:
+ *   get:
+ *     summary: Retrieve the two-factor authentication status of the current user
+ *     tags:
+ *       - Two-Factor Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: 2FA status retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     isTwoFactorEnabled:
+ *                       type: boolean
+ *                       example: false
+ *                     isSetupPending:
+ *                       type: boolean
+ *                       description: True when a TOTP secret exists but 2FA has not been confirmed yet.
+ *                       example: false
+ *       401:
+ *         description: Unauthorized. Missing or invalid token.
+ */
+router.get('/2fa/status', authenticate, get2FAStatus);
+
+/**
+ * @openapi
+ * /auth/2fa/setup:
+ *   post:
+ *     summary: Generate a new TOTP secret and QR code for authenticator apps
+ *     description: |
+ *       Generates a base32 TOTP secret for the authenticated user and returns a QR code data URL,
+ *       the base32 secret string, and the otpauth:// provisioning URI. The secret is persisted on the
+ *       user record but 2FA stays disabled until POST /auth/2fa/verify-and-enable confirms a valid code.
+ *       Re-invoking this endpoint rotates the secret (any previously scanned QR code becomes invalid).
+ *     tags:
+ *       - Two-Factor Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Secret and QR code generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: TOTP 2FA secret and QR code generated successfully.
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     secret:
+ *                       type: string
+ *                       description: Base32-encoded TOTP secret for manual entry
+ *                       example: JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP
+ *                     qrCode:
+ *                       type: string
+ *                       description: PNG data URL (data:image/png;base64,...) to render in an <img> tag
+ *                       example: data:image/png;base64,iVBORw0KGgoAAAANSUhEUg...
+ *                     otpauthUrl:
+ *                       type: string
+ *                       example: otpauth://totp/DockSlot%20(admin%40swiftlogistics.com)?secret=JBSWY3DPEHPK3PXP&issuer=DockSlot
+ *                 secret:
+ *                   type: string
+ *                 qrCode:
+ *                   type: string
+ *                 otpauthUrl:
+ *                   type: string
+ *       401:
+ *         description: Unauthorized. Missing or invalid token.
+ *       404:
+ *         description: User not found
+ */
+router.post('/2fa/setup', authenticate, setup2FA);
+
+/**
+ * @openapi
+ * /auth/2fa/verify-and-enable:
+ *   post:
+ *     summary: Confirm a 6-digit TOTP code and enable 2FA for the account
+ *     description: Verifies the provided code against the stored TOTP secret and sets isTwoFactorEnabled to true. A ±1 step (30 second) window is allowed for clock drift.
+ *     tags:
+ *       - Two-Factor Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - token
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 description: The 6-digit code shown in the authenticator app
+ *                 example: "123456"
+ *     responses:
+ *       200:
+ *         description: 2FA enabled successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Two-factor authentication has been enabled successfully.
+ *                 isTwoFactorEnabled:
+ *                   type: boolean
+ *                   example: true
+ *       400:
+ *         description: Missing/invalid code format, setup not initiated, or the code did not verify
+ *       401:
+ *         description: Unauthorized. Missing or invalid token.
+ *       404:
+ *         description: User not found
+ */
+router.post('/2fa/verify-and-enable', authenticate, twoFactorRateLimiter, verifyAndEnable2FA);
+
+/**
+ * @openapi
+ * /auth/2fa/disable:
+ *   post:
+ *     summary: Disable 2FA for the account
+ *     description: Requires either the current account password or a valid 6-digit TOTP code as proof of possession. On success the stored TOTP secret is cleared.
+ *     tags:
+ *       - Two-Factor Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 description: Current account password (provide this or `token`)
+ *                 example: SecurePass123!
+ *               token:
+ *                 type: string
+ *                 description: Valid 6-digit TOTP code (provide this or `password`)
+ *                 example: "123456"
+ *     responses:
+ *       200:
+ *         description: 2FA disabled successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Two-factor authentication has been disabled successfully.
+ *                 isTwoFactorEnabled:
+ *                   type: boolean
+ *                   example: false
+ *       400:
+ *         description: 2FA is not enabled, or neither password nor a valid code was supplied
+ *       401:
+ *         description: Unauthorized, incorrect password, or invalid TOTP code
+ *       404:
+ *         description: User not found
+ */
+router.post('/2fa/disable', authenticate, twoFactorRateLimiter, disable2FA);
+
+/**
+ * @openapi
+ * /auth/2fa/login-verify:
+ *   post:
+ *     summary: Complete a two-step login by verifying the 6-digit TOTP code
+ *     description: |
+ *       Second step of the 2FA login flow. Supply the `tempToken` returned by POST /auth/login (mode A),
+ *       or supply `email` + `password` together with the code (mode B). On success the final access and
+ *       refresh JWTs are issued and any failed-login counters are reset.
+ *     tags:
+ *       - Two-Factor Authentication
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - token
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 description: The 6-digit code shown in the authenticator app
+ *                 example: "123456"
+ *               tempToken:
+ *                 type: string
+ *                 description: Short-lived (5 minute) token returned by POST /auth/login when requires2FA is true
+ *                 example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 description: Alternative to tempToken — the account email
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 description: Alternative to tempToken — the account password
+ *     responses:
+ *       200:
+ *         description: 2FA verified, final JWT issued
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Two-factor authentication verified successfully. Logged in.
+ *                 token:
+ *                   type: string
+ *                   description: Final access JWT
+ *                 refreshToken:
+ *                   type: string
+ *                 user:
+ *                   $ref: '#/components/schemas/User'
+ *       400:
+ *         description: Missing/malformed code, no tempToken or credentials supplied, or 2FA is not enabled for the account
+ *       401:
+ *         description: Invalid/expired temp token, invalid credentials, or invalid TOTP code
+ *       403:
+ *         description: Account deactivated
+ *       404:
+ *         description: User not found
+ *       429:
+ *         description: Too many API requests (rate limit exceeded)
+ */
+router.post('/2fa/login-verify', twoFactorRateLimiter, loginVerify2FA);
 
 export default router;

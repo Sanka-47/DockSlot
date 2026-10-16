@@ -1,5 +1,15 @@
 import apiClient from './client';
-import type { LoginRequest, RegisterRequest, AuthResponse, User } from '../types/user.types';
+import type {
+  LoginRequest,
+  RegisterRequest,
+  AuthResponse,
+  User,
+  TwoFactorStatus,
+  TwoFactorSetupResponse,
+  TwoFactorVerifyRequest,
+  TwoFactorDisableRequest,
+  TwoFactorLoginVerifyRequest,
+} from '../types/user.types';
 
 export const authApi = {
   login: async (credentials: LoginRequest): Promise<AuthResponse> => {
@@ -44,6 +54,44 @@ export const authApi = {
     token: string
   ): Promise<{ success: boolean; data: { email: string; role: string; organizationName?: string } }> => {
     const response = await apiClient.get('/auth/invitation', { params: { token } });
+    return response.data;
+  },
+
+  /* ---------------- Two-Factor Authentication (TOTP) ---------------- */
+
+  get2FAStatus: async (): Promise<{ success: boolean; data: TwoFactorStatus }> => {
+    const response = await apiClient.get<{ success: boolean; data: TwoFactorStatus }>('/auth/2fa/status');
+    return response.data;
+  },
+
+  setup2FA: async (): Promise<{
+    success: boolean;
+    message: string;
+    data: TwoFactorSetupResponse;
+    secret?: string;
+    qrCode?: string;
+    otpauthUrl?: string;
+  }> => {
+    const response = await apiClient.post('/auth/2fa/setup');
+    return response.data;
+  },
+
+  verifyAndEnable2FA: async (
+    payload: TwoFactorVerifyRequest
+  ): Promise<{ success: boolean; message: string; isTwoFactorEnabled: boolean }> => {
+    const response = await apiClient.post('/auth/2fa/verify-and-enable', payload);
+    return response.data;
+  },
+
+  disable2FA: async (
+    payload: TwoFactorDisableRequest
+  ): Promise<{ success: boolean; message: string; isTwoFactorEnabled: boolean }> => {
+    const response = await apiClient.post('/auth/2fa/disable', payload);
+    return response.data;
+  },
+
+  verify2FALogin: async (payload: TwoFactorLoginVerifyRequest): Promise<AuthResponse> => {
+    const response = await apiClient.post<AuthResponse>('/auth/2fa/login-verify', payload);
     return response.data;
   },
 };
