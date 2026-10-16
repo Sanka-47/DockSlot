@@ -75,21 +75,54 @@ export const DispatcherDashboard: React.FC = () => {
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
 
   // ---------------------------------------------------------------------------
-  // Slot Search & Filter Form State
+  // Slot Search & Filter Form State (Timezone-Safe Helpers)
   // ---------------------------------------------------------------------------
-  const getTodayDateString = (): string => {
-    const local = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
-    return local.toISOString().slice(0, 10);
-  };
+  const formatDateInTimezone = useCallback(
+    (dateInput: Date | string | number, timeZone?: string): string => {
+      const dateObj =
+        dateInput instanceof Date ? dateInput : new Date(dateInput);
+      if (timeZone) {
+        try {
+          return new Intl.DateTimeFormat("en-CA", {
+            timeZone,
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+          }).format(dateObj);
+        } catch {
+          // Fallback to browser local date if timezone identifier is invalid
+        }
+      }
+      const local = new Date(
+        dateObj.getTime() - dateObj.getTimezoneOffset() * 60000,
+      );
+      return local.toISOString().slice(0, 10);
+    },
+    [],
+  );
 
-  const getMaxAdvanceDateString = (days: number = 14): string => {
-    const future = new Date(
-      Date.now() +
-        days * 24 * 60 * 60 * 1000 -
-        new Date().getTimezoneOffset() * 60000,
-    );
-    return future.toISOString().slice(0, 10);
-  };
+  const getTodayDateString = useCallback(
+    (timeZone?: string): string => {
+      return formatDateInTimezone(new Date(), timeZone);
+    },
+    [formatDateInTimezone],
+  );
+
+  const getMaxAdvanceDateString = useCallback(
+    (days: number = 14, timeZone?: string): string => {
+      const futureInstant = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+      return formatDateInTimezone(futureInstant, timeZone);
+    },
+    [formatDateInTimezone],
+  );
+
+  // Checks that a slot's UTC start instant is strictly in the future relative to current UTC epoch
+  const isFutureSlot = useCallback((slot: AvailableSlot): boolean => {
+    if (!slot?.slotStartTime) return false;
+    const slotStartMs = new Date(slot.slotStartTime).getTime();
+    if (isNaN(slotStartMs)) return false;
+    return slotStartMs > Date.now();
+  }, []);
 
   const isInsideLockWindow = (booking: Booking | null): boolean => {
     if (!booking || !booking.slotStartTime) return false;
@@ -101,7 +134,9 @@ export const DispatcherDashboard: React.FC = () => {
   };
 
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>("");
-  const [targetDate, setTargetDate] = useState<string>(getTodayDateString());
+  const [targetDate, setTargetDate] = useState<string>(() =>
+    getTodayDateString(),
+  );
   const [selectedDockId, setSelectedDockId] = useState<string>("ALL");
 
   // Available Slots State
@@ -138,8 +173,9 @@ export const DispatcherDashboard: React.FC = () => {
     useState<boolean>(false);
   const [bookingToReschedule, setBookingToReschedule] =
     useState<Booking | null>(null);
-  const [rescheduleDate, setRescheduleDate] =
-    useState<string>(getTodayDateString());
+  const [rescheduleDate, setRescheduleDate] = useState<string>(() =>
+    getTodayDateString(),
+  );
   const [rescheduleSlots, setRescheduleSlots] = useState<
     AvailableDockSlots[] | null
   >(null);
@@ -269,6 +305,14 @@ export const DispatcherDashboard: React.FC = () => {
     return warehouses.find((w) => w.id === Number(selectedWarehouseId));
   }, [warehouses, selectedWarehouseId]);
 
+  // Keep targetDate aligned to at least today's date in the selected warehouse's timezone
+  useEffect(() => {
+    if (selectedWarehouse?.timezone) {
+      const whToday = getTodayDateString(selectedWarehouse.timezone);
+      setTargetDate((prev) => (prev < whToday ? whToday : prev));
+    }
+  }, [selectedWarehouse?.timezone, getTodayDateString]);
+
   // Available docks for currently selected warehouse
   const currentWarehouseDocks = useMemo<Dock[]>(() => {
     return selectedWarehouse?.docks || [];
@@ -319,11 +363,12 @@ export const DispatcherDashboard: React.FC = () => {
       if ("slots" in rawData[0]) {
         return (rawData as AvailableDockSlots[]).map((group) => ({
           ...group,
-          slots: dockIdFilter
+          slots: (dockIdFilter
             ? group.dockId === dockIdFilter
               ? group.slots
               : []
-            : group.slots,
+            : group.slots
+          ).filter(isFutureSlot),
         }));
       }
 
@@ -331,6 +376,7 @@ export const DispatcherDashboard: React.FC = () => {
         const flatList = rawData as unknown as AvailableSlot[];
         const grouped: Record<number, AvailableDockSlots> = {};
         flatList.forEach((slot) => {
+          if (!isFutureSlot(slot)) return;
           const dId = slot.dockId || 0;
           const dName = slot.dockName || `Dock #${dId}`;
           if (!grouped[dId]) {
@@ -345,7 +391,7 @@ export const DispatcherDashboard: React.FC = () => {
 
       return [];
     },
-    [],
+    [isFutureSlot],
   );
 
   const handleSearchSlots = async (
@@ -538,10 +584,13 @@ export const DispatcherDashboard: React.FC = () => {
     setRescheduleError(null);
     setSelectedRescheduleSlot(null);
 
-    // Default reschedule date: same date as current booking or today
+    const whTimezone =
+      booking.dock?.warehouse?.timezone || selectedWarehouse?.timezone;
+
+    // Default reschedule date: same date as current booking in warehouse timezone, or today in warehouse timezone
     const bDate = booking.slotStartTime
-      ? booking.slotStartTime.slice(0, 10)
-      : getTodayDateString();
+      ? formatDateInTimezone(booking.slotStartTime, whTimezone)
+      : getTodayDateString(whTimezone);
     setRescheduleDate(bDate);
     setIsRescheduleModalOpen(true);
 
@@ -640,7 +689,7 @@ export const DispatcherDashboard: React.FC = () => {
         const slotWindowLabel = `${formatDateTime(
           takenSlot.slotStartTime,
           "h:mm a",
-        )} – ${formatDateTime(takenSlot.slotEndTime, "h:mm a")}`;
+        )}  ${formatDateTime(takenSlot.slotEndTime, "h:mm a")}`;
         const clearConflictMessage = `The selected slot (${slotWindowLabel} on ${takenSlot.dockName}) was just booked by another carrier while you were viewing it. Available slots have been updated — please choose another open slot.`;
 
         setSelectedRescheduleSlot(null);

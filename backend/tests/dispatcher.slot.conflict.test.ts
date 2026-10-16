@@ -302,4 +302,82 @@ describe('Slot Taken Between Viewing and Booking Requirement (DispatcherDashboar
     expect(mockGetAvailableSlots).toHaveBeenCalledTimes(1);
     expect(searchedSlotsState[0].slots).toEqual([slot2]);
   });
+
+  it('Excludes slots in the past without timezone conflicts in both backend getAvailableSlots and frontend DispatcherDashboard.tsx', async () => {
+    // 1. Query a past date in the warehouse's timezone -> must return 0 available slots
+    const yesterdayDate = new Date(Date.now() - 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
+
+    const pastSlotsRes = await request(app)
+      .get(`/api/warehouses/${testWarehouseId}/slots`)
+      .query({ date: yesterdayDate })
+      .set('Authorization', `Bearer ${dispatcherAToken}`);
+
+    expect(pastSlotsRes.status).toBe(200);
+    expect(pastSlotsRes.body.data[0].slots).toEqual([]);
+
+    // 2. Test a 24/7 warehouse in a non-UTC timezone (America/New_York) on its current local "today" date
+    const nyWarehouse = await prisma.warehouse.create({
+      data: {
+        organizationId: warehouseOrgId,
+        name: 'NY Timezone Test Hub',
+        address: '100 Liberty St, NY',
+        timezone: 'America/New_York',
+        operatingHours: {
+          create: [0, 1, 2, 3, 4, 5, 6, 7].map((dayOfWeek) => ({
+            dayOfWeek,
+            openTime: '00:00',
+            closeTime: '24:00',
+            slotLengthMinutes: 30,
+          })),
+        },
+        docks: {
+          create: [{ name: 'NY Bay 1', status: DockStatus.ACTIVE }],
+        },
+      },
+      include: { docks: true },
+    });
+
+    try {
+      const nyTodayStr = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/New_York',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
+
+      const nowBeforeQuery = Date.now();
+      const nySlotsRes = await request(app)
+        .get(`/api/warehouses/${nyWarehouse.id}/slots`)
+        .query({ date: nyTodayStr })
+        .set('Authorization', `Bearer ${dispatcherAToken}`);
+
+      expect(nySlotsRes.status).toBe(200);
+      const nySlots = nySlotsRes.body.data[0].slots;
+
+      // Every returned slot must have slotStartTime strictly in the future (> nowBeforeQuery)
+      // and strictly fewer than 48 slots (since earlier slots today in NY have already passed or started)
+      for (const s of nySlots) {
+        expect(new Date(s.slotStartTime).getTime()).toBeGreaterThan(nowBeforeQuery);
+      }
+      expect(nySlots.length).toBeLessThan(48);
+
+      // 3. Verify frontend DispatcherDashboard.tsx filters out past slots and resolves dates in warehouse timezone
+      const dashboardPath = path.resolve(
+        __dirname,
+        '../../frontend/src/pages/DispatcherDashboard.tsx'
+      );
+      const source = fs.readFileSync(dashboardPath, 'utf-8');
+
+      expect(source).toContain('const isFutureSlot = useCallback');
+      expect(source).toContain('return slotStartMs > Date.now()');
+      expect(source).toContain('filter(isFutureSlot)');
+      expect(source).toContain('getTodayDateString(selectedWarehouse?.timezone)');
+    } finally {
+      await prisma.dock.deleteMany({ where: { warehouseId: nyWarehouse.id } });
+      await prisma.operatingHour.deleteMany({ where: { warehouseId: nyWarehouse.id } });
+      await prisma.warehouse.deleteMany({ where: { id: nyWarehouse.id } });
+    }
+  });
 });
