@@ -5,6 +5,7 @@ import {
   getDayOfWeekInTimeZone,
   timeStringToMinutes,
 } from '../utils/time.utils';
+import { auditLogService } from './audit.service';
 
 export interface CreateBookingInput {
   dockId: number;
@@ -237,19 +238,18 @@ export class BookingService {
 
         // If userId is provided, create initial AuditLog
         if (userId) {
-          await tx.auditLog.create({
-            data: {
-              bookingId: booking.id,
-              userId,
-              action: 'CREATED',
-              details: {
-                dockId: booking.dockId,
-                slotStartTime: booking.slotStartTime.toISOString(),
-                slotEndTime: booking.slotEndTime.toISOString(),
-                truckPlate: booking.truckPlate,
-                driverName: booking.driverName,
-              },
+          await auditLogService.recordLog({
+            bookingId: booking.id,
+            userId,
+            action: 'CREATED',
+            details: {
+              dockId: booking.dockId,
+              slotStartTime: booking.slotStartTime.toISOString(),
+              slotEndTime: booking.slotEndTime.toISOString(),
+              truckPlate: booking.truckPlate,
+              driverName: booking.driverName,
             },
+            tx,
           });
         }
 
@@ -481,21 +481,20 @@ export class BookingService {
         });
 
         // Insert AuditLog with action RESCHEDULED
-        await tx.auditLog.create({
-          data: {
-            bookingId,
-            userId,
-            action: 'RESCHEDULED',
-            details: {
-              oldDockId: booking.dockId,
-              oldSlotStartTime: booking.slotStartTime.toISOString(),
-              oldSlotEndTime: booking.slotEndTime.toISOString(),
-              newDockId: targetDockId,
-              newSlotStartTime: slotStart.toISOString(),
-              newSlotEndTime: slotEnd.toISOString(),
-              reason: data.reason ? data.reason.trim() : null,
-            },
+        await auditLogService.recordLog({
+          bookingId,
+          userId,
+          action: 'RESCHEDULED',
+          details: {
+            oldDockId: booking.dockId,
+            oldSlotStartTime: booking.slotStartTime.toISOString(),
+            oldSlotEndTime: booking.slotEndTime.toISOString(),
+            newDockId: targetDockId,
+            newSlotStartTime: slotStart.toISOString(),
+            newSlotEndTime: slotEnd.toISOString(),
+            reason: data.reason ? data.reason.trim() : null,
           },
+          tx,
         });
 
         // Create OutboxEvent record for async notifications
@@ -610,18 +609,17 @@ export class BookingService {
       });
 
       // Record AuditLog
-      await tx.auditLog.create({
-        data: {
-          bookingId,
-          userId,
-          action: 'CANCELLED',
-          details: {
-            reason: reason ? reason.trim() : 'Cancelled by carrier dispatcher',
-            dockId: booking.dockId,
-            slotStartTime: booking.slotStartTime.toISOString(),
-            cancelledAt: new Date().toISOString(),
-          },
+      await auditLogService.recordLog({
+        bookingId,
+        userId,
+        action: 'CANCELLED',
+        details: {
+          reason: reason ? reason.trim() : 'Cancelled by carrier dispatcher',
+          dockId: booking.dockId,
+          slotStartTime: booking.slotStartTime.toISOString(),
+          cancelledAt: new Date().toISOString(),
         },
+        tx,
       });
 
       // Simultaneously create OutboxEvent
@@ -697,13 +695,20 @@ export class BookingService {
             email: true,
             role: true,
             organizationId: true,
+            organization: {
+              select: {
+                id: true,
+                name: true,
+                type: true,
+              },
+            },
           },
         },
       },
       orderBy: { createdAt: 'asc' },
     });
 
-    return logs;
+    return logs.map((log) => auditLogService.formatLogEntry(log));
   }
 
   /**
@@ -828,17 +833,16 @@ export class BookingService {
       });
 
       // Record AuditLog entry tracking the status change
-      await tx.auditLog.create({
-        data: {
-          bookingId,
-          userId,
-          action: 'STATUS_CHANGED',
-          details: {
-            oldStatus: booking.status,
-            newStatus: status,
-            updatedAt: new Date().toISOString(),
-          },
+      await auditLogService.recordLog({
+        bookingId,
+        userId,
+        action: 'STATUS_CHANGED',
+        details: {
+          oldStatus: booking.status,
+          newStatus: status,
+          updatedAt: new Date().toISOString(),
         },
+        tx,
       });
 
       // Simultaneously create OutboxEvent
@@ -857,6 +861,105 @@ export class BookingService {
           },
           status: OutboxStatus.PENDING,
         },
+      });
+
+      return updatedBooking;
+    });
+
+    return result;
+  }
+
+  /**
+   * Updates general booking details (truck plate, driver info, cargo note).
+   * Records an UPDATED audit log entry with change summary and actor metadata.
+   */
+  async updateBooking(
+    bookingId: number,
+    carrierOrgId: number,
+    userId: number,
+    data: {
+      truckPlate?: string;
+      driverName?: string;
+      driverPhone?: string;
+      cargoNote?: string;
+    }
+  ) {
+    if (!bookingId || isNaN(bookingId)) {
+      throw { status: 400, message: 'Invalid booking ID.' };
+    }
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        dock: {
+          include: {
+            warehouse: true,
+          },
+        },
+        carrierOrg: true,
+      },
+    });
+
+    if (!booking) {
+      throw { status: 404, message: 'Booking not found.' };
+    }
+
+    if (booking.carrierOrgId !== carrierOrgId) {
+      throw { status: 403, message: 'Forbidden. You do not have permission to manage this booking.' };
+    }
+
+    if (booking.status === BookingStatus.CANCELLED) {
+      throw { status: 400, message: 'Cannot update a cancelled booking.' };
+    }
+
+    const changes: Record<string, { old: any; new: any }> = {};
+    if (data.truckPlate !== undefined && data.truckPlate.trim() !== booking.truckPlate) {
+      changes.truckPlate = { old: booking.truckPlate, new: data.truckPlate.trim() };
+    }
+    if (data.driverName !== undefined && data.driverName.trim() !== booking.driverName) {
+      changes.driverName = { old: booking.driverName, new: data.driverName.trim() };
+    }
+    if (data.driverPhone !== undefined && data.driverPhone.trim() !== booking.driverPhone) {
+      changes.driverPhone = { old: booking.driverPhone, new: data.driverPhone.trim() };
+    }
+    if (data.cargoNote !== undefined && data.cargoNote.trim() !== (booking.cargoNote || '')) {
+      changes.cargoNote = { old: booking.cargoNote, new: data.cargoNote.trim() };
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const updatedBooking = await tx.booking.update({
+        where: { id: bookingId },
+        data: {
+          ...(data.truckPlate !== undefined ? { truckPlate: data.truckPlate.trim() } : {}),
+          ...(data.driverName !== undefined ? { driverName: data.driverName.trim() } : {}),
+          ...(data.driverPhone !== undefined ? { driverPhone: data.driverPhone.trim() } : {}),
+          ...(data.cargoNote !== undefined ? { cargoNote: data.cargoNote.trim() } : {}),
+        },
+        include: {
+          dock: {
+            include: {
+              warehouse: true,
+            },
+          },
+          carrierOrg: true,
+        },
+      });
+
+      const changeKeys = Object.keys(changes);
+      const summary =
+        changeKeys.length > 0
+          ? `Booking updated: modified ${changeKeys.join(', ')}`
+          : 'Booking details updated';
+
+      await auditLogService.recordLog({
+        bookingId,
+        userId,
+        action: 'UPDATED',
+        details: {
+          changes,
+        },
+        summary,
+        tx,
       });
 
       return updatedBooking;

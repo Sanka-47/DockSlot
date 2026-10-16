@@ -1,5 +1,10 @@
 import apiClient from './client';
-import type { Booking, UpdateBookingStatusRequest, CreateBookingRequest } from '../types/booking.types';
+import type {
+  Booking,
+  UpdateBookingStatusRequest,
+  CreateBookingRequest,
+  BookingAuditLog,
+} from '../types/booking.types';
 
 export const bookingApi = {
   getAll: async (): Promise<{ success: boolean; data: Booking[] }> => {
@@ -46,6 +51,15 @@ export const bookingApi = {
     const response = await apiClient.patch<{ success: boolean; message: string; data: Booking }>(
       `/bookings/${id}/cancel`,
       { reason }
+    );
+    return response.data;
+  },
+
+  getAuditLog: async (
+    id: number
+  ): Promise<{ success: boolean; data: BookingAuditLog[] }> => {
+    const response = await apiClient.get<{ success: boolean; data: BookingAuditLog[] }>(
+      `/bookings/${id}/audit-log`
     );
     return response.data;
   },

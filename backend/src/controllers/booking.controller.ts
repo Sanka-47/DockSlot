@@ -198,7 +198,57 @@ export const cancelBooking = async (req: Request, res: Response): Promise<void> 
 };
 
 /**
+ * Updates general booking details (truck plate, driver info, cargo note).
+ * PATCH /api/bookings/:id
+ */
+export const updateBooking = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const organizationId = req.user?.organizationId;
+    const userId = req.user?.userId;
+    if (!organizationId || !userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Unauthorized. Authentication context required.',
+      });
+      return;
+    }
+
+    const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const bookingId = parseInt(rawId, 10);
+    if (isNaN(bookingId)) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid booking ID.',
+      });
+      return;
+    }
+
+    const { truckPlate, driverName, driverPhone, cargoNote } = req.body;
+
+    const updatedBooking = await bookingService.updateBooking(
+      bookingId,
+      organizationId,
+      userId,
+      { truckPlate, driverName, driverPhone, cargoNote }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Booking updated successfully',
+      data: updatedBooking,
+    });
+  } catch (error: any) {
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'An error occurred while updating booking.',
+    });
+  }
+};
+
+/**
  * Retrieves audit logs for a booking with dual-sided tenant visibility.
+ * GET /api/bookings/:id/audit-log
  * GET /api/bookings/:id/audit-logs
  */
 export const getBookingAuditLogs = async (req: Request, res: Response): Promise<void> => {

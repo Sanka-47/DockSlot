@@ -1012,6 +1012,75 @@
                 }
             }
         },
+        "/bookings/{id}/audit-log": {
+            "get": {
+                "summary": "View lifecycle audit logs for a booking",
+                "description": "Dual-sided audit trail visible to authorized roles on both sides (warehouse operator side: WAREHOUSE_ADMIN, DOCK_MANAGER; carrier side: DISPATCHER, CARRIER_ADMIN). Tracks and displays the complete lifecycle history of every booking (who created, changed, or cancelled it).",
+                "tags": ["Bookings"],
+                "security": [{
+                    "bearerAuth": []
+                }],
+                "parameters": [{
+                    "in": "path",
+                    "name": "id",
+                    "required": true,
+                    "schema": {
+                        "type": "integer"
+                    }
+                }],
+                "responses": {
+                    "200": {
+                        "description": "Array of lifecycle audit log entries (CREATED, UPDATED, CANCELLED) with timestamps, actor metadata (userId, name, role), and change summaries.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": { "type": "boolean", "example": true },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "id": { "type": "integer" },
+                                                    "bookingId": { "type": "integer" },
+                                                    "action": { "type": "string", "example": "CREATED" },
+                                                    "actionType": { "type": "string", "example": "CREATED" },
+                                                    "summary": { "type": "string", "example": "Booking created for truck WP-CA-4029" },
+                                                    "createdAt": { "type": "string", "format": "date-time" },
+                                                    "userId": { "type": "integer" },
+                                                    "actor": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "userId": { "type": "integer" },
+                                                            "name": { "type": "string", "example": "Nuwan Perera" },
+                                                            "role": { "type": "string", "example": "DISPATCHER" },
+                                                            "email": { "type": "string", "example": "dispatcher@carrier.com" },
+                                                            "organizationId": { "type": "integer" },
+                                                            "organizationName": { "type": "string" }
+                                                        }
+                                                    },
+                                                    "details": { "type": "object" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Forbidden. User role or organization not authorized"
+                    },
+                    "404": {
+                        "description": "Booking not found"
+                    }
+                }
+            }
+        },
         "/bookings/{id}/audit-logs": {
             "get": {
                 "summary": "View lifecycle audit logs for a booking",

@@ -20,6 +20,7 @@ import {
   RotateCcw,
   Globe,
   Warehouse as WarehouseIcon,
+  History,
 } from "lucide-react";
 import {
   Card,
@@ -32,6 +33,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { warehouseApi } from "../api/warehouse.api";
 import { bookingApi } from "../api/booking.api";
+import { BookingAuditLogModal } from "../components/BookingAuditLogModal";
 import type {
   Warehouse,
   Dock,
@@ -200,6 +202,18 @@ export const DispatcherDashboard: React.FC = () => {
   const [cancelReason, setCancelReason] = useState<string>("");
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [isSubmittingCancel, setIsSubmittingCancel] = useState<boolean>(false);
+
+  // ---------------------------------------------------------------------------
+  // Audit Log Modal State
+  // ---------------------------------------------------------------------------
+  const [selectedBookingForAudit, setSelectedBookingForAudit] =
+    useState<Booking | null>(null);
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState<boolean>(false);
+
+  const handleOpenAuditModal = (booking: Booking) => {
+    setSelectedBookingForAudit(booking);
+    setIsAuditModalOpen(true);
+  };
 
   // ---------------------------------------------------------------------------
   // Bookings Table Filters & Search
@@ -1404,50 +1418,63 @@ export const DispatcherDashboard: React.FC = () => {
                       </div>
 
                       {/* Bottom Action Buttons */}
-                      {isActionable ? (
-                        <div className="pt-2 border-t border-gray-100 grid grid-cols-2 gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleOpenRescheduleModal(b)}
-                            className={`w-full min-h-[38px] text-xs px-2.5 flex items-center justify-center space-x-1 ${
-                              insideLock
-                                ? "border-amber-400 text-amber-800 bg-amber-50 hover:bg-amber-100 font-semibold"
-                                : "border-gray-300 text-gray-700 hover:bg-gray-100"
-                            }`}
-                          >
-                            <RotateCcw
-                              className={`w-3.5 h-3.5 shrink-0 ${insideLock ? "text-amber-600" : "text-[#2F4F4F]"}`}
-                            />
-                            <span className="truncate">
-                              {insideLock ? "Emergency Reschedule" : "Reschedule"}
-                            </span>
-                          </Button>
+                      <div className="pt-2 border-t border-gray-100 flex flex-col gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleOpenAuditModal(b)}
+                          className="w-full min-h-[34px] text-xs px-2.5 flex items-center justify-center space-x-1.5 border-gray-300 text-gray-700 hover:bg-gray-100"
+                          title="View complete booking audit history"
+                        >
+                          <History className="w-3.5 h-3.5 shrink-0 text-[#2F4F4F]" />
+                          <span>View Audit Log</span>
+                        </Button>
 
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleOpenCancelModal(b)}
-                            disabled={insideLock}
-                            className={`w-full min-h-[38px] text-xs px-2.5 flex items-center justify-center space-x-1 ${
-                              insideLock
-                                ? "border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed opacity-60"
-                                : "border-rose-200 text-rose-700 hover:bg-rose-50"
-                            }`}
-                          >
-                            <X
-                              className={`w-3.5 h-3.5 shrink-0 ${insideLock ? "text-gray-400" : "text-rose-600"}`}
-                            />
-                            <span>Cancel</span>
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="pt-2 border-t border-gray-100 flex justify-end">
-                          <span className="text-[11px] text-gray-400 italic">
-                            Appointment Locked
-                          </span>
-                        </div>
-                      )}
+                        {isActionable ? (
+                          <div className="grid grid-cols-2 gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleOpenRescheduleModal(b)}
+                              className={`w-full min-h-[38px] text-xs px-2.5 flex items-center justify-center space-x-1 ${
+                                insideLock
+                                  ? "border-amber-400 text-amber-800 bg-amber-50 hover:bg-amber-100 font-semibold"
+                                  : "border-gray-300 text-gray-700 hover:bg-gray-100"
+                              }`}
+                            >
+                              <RotateCcw
+                                className={`w-3.5 h-3.5 shrink-0 ${insideLock ? "text-amber-600" : "text-[#2F4F4F]"}`}
+                              />
+                              <span className="truncate">
+                                {insideLock ? "Emergency Reschedule" : "Reschedule"}
+                              </span>
+                            </Button>
+
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleOpenCancelModal(b)}
+                              disabled={insideLock}
+                              className={`w-full min-h-[38px] text-xs px-2.5 flex items-center justify-center space-x-1 ${
+                                insideLock
+                                  ? "border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed opacity-60"
+                                  : "border-rose-200 text-rose-700 hover:bg-rose-50"
+                              }`}
+                            >
+                              <X
+                                className={`w-3.5 h-3.5 shrink-0 ${insideLock ? "text-gray-400" : "text-rose-600"}`}
+                              />
+                              <span>Cancel</span>
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex justify-end">
+                            <span className="text-[11px] text-gray-400 italic">
+                              Appointment Locked
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -1580,6 +1607,18 @@ export const DispatcherDashboard: React.FC = () => {
                           {/* Actions */}
                           <td className="px-4 py-3 text-right">
                             <div className="flex items-center justify-end space-x-1.5">
+                              {/* Audit Log / History Button */}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleOpenAuditModal(b)}
+                                className="h-7 text-xs px-2.5 flex items-center space-x-1 border-gray-300 text-gray-700 hover:bg-gray-100"
+                                title="View complete booking audit history"
+                              >
+                                <History className="w-3 h-3 text-[#2F4F4F]" />
+                                <span>History</span>
+                              </Button>
+
                               {isActionable ? (
                                 <>
                                   {(() => {
@@ -2237,8 +2276,14 @@ export const DispatcherDashboard: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Booking Audit Log & Lifecycle History Modal */}
+      <BookingAuditLogModal
+        booking={selectedBookingForAudit}
+        isOpen={isAuditModalOpen}
+        onClose={() => setIsAuditModalOpen(false)}
+      />
     </div>
-  
   );
 };
 

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   getBookings,
   createBooking,
+  updateBooking,
   rescheduleBooking,
   cancelBooking,
   getBookingAuditLogs,
@@ -13,6 +14,7 @@ import {
   requireCarrierDispatcher,
   requireCarrierRole,
   requireDockManager,
+  requireBookingAuditAccess,
 } from '../middleware/rbac.middleware';
 import { idempotencyMiddleware } from '../middleware/idempotency.middleware';
 import { bookingRateLimiter } from '../middleware/rateLimit.middleware';
@@ -233,38 +235,72 @@ router.patch(
   cancelBooking
 );
 
-// /**
-//  * @openapi
-//  * /bookings/{id}:
-//  *   delete:
-//  *     summary: Cancel a confirmed booking (DELETE method alias)
-//  *     tags:
-//  *       - Bookings
-//  *     security:
-//  *       - bearerAuth: []
-//  *     parameters:
-//  *       - in: path
-//  *         name: id
-//  *         required: true
-//  *         schema:
-//  *           type: integer
-//  *     responses:
-//  *       200:
-//  *         description: Booking cancelled successfully
-//  */
-// router.delete(
-//   '/:id',
-//   authMiddleware,
-//   requireVerifiedEmail,
-//   requireCarrierRole,
-//   cancelBooking
-// );
+/**
+ * @openapi
+ * /bookings/{id}:
+ *   patch:
+ *     summary: Update booking details
+ *     description: Allows the carrier to update truck plate, driver info, and cargo note. Records an UPDATED audit log entry.
+ *     tags:
+ *       - Bookings
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Booking updated successfully
+ */
+router.patch(
+  '/:id',
+  authMiddleware,
+  requireVerifiedEmail,
+  requireCarrierRole,
+  updateBooking
+);
+
+/**
+ * @openapi
+ * /bookings/{id}/audit-log:
+ *   get:
+ *     summary: View lifecycle audit logs for a booking
+ *     description: "Dual-sided audit trail visible to authorized roles on both sides (warehouse operator side WAREHOUSE_ADMIN, DOCK_MANAGER and carrier side DISPATCHER, CARRIER_ADMIN)."
+ *     tags:
+ *       - Bookings
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Array of lifecycle audit log entries (CREATED, UPDATED, CANCELLED) with timestamps, actor metadata, and change summaries.
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Booking not found
+ */
+router.get(
+  '/:id/audit-log',
+  authMiddleware,
+  requireBookingAuditAccess,
+  getBookingAuditLogs
+);
 
 /**
  * @openapi
  * /bookings/{id}/audit-logs:
  *   get:
- *     summary: View lifecycle audit logs for a booking
+ *     summary: View lifecycle audit logs for a booking (alias)
  *     description: Dual-sided audit trail visible to both the carrier and the operating warehouse.
  *     tags:
  *       - Bookings
@@ -284,7 +320,12 @@ router.patch(
  *       404:
  *         description: Booking not found
  */
-router.get('/:id/audit-logs', authMiddleware, getBookingAuditLogs);
+router.get(
+  '/:id/audit-logs',
+  authMiddleware,
+  requireBookingAuditAccess,
+  getBookingAuditLogs
+);
 
 /**
  * @openapi

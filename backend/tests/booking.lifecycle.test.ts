@@ -413,4 +413,39 @@ describe('Booking Lifecycle Management Integration Tests', () => {
     expect(unauthorizedRes.body.success).toBe(false);
     expect(unauthorizedRes.body.message).toContain('Forbidden');
   });
+
+  it('verifies GET /api/bookings/:id/audit-log returns actor metadata, timestamps, and change summaries', async () => {
+    const res = await request(app)
+      .get(`/api/bookings/${createdBookingId}/audit-log`)
+      .set('Authorization', `Bearer ${dispatcherAToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.length).toBe(3);
+
+    const firstLog = res.body.data[0];
+    expect(firstLog.action).toBe('CREATED');
+    expect(firstLog.actionType).toBe('CREATED');
+    expect(firstLog.createdAt).toBeDefined();
+    expect(firstLog.summary).toBeDefined();
+    expect(firstLog.summary).toContain('TRK-LFC-01');
+
+    // Actor metadata verification
+    expect(firstLog.actor).toBeDefined();
+    expect(firstLog.actor.userId).toBe(dispatcherAId);
+    expect(firstLog.actor.role).toBe('DISPATCHER');
+    expect(firstLog.actor.name).toBeDefined();
+
+    const secondLog = res.body.data[1];
+    expect(secondLog.action).toBe('RESCHEDULED');
+    expect(secondLog.actionType).toBe('MODIFIED');
+    expect(secondLog.summary).toContain('rescheduled');
+    expect(secondLog.actor.userId).toBe(dispatcherAId);
+
+    const thirdLog = res.body.data[2];
+    expect(thirdLog.action).toBe('CANCELLED');
+    expect(thirdLog.actionType).toBe('CANCELLED');
+    expect(thirdLog.summary).toContain('Driver vehicle breakdown');
+    expect(thirdLog.actor.userId).toBe(dispatcherAId);
+  });
 });
