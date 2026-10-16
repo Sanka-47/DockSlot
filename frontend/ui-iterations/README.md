@@ -22,7 +22,25 @@ added back end and front end validation so maintainance reasone is required and 
 ![alt text](image.png)
 
 
-Dispatcher Dash baord -
+Dispatcher Dashbaord -
 
 ui implemented without any issues 
 ![alt text](image-1.png)
+
+
+Warehouse Admin Dashboard - 
+
+ui implemented without any issues
+![alt text](image-2.png)
+
+
+
+Carrier Admin Dashbaord
+
+![alt text](image-3.png)
+
+in the first implimantation the there was a two dipatch and booking sections, 
+1.the dedicated dispatch and bookign section 
+2.dispatch and booking section in the admin console tabs 
+
+the  dispatch and booking section in the admin console tab was unnecessary so i asked ai to remove the this section from tabs in frontend\src\pages\CarrierAdminDashboard.tsx
