@@ -15,6 +15,7 @@ import {
   requireDockManager,
 } from '../middleware/rbac.middleware';
 import { idempotencyMiddleware } from '../middleware/idempotency.middleware';
+import { bookingRateLimiter } from '../middleware/rateLimit.middleware';
 
 const router = Router();
 
@@ -33,6 +34,8 @@ const router = Router();
  *         description: List of bookings
  *       401:
  *         description: Authentication required
+ *       429:
+ *         description: Too many API requests (rate limit exceeded)
  */
 router.get('/', authMiddleware, getBookings);
 
@@ -45,6 +48,7 @@ router.get('/', authMiddleware, getBookings);
  *       Atomically reserves a dock time slot and schedules an asynchronous outbox event.
  *       Protected against concurrent double-booking and mobile network retries via Idempotency-Key.
  *       Restricted to users with DISPATCHER role in a CARRIER organization.
+ *       Protected by a Redis-backed per-user booking rate limiter (RATE_LIMIT_BOOKING_MAX per RATE_LIMIT_WINDOW_MS).
  *     tags:
  *       - Bookings
  *     security:
@@ -105,10 +109,13 @@ router.get('/', authMiddleware, getBookings);
  *         description: Only carrier dispatchers with verified emails can create bookings
  *       409:
  *         description: Slot already booked or maintenance closure active (Concurrency conflict)
+ *       429:
+ *         description: Too many booking requests (booking rate limit exceeded)
  */
 router.post(
   '/',
   authMiddleware,
+  bookingRateLimiter,
   requireVerifiedEmail,
   requireCarrierDispatcher,
   idempotencyMiddleware,

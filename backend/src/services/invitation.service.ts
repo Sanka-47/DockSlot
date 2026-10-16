@@ -1,9 +1,9 @@
 import crypto from 'crypto';
 import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
 import { UserRole } from '@prisma/client';
 import { prisma } from '../config/db.config';
 import { securityConfig } from '../config/security.config';
+import { signAccessToken, signRefreshToken } from '../utils/jwt.utils';
 import { emailService } from './email.service';
 import redis from '../config/redis';
 
@@ -38,6 +38,7 @@ export interface AcceptInvitationInput {
 
 export interface AcceptInvitationResponse {
   token: string;
+  refreshToken?: string;
   user: {
     id: number;
     email: string;
@@ -54,23 +55,35 @@ export interface AcceptInvitationResponse {
 
 export class InvitationService {
   /**
-   * Helper to issue a signed JWT token containing user ID, organization ID, and role.
+   * Helper to issue a signed access JWT token using configured JWT_EXPIRES_IN.
    */
   public generateToken(
     user: { id: number; organizationId: number; role: UserRole; email: string },
     tokenVersion: number = 0
   ): string {
-    return jwt.sign(
-      {
-        userId: user.id,
-        organizationId: user.organizationId,
-        role: user.role,
-        email: user.email,
-        tokenVersion,
-      },
-      securityConfig.jwtSecret,
-      { expiresIn: securityConfig.jwtExpiresIn as any }
-    );
+    return signAccessToken({
+      userId: user.id,
+      organizationId: user.organizationId,
+      role: user.role,
+      email: user.email,
+      tokenVersion,
+    });
+  }
+
+  /**
+   * Helper to issue a signed refresh JWT token using configured JWT_REFRESH_EXPIRES_IN.
+   */
+  public generateRefreshToken(
+    user: { id: number; organizationId: number; role: UserRole; email: string },
+    tokenVersion: number = 0
+  ): string {
+    return signRefreshToken({
+      userId: user.id,
+      organizationId: user.organizationId,
+      role: user.role,
+      email: user.email,
+      tokenVersion,
+    });
   }
 
   /**

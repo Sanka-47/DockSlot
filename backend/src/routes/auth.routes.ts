@@ -13,7 +13,6 @@ import {
   logoutAll,
 } from '../controllers/auth.controller';
 import { authenticate } from '../middleware/auth.middleware';
-import { authRateLimiter } from '../middleware/rateLimit.middleware';
 
 const router = Router();
 
@@ -66,6 +65,8 @@ const router = Router();
  *         description: Validation error or missing required fields
  *       409:
  *         description: Email already registered
+ *       429:
+ *         description: Too many API requests (rate limit exceeded)
  */
 router.post('/register', register);
 
@@ -74,6 +75,9 @@ router.post('/register', register);
  * /auth/login:
  *   post:
  *     summary: Authenticate user and issue JWT token
+ *     description: |
+ *       Authenticates a user by email and password and issues signed JWT tokens (JWT_EXPIRES_IN, JWT_REFRESH_EXPIRES_IN).
+ *       Tracks consecutive failed login attempts and locks the account for LOGIN_LOCKOUT_DURATION_MINUTES after MAX_FAILED_LOGIN_ATTEMPTS failures.
  *     tags:
  *       - Authentication
  *     requestBody:
@@ -98,9 +102,15 @@ router.post('/register', register);
  *       200:
  *         description: Login successful, returns JWT token
  *       401:
- *         description: Invalid credentials or account locked
+ *         description: Invalid credentials (with remaining attempts before lockout)
+ *       403:
+ *         description: Account deactivated
+ *       423:
+ *         description: Account temporarily locked due to consecutive failed login attempts
+ *       429:
+ *         description: Too many API requests (rate limit exceeded)
  */
-router.post('/login', authRateLimiter, login);
+router.post('/login', login);
 
 /**
  * @openapi
@@ -229,7 +239,7 @@ router.post('/resend-verification', resendVerification);
  *       200:
  *         description: Reset email sent if account exists
  */
-router.post('/forgot-password', authRateLimiter, forgotPassword);
+router.post('/forgot-password', forgotPassword);
 
 /**
  * @openapi
@@ -259,7 +269,7 @@ router.post('/forgot-password', authRateLimiter, forgotPassword);
  *       400:
  *         description: Invalid or expired token
  */
-router.post('/reset-password', authRateLimiter, resetPassword);
+router.post('/reset-password', resetPassword);
 
 /**
  * @openapi

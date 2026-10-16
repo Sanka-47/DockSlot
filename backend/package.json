@@ -26,6 +26,7 @@
     "jsonwebtoken": "^9.0.3",
     "mysql2": "^3.24.5",
     "nodemailer": "^10.1.0",
+    "rate-limit-redis": "^6.0.1",
     "swagger-jsdoc": "^6.3.0",
     "swagger-ui-express": "^5.0.1"
   },

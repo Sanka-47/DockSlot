@@ -8,6 +8,7 @@ import bookingRoutes from './routes/booking.routes';
 import warehouseRoutes from './routes/warehouse.routes';
 import dockRoutes from './routes/dock.routes';
 import userRoutes from './routes/user.routes';
+import { apiRateLimiter } from './middleware/rateLimit.middleware';
 import { errorHandler } from './middleware/error.middleware';
 
 dotenv.config();
@@ -30,6 +31,9 @@ app.get('/api-docs.json', (_req, res) => {
   res.setHeader('Content-Type', 'application/json');
   res.send(swaggerSpec);
 });
+
+// Global API Rate Limiter (Redis-backed)
+app.use('/api', apiRateLimiter);
 
 // Application Routes
 app.use('/api/auth', authRoutes);

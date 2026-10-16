@@ -373,7 +373,7 @@ describe('Slot Taken Between Viewing and Booking Requirement (DispatcherDashboar
       expect(source).toContain('const isFutureSlot = useCallback');
       expect(source).toContain('return slotStartMs > Date.now()');
       expect(source).toContain('filter(isFutureSlot)');
-      expect(source).toContain('getTodayDateString(selectedWarehouse?.timezone)');
+      expect(source).toMatch(/getTodayDateString\(\s*selectedWarehouse\?\.timezone\s*\)/);
     } finally {
       await prisma.dock.deleteMany({ where: { warehouseId: nyWarehouse.id } });
       await prisma.operatingHour.deleteMany({ where: { warehouseId: nyWarehouse.id } });

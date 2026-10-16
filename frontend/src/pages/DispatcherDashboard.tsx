@@ -1066,9 +1066,10 @@ export const DispatcherDashboard: React.FC = () => {
               <Input
                 id="search-date"
                 type="date"
-                min={getTodayDateString()}
+                min={getTodayDateString(selectedWarehouse?.timezone)}
                 max={getMaxAdvanceDateString(
                   selectedWarehouse?.policy?.maxAdvanceDays || 14,
+                  selectedWarehouse?.timezone,
                 )}
                 value={targetDate}
                 onChange={(e) => setTargetDate(e.target.value)}

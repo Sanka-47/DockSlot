@@ -730,12 +730,15 @@
                     },
                     "401": {
                         "description": "Authentication required"
+                    },
+                    "429": {
+                        "description": "Too many API requests (rate limit exceeded)"
                     }
                 }
             },
             "post": {
                 "summary": "Create a confirmed dock booking",
-                "description": "Atomically reserves a dock time slot and schedules an asynchronous outbox event.\nProtected against concurrent double-booking and mobile network retries via Idempotency-Key.\nRestricted to users with DISPATCHER role in a CARRIER organization.\n",
+                "description": "Atomically reserves a dock time slot and schedules an asynchronous outbox event.\nProtected against concurrent double-booking and mobile network retries via Idempotency-Key.\nRestricted to users with DISPATCHER role in a CARRIER organization.\nProtected by a Redis-backed per-user booking rate limiter (RATE_LIMIT_BOOKING_MAX per RATE_LIMIT_WINDOW_MS).\n",
                 "tags": ["Bookings"],
                 "security": [{
                     "bearerAuth": []
@@ -808,6 +811,9 @@
                     },
                     "409": {
                         "description": "Slot already booked or maintenance closure active (Concurrency conflict)"
+                    },
+                    "429": {
+                        "description": "Too many booking requests (booking rate limit exceeded)"
                     }
                 }
             }
@@ -1141,6 +1147,9 @@
                     },
                     "409": {
                         "description": "Email already registered"
+                    },
+                    "429": {
+                        "description": "Too many API requests (rate limit exceeded)"
                     }
                 }
             }
@@ -1148,6 +1157,7 @@
         "/auth/login": {
             "post": {
                 "summary": "Authenticate user and issue JWT token",
+                "description": "Authenticates a user by email and password and issues signed JWT tokens (JWT_EXPIRES_IN, JWT_REFRESH_EXPIRES_IN). Tracks consecutive failed login attempts and locks the account for LOGIN_LOCKOUT_DURATION_MINUTES after MAX_FAILED_LOGIN_ATTEMPTS failures.",
                 "tags": ["Authentication"],
                 "requestBody": {
                     "required": true,
@@ -1177,7 +1187,16 @@
                         "description": "Login successful, returns JWT token"
                     },
                     "401": {
-                        "description": "Invalid credentials or account locked"
+                        "description": "Invalid credentials (with remaining attempts before lockout)"
+                    },
+                    "403": {
+                        "description": "Account deactivated"
+                    },
+                    "423": {
+                        "description": "Account temporarily locked due to consecutive failed login attempts"
+                    },
+                    "429": {
+                        "description": "Too many API requests (rate limit exceeded)"
                     }
                 }
             }
