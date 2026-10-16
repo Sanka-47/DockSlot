@@ -5,6 +5,7 @@ export interface WebhookLogEntry {
   id: string;
   receivedAt: string;
   body: any;
+  eventId?: string;
   deliveryAttempt: number;
   isDuplicate: boolean;
   key: string;
@@ -40,8 +41,25 @@ export function createMockCarrierApp(initialConfig?: Partial<MockCarrierConfig>)
   let logs: WebhookLogEntry[] = [];
   const deliveryCounts = new Map<string, number>();
 
-  function computePayloadKey(body: any): string {
+  /**
+   * Derives the de-duplication key for an inbound notification.
+   *
+   * The sender's stable event id (X-Event-Id header) takes precedence: a
+   * redelivery of the *same* outbox event must be recognised as a duplicate,
+   * while two genuinely distinct events for the same booking and event type
+   * (e.g. a booking rescheduled twice) must not collide. Payload shape is only
+   * used as a fallback for callers that do not supply an idempotency key.
+   */
+  function computePayloadKey(body: any, eventIdHeader?: string): string {
+    const headerEventId =
+      typeof eventIdHeader === 'string' && eventIdHeader.trim() ? eventIdHeader.trim() : undefined;
+    if (headerEventId) {
+      return `event:${headerEventId}`;
+    }
     if (!body) return 'empty';
+    if (body.eventId) {
+      return `event:${body.eventId}`;
+    }
     if (body.booking?.id && body.eventType) {
       return `booking:${body.booking.id}:event:${body.eventType}`;
     }
@@ -83,7 +101,8 @@ export function createMockCarrierApp(initialConfig?: Partial<MockCarrierConfig>)
     }
 
     const { carrierOrg, booking, eventType, message } = req.body;
-    const key = computePayloadKey(req.body);
+    const eventIdHeader = (req.get('x-event-id') || req.get('idempotency-key')) as string | undefined;
+    const key = computePayloadKey(req.body, eventIdHeader);
     const previousDeliveries = deliveryCounts.get(key) || 0;
     deliveryCounts.set(key, previousDeliveries + 1);
 
@@ -91,6 +110,7 @@ export function createMockCarrierApp(initialConfig?: Partial<MockCarrierConfig>)
       id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       receivedAt: new Date().toISOString(),
       body: req.body,
+      eventId: eventIdHeader,
       deliveryAttempt: previousDeliveries + 1,
       isDuplicate: previousDeliveries > 0,
       key,

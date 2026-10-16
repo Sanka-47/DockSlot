@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { authService } from '../services/auth.service';
 import { invitationService } from '../services/invitation.service';
+import { totpService } from '../services/totp.service';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -29,10 +30,22 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
     const result = await authService.login(req.body);
+    if (result.requires2FA) {
+      res.status(200).json({
+        success: true,
+        message: 'Two-factor authentication required.',
+        requires2FA: true,
+        tempToken: result.tempToken,
+        data: result,
+      });
+      return;
+    }
     res.status(200).json({
       success: true,
       message: 'Login successful.',
       data: result,
+      token: result.token,
+      user: result.user,
     });
   } catch (error: any) {
     const status = error.status || 500;
@@ -232,6 +245,137 @@ export const logoutAll = async (req: Request, res: Response): Promise<void> => {
     res.status(status).json({
       success: false,
       message: error.message || 'An error occurred while logging out of all devices.',
+    });
+  }
+};
+
+export const setup2FA = async (req: Request, res: Response): Promise<void> => {  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Unauthorized. Authentication required.',
+      });
+      return;
+    }
+
+    const result = await totpService.setup(userId);
+    res.status(200).json({
+      success: true,
+      message: 'TOTP 2FA secret and QR code generated successfully.',
+      data: result,
+      secret: result.secret,
+      qrCode: result.qrCode,
+      otpauthUrl: result.otpauthUrl,
+    });
+  } catch (error: any) {
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Failed to setup 2FA.',
+    });
+  }
+};
+
+export const verifyAndEnable2FA = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Unauthorized. Authentication required.',
+      });
+      return;
+    }
+
+    const { token } = req.body;
+    const result = await totpService.verifyAndEnable({ userId, token });
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result,
+      isTwoFactorEnabled: result.isTwoFactorEnabled,
+    });
+  } catch (error: any) {
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Failed to verify and enable 2FA.',
+    });
+  }
+};
+
+export const disable2FA = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Unauthorized. Authentication required.',
+      });
+      return;
+    }
+
+    const { password, token } = req.body;
+    const result = await totpService.disable({ userId, password, token });
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result,
+      isTwoFactorEnabled: result.isTwoFactorEnabled,
+    });
+  } catch (error: any) {
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Failed to disable 2FA.',
+    });
+  }
+};
+
+export const loginVerify2FA = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { tempToken, token, email, password } = req.body;
+    const result = await totpService.loginVerify({ tempToken, token, email, password });
+    res.status(200).json({
+      success: true,
+      message: 'Two-factor authentication verified successfully. Logged in.',
+      data: result,
+      token: result.token,
+      refreshToken: result.refreshToken,
+      user: result.user,
+    });
+  } catch (error: any) {
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Two-factor verification failed.',
+    });
+  }
+};
+
+export const get2FAStatus = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Unauthorized. Authentication required.',
+      });
+      return;
+    }
+
+    const result = await totpService.getStatus(userId);
+    res.status(200).json({
+      success: true,
+      message: 'Two-factor authentication status retrieved successfully.',
+      data: result,
+    });
+  } catch (error: any) {
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Failed to retrieve 2FA status.',
     });
   }
 };

@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-import { securityConfig } from '../config/security.config';
+import { verifyJwtToken } from '../utils/jwt.utils';
 import { prisma } from '../config/db.config';
 import redis from '../config/redis';
 
@@ -42,7 +41,7 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
   let decoded: any;
   try {
     // Step 1: Verify the JWT signature cryptographically (stateless, zero latency)
-    decoded = jwt.verify(token, securityConfig.jwtSecret);
+    decoded = verifyJwtToken(token);
   } catch (error: any) {
     if (error.name === 'TokenExpiredError') {
       res.status(401).json({
@@ -62,6 +61,16 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
   try {
     const userId = decoded.userId || decoded.id;
     const organizationId = decoded.organizationId || decoded.organization_id;
+
+    // Reject short-lived intermediate tokens (2FA login challenge, refresh tokens).
+    // Only a fully authenticated access token may pass this middleware.
+    if (decoded.type === '2fa_temp' || decoded.type === 'refresh') {
+      res.status(401).json({
+        success: false,
+        message: 'Invalid authorization token.',
+      });
+      return;
+    }
 
     // Step 2: Check MySQL/Prisma or Redis for isActive status
     const cachedActive = await redis.get(`user:${userId}:isActive`);

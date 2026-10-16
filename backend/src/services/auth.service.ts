@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { UserRole, OrganizationType } from '@prisma/client';
 import { prisma } from '../config/db.config';
 import { securityConfig } from '../config/security.config';
+import { signAccessToken, signRefreshToken, verifyJwtToken, signTemp2faToken } from '../utils/jwt.utils';
 import { emailService } from './email.service';
 import redis from '../config/redis';
 
@@ -47,13 +48,17 @@ export interface AcceptInviteInput {
 }
 
 export interface AuthResponse {
-  token: string;
+  token?: string;
+  refreshToken?: string;
+  requires2FA?: boolean;
+  tempToken?: string;
   user: {
     id: number;
     email: string;
     role: UserRole;
     organizationId: number;
     isEmailVerified: boolean;
+    isTwoFactorEnabled?: boolean;
     organization?: {
       id: number;
       name: string;
@@ -64,23 +69,42 @@ export interface AuthResponse {
 
 export class AuthService {
   /**
-   * Helper to issue a signed JWT token containing user ID, organization ID, and role.
+   * Helper to issue a signed access JWT token using configured JWT_EXPIRES_IN.
    */
   public generateToken(
     user: { id: number; organizationId: number; role: UserRole; email: string },
     tokenVersion: number = 0
   ): string {
-    return jwt.sign(
-      {
-        userId: user.id,
-        organizationId: user.organizationId,
-        role: user.role,
-        email: user.email,
-        tokenVersion,
-      },
-      securityConfig.jwtSecret,
-      { expiresIn: securityConfig.jwtExpiresIn as any }
-    );
+    return signAccessToken({
+      userId: user.id,
+      organizationId: user.organizationId,
+      role: user.role,
+      email: user.email,
+      tokenVersion,
+    });
+  }
+
+  /**
+   * Helper to issue a signed refresh JWT token using configured JWT_REFRESH_EXPIRES_IN.
+   */
+  public generateRefreshToken(
+    user: { id: number; organizationId: number; role: UserRole; email: string },
+    tokenVersion: number = 0
+  ): string {
+    return signRefreshToken({
+      userId: user.id,
+      organizationId: user.organizationId,
+      role: user.role,
+      email: user.email,
+      tokenVersion,
+    });
+  }
+
+  /**
+   * Helper to verify a JWT token using configured JWT_SECRET.
+   */
+  public verifyToken(token: string) {
+    return verifyJwtToken(token);
   }
 
   /**
@@ -202,15 +226,18 @@ export class AuthService {
 
       const tokenVersion = await this.getUserTokenVersion(user.id);
       const token = this.generateToken(user, tokenVersion);
+      const refreshToken = this.generateRefreshToken(user, tokenVersion);
 
       return {
         token,
+        refreshToken,
         user: {
           id: user.id,
           email: user.email,
           role: user.role,
           organizationId: user.organizationId,
           isEmailVerified: user.isEmailVerified,
+          isTwoFactorEnabled: user.isTwoFactorEnabled,
           organization: {
             id: organization.id,
             name: organization.name,
@@ -254,15 +281,18 @@ export class AuthService {
 
     const tokenVersion = await this.getUserTokenVersion(user.id);
     const token = this.generateToken(user, tokenVersion);
+    const refreshToken = this.generateRefreshToken(user, tokenVersion);
 
     return {
       token,
+      refreshToken,
       user: {
         id: user.id,
         email: user.email,
         role: user.role,
         organizationId: user.organizationId,
         isEmailVerified: user.isEmailVerified,
+        isTwoFactorEnabled: user.isTwoFactorEnabled,
         organization: {
           id: existingOrg.id,
           name: existingOrg.name,
@@ -341,7 +371,8 @@ export class AuthService {
 
   /**
    * Login an existing user and issue a JWT token.
-   * Protects against brute-force attacks via temporary account lockout after 5 failed attempts.
+   * Protects against brute-force attacks via temporary account lockout after
+   * MAX_FAILED_LOGIN_ATTEMPTS consecutive failed attempts for LOGIN_LOCKOUT_DURATION_MINUTES.
    */
   public async login(input: LoginInput): Promise<AuthResponse> {
     const { email, password } = input;
@@ -371,6 +402,9 @@ export class AuthService {
       throw { status: 403, message: 'Account is deactivated. Please contact support.' };
     }
 
+    const maxAttempts = securityConfig.maxFailedLoginAttempts;
+    const lockoutDurationMinutes = securityConfig.loginLockoutDurationMinutes;
+
     // 1. Check if the account is currently locked
     const now = new Date();
     if (user.lockUntil && user.lockUntil > now) {
@@ -385,12 +419,14 @@ export class AuthService {
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
 
     if (!isPasswordValid) {
-      const maxAttempts = 5;
-      const failedAttempts = (user.failedLoginAttempts || 0) + 1;
+      // If a previous lock window has expired, reset the consecutive counter before incrementing
+      const baseAttempts =
+        user.lockUntil && user.lockUntil <= now ? 0 : user.failedLoginAttempts || 0;
+      const failedAttempts = baseAttempts + 1;
 
       if (failedAttempts >= maxAttempts) {
-        // Lock account for 15 minutes
-        const lockUntil = new Date(Date.now() + 15 * 60 * 1000);
+        // Lock account for configured LOGIN_LOCKOUT_DURATION_MINUTES
+        const lockUntil = new Date(Date.now() + lockoutDurationMinutes * 60 * 1000);
         await prisma.user.update({
           where: { id: user.id },
           data: {
@@ -400,13 +436,14 @@ export class AuthService {
         });
         throw {
           status: 423,
-          message: 'Account is temporarily locked due to 5 consecutive failed login attempts. Please try again after 15 minutes.',
+          message: `Account is temporarily locked due to ${maxAttempts} consecutive failed login attempts. Please try again after ${lockoutDurationMinutes} minutes.`,
         };
       } else {
         await prisma.user.update({
           where: { id: user.id },
           data: {
             failedLoginAttempts: failedAttempts,
+            lockUntil: null,
           },
         });
         const remaining = maxAttempts - failedAttempts;
@@ -428,17 +465,38 @@ export class AuthService {
       });
     }
 
+    // 4. Two-Factor Authentication Check
+    if (user.isTwoFactorEnabled && user.totpSecret) {
+      const tempToken = signTemp2faToken(user.id, user.email);
+      return {
+        requires2FA: true,
+        tempToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          organizationId: user.organizationId,
+          isEmailVerified: user.isEmailVerified,
+          isTwoFactorEnabled: user.isTwoFactorEnabled,
+          organization: user.organization,
+        },
+      };
+    }
+
     const tokenVersion = await this.getUserTokenVersion(user.id);
     const token = this.generateToken(user, tokenVersion);
+    const refreshToken = this.generateRefreshToken(user, tokenVersion);
 
     return {
       token,
+      refreshToken,
       user: {
         id: user.id,
         email: user.email,
         role: user.role,
         organizationId: user.organizationId,
         isEmailVerified: user.isEmailVerified,
+        isTwoFactorEnabled: user.isTwoFactorEnabled,
         organization: user.organization,
       },
     };
@@ -575,6 +633,7 @@ export class AuthService {
         organizationId: true,
         isActive: true,
         isEmailVerified: true,
+        isTwoFactorEnabled: true,
         createdAt: true,
         updatedAt: true,
         organization: {

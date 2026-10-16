@@ -840,7 +840,11 @@ export class WarehouseService {
       },
     });
 
-    // f. Filter out any slots that are already booked or under scheduled maintenance closure
+    // f. Filter out any slots in the past, already booked, or under scheduled maintenance closure
+    // Note: slotStartTime is converted from warehouse's IANA timezone to UTC via zonedDateAndTimeToUtc,
+    // and compared against now.getTime() (UTC epoch ms) to prevent any server/warehouse/browser timezone conflicts.
+    const nowMs = now.getTime();
+
     const dockSlotMappings: AvailableDockSlots[] = activeDocks.map((dock) => {
       const freeSlots: AvailableSlot[] = [];
 
@@ -849,6 +853,11 @@ export class WarehouseService {
         const slotEndTime = zonedDateAndTimeToUtc(trimmedDate, interval.end, warehouse.timezone);
         const slotStartMs = slotStartTime.getTime();
         const slotEndMs = slotEndTime.getTime();
+
+        // Do not return slots that have already started or passed
+        if (slotStartMs <= nowMs) {
+          continue;
+        }
 
         const isBooked = bookings.some((b) => {
           if (b.dockId !== dock.id) return false;

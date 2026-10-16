@@ -19,6 +19,7 @@ import {
   FileText,
   X,
   ChevronDown,
+  History,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -26,6 +27,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { bookingApi } from '../api/booking.api';
 import { warehouseApi } from '../api/warehouse.api';
+import { BookingAuditLogModal } from '../components/BookingAuditLogModal';
 import type { Booking, BookingStatus } from '../types/booking.types';
 import type { Warehouse, Dock, DockClosure } from '../types/warehouse.types';
 import { formatDateTime } from '../utils/formatters';
@@ -33,6 +35,8 @@ import { formatDateTime } from '../utils/formatters';
 export const DockManagerDashboard: React.FC = () => {
   // State for Bookings & Warehouses
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [selectedBookingForAudit, setSelectedBookingForAudit] = useState<Booking | null>(null);
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState<boolean>(false);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [closures, setClosures] = useState<DockClosure[]>([]);
 
@@ -229,6 +233,12 @@ export const DockManagerDashboard: React.FC = () => {
     } finally {
       setStatusActionLoadingId(null);
     }
+  };
+
+  // Open Audit Log Modal for a booking
+  const handleOpenAuditModal = (booking: Booking) => {
+    setSelectedBookingForAudit(booking);
+    setIsAuditModalOpen(true);
   };
 
   // Map of date (YYYY-MM-DD) -> active bookings count on the selected dock bay
@@ -915,49 +925,61 @@ export const DockManagerDashboard: React.FC = () => {
 
                         {/* 9. Actions */}
                         <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                          {isActionLoading ? (
-                            <div className="inline-flex items-center space-x-1 text-gray-400 text-xs py-1">
-                              <div className="w-3.5 h-3.5 border-2 border-[#2F4F4F] border-t-transparent rounded-full animate-spin" />
-                              <span>Updating...</span>
-                            </div>
-                          ) : isBooked ? (
-                            /* Incoming Truck Actions: Mark Arrived or Mark No-Show */
-                            <div className="inline-flex items-center space-x-1.5">
-                              <Button
-                                size="sm"
-                                variant="primary"
-                                onClick={() => handleUpdateStatus(booking.id, 'ARRIVED')}
-                                disabled={!isSlotStarted}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] px-2.5 py-1 h-7"
-                                title={
-                                  isSlotStarted
-                                    ? 'Mark incoming truck as arrived at the facility yard'
-                                    : 'Cannot mark as Arrived before the scheduled slot start time has passed'
-                                }
-                              >
-                                <CheckCircle2 className="w-3 h-3 mr-1" />
-                                <span>Arrived</span>
-                              </Button>
+                          <div className="inline-flex items-center space-x-1.5 justify-end">
+                            {/* View Audit Log Action Button */}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleOpenAuditModal(booking)}
+                              className="border-gray-300 text-gray-700 hover:bg-gray-100 text-[11px] px-2.5 py-1 h-7 flex items-center space-x-1"
+                              title="View complete booking audit history"
+                            >
+                              <History className="w-3.5 h-3.5 text-[#2F4F4F]" />
+                              <span>History</span>
+                            </Button>
 
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleUpdateStatus(booking.id, 'NO_SHOW')}
-                                disabled={!isSlotStarted}
-                                className="border-rose-200 text-rose-700 hover:bg-rose-50 text-[11px] px-2.5 py-1 h-7"
-                                title={
-                                  isSlotStarted
-                                    ? 'Mark carrier appointment as a No-Show'
-                                    : 'Cannot mark as No-Show before the scheduled slot start time has passed'
-                                }
-                              >
-                                <XCircle className="w-3 h-3 mr-1" />
-                                <span>No-Show</span>
-                              </Button>
-                            </div>
-                          ) : isArrived ? (
-                            /* In-Yard Truck Action: Mark Completed */
-                            <div className="inline-flex items-center space-x-1.5">
+                            {isActionLoading ? (
+                              <div className="inline-flex items-center space-x-1 text-gray-400 text-xs py-1">
+                                <div className="w-3.5 h-3.5 border-2 border-[#2F4F4F] border-t-transparent rounded-full animate-spin" />
+                                <span>Updating...</span>
+                              </div>
+                            ) : isBooked ? (
+                              /* Incoming Truck Actions: Mark Arrived or Mark No-Show */
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="primary"
+                                  onClick={() => handleUpdateStatus(booking.id, 'ARRIVED')}
+                                  disabled={!isSlotStarted}
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] px-2.5 py-1 h-7"
+                                  title={
+                                    isSlotStarted
+                                      ? 'Mark incoming truck as arrived at the facility yard'
+                                      : 'Cannot mark as Arrived before the scheduled slot start time has passed'
+                                  }
+                                >
+                                  <CheckCircle2 className="w-3 h-3 mr-1" />
+                                  <span>Arrived</span>
+                                </Button>
+
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleUpdateStatus(booking.id, 'NO_SHOW')}
+                                  disabled={!isSlotStarted}
+                                  className="border-rose-200 text-rose-700 hover:bg-rose-50 text-[11px] px-2.5 py-1 h-7"
+                                  title={
+                                    isSlotStarted
+                                      ? 'Mark carrier appointment as a No-Show'
+                                      : 'Cannot mark as No-Show before the scheduled slot start time has passed'
+                                  }
+                                >
+                                  <XCircle className="w-3 h-3 mr-1" />
+                                  <span>No-Show</span>
+                                </Button>
+                              </>
+                            ) : isArrived ? (
+                              /* In-Yard Truck Action: Mark Completed */
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -968,12 +990,8 @@ export const DockManagerDashboard: React.FC = () => {
                                 <CheckCircle2 className="w-3 h-3 mr-1" />
                                 <span>Complete</span>
                               </Button>
-                            </div>
-                          ) : (
-                            <span className="text-gray-400 text-xs italic">
-                              No actions available
-                            </span>
-                          )}
+                            ) : null}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1234,6 +1252,13 @@ export const DockManagerDashboard: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Booking Audit Log & Lifecycle History Modal */}
+      <BookingAuditLogModal
+        booking={selectedBookingForAudit}
+        isOpen={isAuditModalOpen}
+        onClose={() => setIsAuditModalOpen(false)}
+      />
     </div>
   );
 };

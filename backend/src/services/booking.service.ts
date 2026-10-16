@@ -1,10 +1,12 @@
-import { BookingStatus, DockStatus, OutboxStatus, OrganizationType } from '@prisma/client';
+import { BookingStatus, DockStatus, OrganizationType } from '@prisma/client';
 import { prisma } from '../config/db.config';
 import {
   formatInTimeZone,
   getDayOfWeekInTimeZone,
   timeStringToMinutes,
 } from '../utils/time.utils';
+import { auditLogService } from './audit.service';
+import { outboxService, OUTBOX_EVENT_TYPE } from './outbox.service';
 
 export interface CreateBookingInput {
   dockId: number;
@@ -237,46 +239,33 @@ export class BookingService {
 
         // If userId is provided, create initial AuditLog
         if (userId) {
-          await tx.auditLog.create({
-            data: {
-              bookingId: booking.id,
-              userId,
-              action: 'CREATED',
-              details: {
-                dockId: booking.dockId,
-                slotStartTime: booking.slotStartTime.toISOString(),
-                slotEndTime: booking.slotEndTime.toISOString(),
-                truckPlate: booking.truckPlate,
-                driverName: booking.driverName,
-              },
-            },
-          });
-        }
-
-        // Simultaneously create an OutboxEvent record in the same transaction
-        await tx.outboxEvent.create({
-          data: {
-            aggregateType: 'BOOKING',
-            aggregateId: String(booking.id),
-            payload: {
-              bookingId: booking.id,
+          await auditLogService.recordLog({
+            bookingId: booking.id,
+            userId,
+            action: 'CREATED',
+            details: {
               dockId: booking.dockId,
-              dockName: booking.dock.name,
-              warehouseId: booking.dock.warehouse.id,
-              warehouseName: booking.dock.warehouse.name,
-              carrierOrgId: dispatcherOrgId,
-              carrierName: booking.carrierOrg.name,
               slotStartTime: booking.slotStartTime.toISOString(),
               slotEndTime: booking.slotEndTime.toISOString(),
               truckPlate: booking.truckPlate,
               driverName: booking.driverName,
-              driverPhone: booking.driverPhone,
-              cargoNote: booking.cargoNote,
-              status: booking.status,
-              createdAt: booking.createdAt.toISOString(),
             },
-            status: OutboxStatus.PENDING,
-          },
+            tx,
+          });
+        }
+
+        // Simultaneously create an OutboxEvent record in the same transaction, so the
+        // booking and its carrier notification either both commit or both roll back.
+        const summary = outboxService.toBookingSummary(booking);
+        await outboxService.enqueue(tx, {
+          aggregateType: 'BOOKING',
+          aggregateId: booking.id,
+          eventType: OUTBOX_EVENT_TYPE.BOOKING_CREATED,
+          carrierOrg: { id: booking.carrierOrg.id, name: booking.carrierOrg.name },
+          booking: summary,
+          message:
+            `New booking #${booking.id} confirmed for truck ${summary.truckPlate} ` +
+            `at ${summary.dockName} (${summary.warehouseName}) on ${outboxService.describeSlot(summary)}.`,
         });
 
         return booking;
@@ -481,41 +470,50 @@ export class BookingService {
         });
 
         // Insert AuditLog with action RESCHEDULED
-        await tx.auditLog.create({
-          data: {
-            bookingId,
-            userId,
-            action: 'RESCHEDULED',
-            details: {
-              oldDockId: booking.dockId,
-              oldSlotStartTime: booking.slotStartTime.toISOString(),
-              oldSlotEndTime: booking.slotEndTime.toISOString(),
-              newDockId: targetDockId,
-              newSlotStartTime: slotStart.toISOString(),
-              newSlotEndTime: slotEnd.toISOString(),
-              reason: data.reason ? data.reason.trim() : null,
-            },
+        await auditLogService.recordLog({
+          bookingId,
+          userId,
+          action: 'RESCHEDULED',
+          details: {
+            oldDockId: booking.dockId,
+            oldSlotStartTime: booking.slotStartTime.toISOString(),
+            oldSlotEndTime: booking.slotEndTime.toISOString(),
+            newDockId: targetDockId,
+            newSlotStartTime: slotStart.toISOString(),
+            newSlotEndTime: slotEnd.toISOString(),
+            reason: data.reason ? data.reason.trim() : null,
           },
+          tx,
         });
 
-        // Create OutboxEvent record for async notifications
-        await tx.outboxEvent.create({
-          data: {
-            aggregateType: 'BOOKING',
-            aggregateId: String(booking.id),
-            payload: {
-              action: 'RESCHEDULED',
-              bookingId: booking.id,
-              carrierOrgId,
-              oldDockId: booking.dockId,
-              newDockId: targetDockId,
-              oldSlotStartTime: booking.slotStartTime.toISOString(),
-              newSlotStartTime: slotStart.toISOString(),
-              newSlotEndTime: slotEnd.toISOString(),
-              reason: data.reason ? data.reason.trim() : null,
-              rescheduledAt: new Date().toISOString(),
-            },
-            status: OutboxStatus.PENDING,
+        // Create OutboxEvent record for async carrier notification. The summary is
+        // built from the *updated* booking so the carrier sees the new dock/slot,
+        // while `changes` retains the previous slot for the audit trail.
+        const previousSummary = outboxService.toBookingSummary(booking);
+        const summary = outboxService.toBookingSummary(updatedBooking);
+        const reason = data.reason ? data.reason.trim() : null;
+
+        await outboxService.enqueue(tx, {
+          aggregateType: 'BOOKING',
+          aggregateId: booking.id,
+          eventType: OUTBOX_EVENT_TYPE.BOOKING_RESCHEDULED,
+          carrierOrg: { id: booking.carrierOrg.id, name: booking.carrierOrg.name },
+          booking: summary,
+          message:
+            `Booking #${booking.id} rescheduled from ${previousSummary.dockName} ` +
+            `(${outboxService.describeSlot(previousSummary)}) to ${summary.dockName} ` +
+            `(${outboxService.describeSlot(summary)})` +
+            `${reason ? `. Reason: ${reason}` : '.'}`,
+          changes: {
+            oldDockId: previousSummary.dockId,
+            oldDockName: previousSummary.dockName,
+            oldSlotStartTime: previousSummary.slotStartTime,
+            oldSlotEndTime: previousSummary.slotEndTime,
+            newDockId: summary.dockId,
+            newDockName: summary.dockName,
+            newSlotStartTime: summary.slotStartTime,
+            newSlotEndTime: summary.slotEndTime,
+            reason,
           },
         });
 
@@ -610,35 +608,41 @@ export class BookingService {
       });
 
       // Record AuditLog
-      await tx.auditLog.create({
-        data: {
-          bookingId,
-          userId,
-          action: 'CANCELLED',
-          details: {
-            reason: reason ? reason.trim() : 'Cancelled by carrier dispatcher',
-            dockId: booking.dockId,
-            slotStartTime: booking.slotStartTime.toISOString(),
-            cancelledAt: new Date().toISOString(),
-          },
+      await auditLogService.recordLog({
+        bookingId,
+        userId,
+        action: 'CANCELLED',
+        details: {
+          reason: reason ? reason.trim() : 'Cancelled by carrier dispatcher',
+          dockId: booking.dockId,
+          slotStartTime: booking.slotStartTime.toISOString(),
+          cancelledAt: new Date().toISOString(),
         },
+        tx,
       });
 
-      // Simultaneously create OutboxEvent
-      await tx.outboxEvent.create({
-        data: {
-          aggregateType: 'BOOKING',
-          aggregateId: String(booking.id),
-          payload: {
-            action: 'CANCELLED',
-            bookingId: booking.id,
-            carrierOrgId,
-            dockId: booking.dockId,
-            slotStartTime: booking.slotStartTime.toISOString(),
-            reason: reason ? reason.trim() : null,
-            cancelledAt: new Date().toISOString(),
-          },
-          status: OutboxStatus.PENDING,
+      // Simultaneously create OutboxEvent for the cancellation notification
+      const summary = outboxService.toBookingSummary(updatedBooking);
+      const cancellationReason = reason ? reason.trim() : null;
+
+      await outboxService.enqueue(tx, {
+        aggregateType: 'BOOKING',
+        aggregateId: booking.id,
+        eventType: OUTBOX_EVENT_TYPE.BOOKING_CANCELLED,
+        carrierOrg: { id: booking.carrierOrg.id, name: booking.carrierOrg.name },
+        booking: summary,
+        message:
+          `Booking #${booking.id} for truck ${summary.truckPlate} at ${summary.dockName} ` +
+          `(${outboxService.describeSlot(summary)}) has been cancelled` +
+          `${cancellationReason ? `. Reason: ${cancellationReason}` : '.'}`,
+        changes: {
+          dockId: summary.dockId,
+          dockName: summary.dockName,
+          slotStartTime: summary.slotStartTime,
+          slotEndTime: summary.slotEndTime,
+          previousStatus: booking.status,
+          reason: cancellationReason,
+          cancelledAt: new Date().toISOString(),
         },
       });
 
@@ -697,13 +701,20 @@ export class BookingService {
             email: true,
             role: true,
             organizationId: true,
+            organization: {
+              select: {
+                id: true,
+                name: true,
+                type: true,
+              },
+            },
           },
         },
       },
       orderBy: { createdAt: 'asc' },
     });
 
-    return logs;
+    return logs.map((log) => auditLogService.formatLogEntry(log));
   }
 
   /**
@@ -828,35 +839,134 @@ export class BookingService {
       });
 
       // Record AuditLog entry tracking the status change
-      await tx.auditLog.create({
-        data: {
-          bookingId,
-          userId,
-          action: 'STATUS_CHANGED',
-          details: {
-            oldStatus: booking.status,
-            newStatus: status,
-            updatedAt: new Date().toISOString(),
-          },
+      await auditLogService.recordLog({
+        bookingId,
+        userId,
+        action: 'STATUS_CHANGED',
+        details: {
+          oldStatus: booking.status,
+          newStatus: status,
+          updatedAt: new Date().toISOString(),
+        },
+        tx,
+      });
+
+      // Simultaneously create OutboxEvent for the status-change notification
+      const summary = outboxService.toBookingSummary(updatedBooking);
+
+      await outboxService.enqueue(tx, {
+        aggregateType: 'BOOKING',
+        aggregateId: booking.id,
+        eventType: OUTBOX_EVENT_TYPE.BOOKING_STATUS_CHANGED,
+        carrierOrg: { id: booking.carrierOrg.id, name: booking.carrierOrg.name },
+        booking: summary,
+        message:
+          `Booking #${booking.id} for truck ${summary.truckPlate} at ${summary.dockName} ` +
+          `changed status from ${booking.status} to ${status}.`,
+        changes: {
+          oldStatus: booking.status,
+          newStatus: status,
+          updatedAt: new Date().toISOString(),
         },
       });
 
-      // Simultaneously create OutboxEvent
-      await tx.outboxEvent.create({
-        data: {
-          aggregateType: 'BOOKING',
-          aggregateId: String(booking.id),
-          payload: {
-            action: 'STATUS_CHANGED',
-            bookingId: booking.id,
-            carrierOrgId: booking.carrierOrgId,
-            dockId: booking.dockId,
-            oldStatus: booking.status,
-            newStatus: status,
-            updatedAt: new Date().toISOString(),
+      return updatedBooking;
+    });
+
+    return result;
+  }
+
+  /**
+   * Updates general booking details (truck plate, driver info, cargo note).
+   * Records an UPDATED audit log entry with change summary and actor metadata.
+   */
+  async updateBooking(
+    bookingId: number,
+    carrierOrgId: number,
+    userId: number,
+    data: {
+      truckPlate?: string;
+      driverName?: string;
+      driverPhone?: string;
+      cargoNote?: string;
+    }
+  ) {
+    if (!bookingId || isNaN(bookingId)) {
+      throw { status: 400, message: 'Invalid booking ID.' };
+    }
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        dock: {
+          include: {
+            warehouse: true,
           },
-          status: OutboxStatus.PENDING,
         },
+        carrierOrg: true,
+      },
+    });
+
+    if (!booking) {
+      throw { status: 404, message: 'Booking not found.' };
+    }
+
+    if (booking.carrierOrgId !== carrierOrgId) {
+      throw { status: 403, message: 'Forbidden. You do not have permission to manage this booking.' };
+    }
+
+    if (booking.status === BookingStatus.CANCELLED) {
+      throw { status: 400, message: 'Cannot update a cancelled booking.' };
+    }
+
+    const changes: Record<string, { old: any; new: any }> = {};
+    if (data.truckPlate !== undefined && data.truckPlate.trim() !== booking.truckPlate) {
+      changes.truckPlate = { old: booking.truckPlate, new: data.truckPlate.trim() };
+    }
+    if (data.driverName !== undefined && data.driverName.trim() !== booking.driverName) {
+      changes.driverName = { old: booking.driverName, new: data.driverName.trim() };
+    }
+    if (data.driverPhone !== undefined && data.driverPhone.trim() !== booking.driverPhone) {
+      changes.driverPhone = { old: booking.driverPhone, new: data.driverPhone.trim() };
+    }
+    if (data.cargoNote !== undefined && data.cargoNote.trim() !== (booking.cargoNote || '')) {
+      changes.cargoNote = { old: booking.cargoNote, new: data.cargoNote.trim() };
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const updatedBooking = await tx.booking.update({
+        where: { id: bookingId },
+        data: {
+          ...(data.truckPlate !== undefined ? { truckPlate: data.truckPlate.trim() } : {}),
+          ...(data.driverName !== undefined ? { driverName: data.driverName.trim() } : {}),
+          ...(data.driverPhone !== undefined ? { driverPhone: data.driverPhone.trim() } : {}),
+          ...(data.cargoNote !== undefined ? { cargoNote: data.cargoNote.trim() } : {}),
+        },
+        include: {
+          dock: {
+            include: {
+              warehouse: true,
+            },
+          },
+          carrierOrg: true,
+        },
+      });
+
+      const changeKeys = Object.keys(changes);
+      const summary =
+        changeKeys.length > 0
+          ? `Booking updated: modified ${changeKeys.join(', ')}`
+          : 'Booking details updated';
+
+      await auditLogService.recordLog({
+        bookingId,
+        userId,
+        action: 'UPDATED',
+        details: {
+          changes,
+        },
+        summary,
+        tx,
       });
 
       return updatedBooking;

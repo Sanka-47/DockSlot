@@ -10,20 +10,17 @@ import {
   CheckCircle2,
   X,
   Building2,
-  CalendarCheck,
-  ShieldCheck,
   Search,
 } from 'lucide-react';
 import { userApi } from '../api/user.api';
 import { useAuth } from '../hooks/useAuth';
-import { DispatcherDashboard } from './DispatcherDashboard';
 import type { User } from '../types/user.types';
 
 export const CarrierAdminDashboard: React.FC = () => {
   const { user } = useAuth();
 
-  // Active Tab: 'users' | 'dispatch' | 'profile'
-  const [activeTab, setActiveTab] = useState<'users' | 'dispatch' | 'profile'>('users');
+  // Active Tab: 'users' | 'profile'
+  const [activeTab, setActiveTab] = useState<'users' | 'profile'>('users');
 
   // User Management State
   const [organizationUsers, setOrganizationUsers] = useState<User[]>([]);
@@ -260,18 +257,6 @@ export const CarrierAdminDashboard: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveTab('dispatch')}
-          className={`flex items-center space-x-2 px-4 py-3 text-xs font-bold border-b-2 whitespace-nowrap transition-colors ${
-            activeTab === 'dispatch'
-              ? 'border-[#2F4F4F] text-[#2F4F4F]'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <CalendarCheck className="w-4 h-4" />
-          <span>Dispatch & Bookings Console</span>
-        </button>
-
-        <button
           onClick={() => setActiveTab('profile')}
           className={`flex items-center space-x-2 px-4 py-3 text-xs font-bold border-b-2 whitespace-nowrap transition-colors ${
             activeTab === 'profile'
@@ -485,14 +470,7 @@ export const CarrierAdminDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Tab Content 2: Live Dispatcher Operations */}
-      {activeTab === 'dispatch' && (
-        <div className="bg-white rounded-b-xl shadow-sm border border-t-0 border-gray-200 p-6">
-          <DispatcherDashboard />
-        </div>
-      )}
-
-      {/* Tab Content 3: Carrier Organization Profile */}
+      {/* Tab Content 2: Carrier Organization Profile */}
       {activeTab === 'profile' && (
         <div className="bg-white rounded-b-xl shadow-sm border border-t-0 border-gray-200 p-6 space-y-6">
           <div className="border-b pb-4">
@@ -537,33 +515,7 @@ export const CarrierAdminDashboard: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-5 bg-gray-50 border border-gray-200 rounded-xl space-y-3">
-              <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center space-x-2">
-                <ShieldCheck className="w-4 h-4 text-[#2F4F4F]" />
-                <span>Access & Security Architecture</span>
-              </h4>
-
-              <ul className="text-xs text-gray-600 space-y-2 leading-relaxed">
-                <li className="flex items-start space-x-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#2F4F4F] mt-1.5 shrink-0" />
-                  <span>
-                    <strong>Redis Session Termination:</strong> Deactivating an account increments the token version in Redis, instantly invalidating active JWTs across all devices.
-                  </span>
-                </li>
-                <li className="flex items-start space-x-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#2F4F4F] mt-1.5 shrink-0" />
-                  <span>
-                    <strong>Strict Multi-Tenant Isolation:</strong> Dispatchers can only manage bookings and loads bound to your carrier organization.
-                  </span>
-                </li>
-                <li className="flex items-start space-x-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#2F4F4F] mt-1.5 shrink-0" />
-                  <span>
-                    <strong>Invitation Expiry:</strong> Secure 32-byte tokens expire after 48 hours to prevent unauthorized account creation.
-                  </span>
-                </li>
-              </ul>
-            </div>
+           
           </div>
         </div>
       )}

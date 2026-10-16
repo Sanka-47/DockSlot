@@ -63,3 +63,36 @@ export interface CreateBookingRequest {
   driverPhone: string;
   cargoNote?: string;
 }
+
+export interface AuditLogActor {
+  userId: number;
+  name: string;
+  role: string;
+  email?: string;
+  organizationId?: number;
+  organizationName?: string;
+}
+
+export interface BookingAuditLog {
+  id: number;
+  bookingId: number;
+  action: 'CREATED' | 'UPDATED' | 'RESCHEDULED' | 'CANCELLED' | 'STATUS_CHANGED' | string;
+  actionType?: 'CREATED' | 'MODIFIED' | 'CANCELLED' | string;
+  summary?: string;
+  details?: Record<string, any> | null;
+  createdAt: string;
+  userId: number;
+  actor?: AuditLogActor;
+  user?: {
+    id: number;
+    email: string;
+    role: string;
+    name?: string;
+    organizationId?: number;
+    organization?: {
+      id: number;
+      name: string;
+      type: string;
+    };
+  };
+}
