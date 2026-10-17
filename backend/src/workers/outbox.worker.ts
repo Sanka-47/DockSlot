@@ -1,5 +1,7 @@
 import { outboxService, ClaimedOutboxEvent, OUTBOX_STATUS } from '../services/outbox.service';
 import { notificationService } from '../services/notification.service';
+import { childLogger } from '../utils/logger';
+import type { Logger } from 'pino';
 
 /**
  * OutboxWorker
@@ -18,6 +20,10 @@ import { notificationService } from '../services/notification.service';
  *    "delivered but not recorded" crash is de-duplicated by the receiver.
  *  - Bounded: after maxRetries the event is parked as FAILED for review rather
  *    than retried forever.
+ *  - Traceable: every log line for an event carries its `requestId` (the id of
+ *    the HTTP request that created the booking), `eventId` and `bookingId`, so
+ *    a carrier complaint can be followed from the API call through the outbox
+ *    row to the webhook attempt.
  */
 
 export interface OutboxWorkerConfig {
@@ -44,6 +50,9 @@ export class OutboxWorker {
   private running = false;
   private started = false;
 
+  /** Worker-lifecycle logger (no single event to correlate against). */
+  private readonly log: Logger = childLogger({ component: 'OutboxWorker' });
+
   public readonly config: OutboxWorkerConfig = {
     pollIntervalMs: readPositiveInt('OUTBOX_POLL_INTERVAL_MS', 5000),
     batchSize: readPositiveInt('OUTBOX_BATCH_SIZE', 25),
@@ -59,6 +68,33 @@ export class OutboxWorker {
   }
 
   // ---------------------------------------------------------------------------
+  // Trace context
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Logger scoped to one claimed event.
+   *
+   * `requestId` comes from the payload persisted at enqueue time, which is what
+   * links this background delivery back to the originating HTTP request.
+   * `bookingId` is the outbox aggregate id - every event this worker handles is
+   * aggregated on a booking. A payload written before tracing existed (or by a
+   * direct `buildPayload` caller such as a test) simply omits `requestId`.
+   */
+  private eventLogger(event: ClaimedOutboxEvent): Logger {
+    return this.log.child({
+      eventId: event.eventId,
+      bookingId: event.aggregateId,
+      requestId: event.payload?.requestId,
+      eventType: event.payload?.eventType,
+    });
+  }
+
+  /** Normalises a caught value so pino's `err` serializer always applies. */
+  private asError(error: unknown): Error {
+    return error instanceof Error ? error : new Error(String(error));
+  }
+
+  // ---------------------------------------------------------------------------
   // Lifecycle
   // ---------------------------------------------------------------------------
 
@@ -68,21 +104,28 @@ export class OutboxWorker {
    */
   public start(): void {
     if (this.started) {
-      console.warn('[OutboxWorker] start() ignored - worker is already running.');
+      this.log.warn('start() ignored - worker is already running.');
       return;
     }
 
     if (!this.config.enabled) {
-      console.log('[OutboxWorker] Disabled via OUTBOX_WORKER_ENABLED=false. No events will be dispatched.');
+      this.log.info(
+        'Disabled via OUTBOX_WORKER_ENABLED=false. No events will be dispatched.'
+      );
       return;
     }
 
     this.started = true;
 
-    console.log(
-      `[OutboxWorker] Started | interval=${this.config.pollIntervalMs}ms ` +
-        `batch=${this.config.batchSize} concurrency=${this.config.maxConcurrency} ` +
-        `lease=${this.config.processingLeaseMs}ms target=${process.env.CARRIER_NOTIFY_URL || 'http://localhost:4001/notify'}`
+    this.log.info(
+      {
+        pollIntervalMs: this.config.pollIntervalMs,
+        batchSize: this.config.batchSize,
+        maxConcurrency: this.config.maxConcurrency,
+        processingLeaseMs: this.config.processingLeaseMs,
+        target: process.env.CARRIER_NOTIFY_URL || 'http://localhost:4001/notify',
+      },
+      'Outbox worker started.'
     );
 
     this.timer = setInterval(() => {
@@ -111,11 +154,11 @@ export class OutboxWorker {
     }
 
     if (this.currentTick) {
-      console.log('[OutboxWorker] Waiting for in-flight delivery cycle to finish...');
+      this.log.info('Waiting for in-flight delivery cycle to finish...');
       await this.currentTick;
     }
 
-    console.log('[OutboxWorker] Stopped.');
+    this.log.info('Outbox worker stopped.');
   }
 
   // ---------------------------------------------------------------------------
@@ -146,8 +189,9 @@ export class OutboxWorker {
         this.config.processingLeaseMs
       );
       if (recovered > 0) {
-        console.warn(
-          `[OutboxWorker] Requeued ${recovered} event(s) abandoned in PROCESSING by a previous worker.`
+        this.log.warn(
+          { recovered, processingLeaseMs: this.config.processingLeaseMs },
+          'Requeued event(s) abandoned in PROCESSING by a previous worker.'
         );
       }
 
@@ -155,12 +199,23 @@ export class OutboxWorker {
         const claimed = await outboxService.claimPendingEvents(this.config.batchSize);
         if (claimed.length === 0) return;
 
-        console.log(`[OutboxWorker] Claimed ${claimed.length} event(s) for delivery.`);
+        // The batch summary carries the identifying triple for every row, so a
+        // claim is traceable even before the per-event lines are emitted.
+        this.log.info(
+          {
+            claimedCount: claimed.length,
+            eventIds: claimed.map((event) => event.eventId),
+            bookingIds: claimed.map((event) => event.aggregateId),
+            requestIds: claimed.map((event) => event.payload?.requestId),
+          },
+          `Claimed ${claimed.length} outbox event(s) for delivery.`
+        );
+
         await this.dispatchBatch(claimed);
       }
-    } catch (error: any) {
+    } catch (error) {
       // A polling cycle must never crash the process - the next tick retries.
-      console.error(`[OutboxWorker] Poll cycle failed: ${error?.message || String(error)}`);
+      this.log.error({ err: this.asError(error) }, 'Outbox poll cycle failed.');
     }
   }
 
@@ -177,6 +232,14 @@ export class OutboxWorker {
    * PROCESSING and the stale-claim sweep will requeue it.
    */
   private async dispatchEvent(event: ClaimedOutboxEvent): Promise<void> {
+    const log = this.eventLogger(event);
+    const attempt = event.retryCount + 1;
+
+    log.info(
+      { attempt, maxRetries: event.maxRetries },
+      'Dispatching outbox event to the carrier webhook.'
+    );
+
     const result = await notificationService.dispatchCarrierNotification(
       event.eventId,
       event.payload
@@ -185,9 +248,9 @@ export class OutboxWorker {
     try {
       if (result.ok) {
         await outboxService.markCompleted(event);
-        console.log(
-          `[OutboxWorker] Delivered event ${event.eventId} (outbox #${event.id}, ` +
-            `${event.payload?.eventType}) -> HTTP ${result.status}`
+        log.info(
+          { attempt, httpStatus: result.status, outboxRowId: event.id },
+          'Outbox event delivered to the carrier webhook.'
         );
         return;
       }
@@ -198,8 +261,9 @@ export class OutboxWorker {
 
       if (!notificationService.isRetryable(result)) {
         await outboxService.markFailed(event, `Non-retryable ${detail}`);
-        console.error(
-          `[OutboxWorker] Event ${event.eventId} parked as FAILED (non-retryable). ${detail}`
+        log.error(
+          { attempt, httpStatus: result.status, detail, outboxRowId: event.id },
+          'Outbox event parked as FAILED (non-retryable). It will not be retried.'
         );
         return;
       }
@@ -207,20 +271,34 @@ export class OutboxWorker {
       const outcome = await outboxService.recordFailure(event, detail);
 
       if (outcome.status === OUTBOX_STATUS.FAILED) {
-        console.error(
-          `[OutboxWorker] Event ${event.eventId} FAILED permanently after ` +
-            `${outcome.retryCount - 1}/${event.maxRetries} retries. ${detail}`
+        log.error(
+          {
+            attempt: outcome.retryCount,
+            maxRetries: event.maxRetries,
+            httpStatus: result.status,
+            detail,
+            outboxRowId: event.id,
+          },
+          `Outbox event failed permanently after ${event.maxRetries} retries.`
         );
       } else {
-        console.warn(
-          `[OutboxWorker] Event ${event.eventId} attempt ${outcome.retryCount}/${event.maxRetries} ` +
-            `failed. Retrying in ${outcome.delayMs}ms at ${outcome.nextRetryAt?.toISOString()}. ${detail}`
+        log.warn(
+          {
+            attempt: outcome.retryCount,
+            maxRetries: event.maxRetries,
+            httpStatus: result.status,
+            backoffMs: outcome.delayMs,
+            nextRetryAt: outcome.nextRetryAt?.toISOString(),
+            detail,
+            outboxRowId: event.id,
+          },
+          `Outbox delivery failed; retrying in ${outcome.delayMs}ms with exponential backoff.`
         );
       }
-    } catch (error: any) {
-      console.error(
-        `[OutboxWorker] Could not record outcome for event ${event.eventId}: ` +
-          `${error?.message || String(error)}`
+    } catch (error) {
+      log.error(
+        { err: this.asError(error), outboxRowId: event.id },
+        'Could not record the delivery outcome; the event stays PROCESSING until the lease sweep requeues it.'
       );
     }
   }

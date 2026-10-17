@@ -7,6 +7,7 @@ import {
 } from '../utils/time.utils';
 import { auditLogService } from './audit.service';
 import { outboxService, OUTBOX_EVENT_TYPE } from './outbox.service';
+import { getRequestId } from '../utils/requestContext';
 
 export interface CreateBookingInput {
   dockId: number;
@@ -256,11 +257,14 @@ export class BookingService {
 
         // Simultaneously create an OutboxEvent record in the same transaction, so the
         // booking and its carrier notification either both commit or both roll back.
+        // The originating request id rides along in the payload so the background
+        // worker can trace the delivery back to this HTTP request.
         const summary = outboxService.toBookingSummary(booking);
         await outboxService.enqueue(tx, {
           aggregateType: 'BOOKING',
           aggregateId: booking.id,
           eventType: OUTBOX_EVENT_TYPE.BOOKING_CREATED,
+          requestId: getRequestId(),
           carrierOrg: { id: booking.carrierOrg.id, name: booking.carrierOrg.name },
           booking: summary,
           message:
@@ -497,6 +501,7 @@ export class BookingService {
           aggregateType: 'BOOKING',
           aggregateId: booking.id,
           eventType: OUTBOX_EVENT_TYPE.BOOKING_RESCHEDULED,
+          requestId: getRequestId(),
           carrierOrg: { id: booking.carrierOrg.id, name: booking.carrierOrg.name },
           booking: summary,
           message:
@@ -629,6 +634,7 @@ export class BookingService {
         aggregateType: 'BOOKING',
         aggregateId: booking.id,
         eventType: OUTBOX_EVENT_TYPE.BOOKING_CANCELLED,
+        requestId: getRequestId(),
         carrierOrg: { id: booking.carrierOrg.id, name: booking.carrierOrg.name },
         booking: summary,
         message:
@@ -858,6 +864,7 @@ export class BookingService {
         aggregateType: 'BOOKING',
         aggregateId: booking.id,
         eventType: OUTBOX_EVENT_TYPE.BOOKING_STATUS_CHANGED,
+        requestId: getRequestId(),
         carrierOrg: { id: booking.carrierOrg.id, name: booking.carrierOrg.name },
         booking: summary,
         message:

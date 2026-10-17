@@ -10,10 +10,16 @@ import dockRoutes from './routes/dock.routes';
 import userRoutes from './routes/user.routes';
 import { apiRateLimiter } from './middleware/rateLimit.middleware';
 import { errorHandler } from './middleware/error.middleware';
+import { requestLogger } from './middleware/requestLogger';
 
 dotenv.config();
 
 const app = express();
+
+// Correlation id + structured logging. Mounted first so every request -
+// including ones rejected by the rate limiter or auth - is traced, and so the
+// id is available to anything downstream (services, outbox payload).
+app.use(requestLogger);
 
 app.use(cors());
 app.use(express.json());

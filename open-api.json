@@ -3,7 +3,7 @@
     "info": {
         "title": "DockSlot Logistics & Dock Scheduling API",
         "version": "1.0.0",
-        "description": "API documentation for multi-tenant logistics platform."
+        "description": "API documentation for multi-tenant logistics platform.\n\n## End-to-end request tracing\n\nEvery response carries an X-Request-ID header. Send that header on the request to correlate a call with your own logs; omit it and the server generates a UUID.\n\nThe id is recorded on the structured log line of the HTTP request and its response, persisted inside the booking outbox payload, and included in every log line the background delivery worker emits. Booking endpoints therefore hand back a single id that follows a booking from the API call, through the MySQL outbox row, to the carrier webhook delivery - including each retry attempt."
     },
     "servers": [
         {
@@ -22,6 +22,30 @@
                 "scheme": "bearer",
                 "bearerFormat": "JWT",
                 "description": "Enter your JWT Bearer token in the format: Bearer <token>"
+            }
+        },
+        "parameters": {
+            "RequestIdHeader": {
+                "in": "header",
+                "name": "X-Request-ID",
+                "required": false,
+                "schema": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9._:+-]+$"
+                },
+                "description": "Correlation id for this request. Supply your own to join DockSlot logs with your application logs, or omit it and the server will generate a UUID. Values that are longer than 128 characters or contain characters outside [A-Za-z0-9._:+-] are rejected and replaced by a generated UUID. The value (supplied or generated) is echoed back on the X-Request-ID response header, written to the booking outbox payload, and logged by the background delivery worker.",
+                "example": "7f8a1b2c-3d4e-5f6a-7b8c-9d0e1f2a3b4c"
+            }
+        },
+        "headers": {
+            "RequestId": {
+                "description": "The correlation id for this request: the value you sent on the X-Request-ID request header, or a server-generated UUID. Present on every response, including errors. Quote it when reporting an issue so the full request trace can be retrieved.",
+                "schema": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "example": "7f8a1b2c-3d4e-5f6a-7b8c-9d0e1f2a3b4c"
             }
         }
     },
@@ -927,6 +951,9 @@
                         },
                         "description": "Unique key to ensure idempotent booking requests across retries",
                         "example": "7f8a1b2c-3d4e-5f6a-7b8c-9d0e1f2a3b4c"
+                    },
+                    {
+                        "$ref": "#/components/parameters/RequestIdHeader"
                     }
                 ],
                 "requestBody": {
@@ -981,7 +1008,12 @@
                 },
                 "responses": {
                     "201": {
-                        "description": "Booking confirmed and outbox event created"
+                        "description": "Booking confirmed and outbox event created",
+                        "headers": {
+                            "X-Request-ID": {
+                                "$ref": "#/components/headers/RequestId"
+                            }
+                        }
                     },
                     "400": {
                         "description": "Slot out of operating hours, past date, invalid payload, maxAdvanceDays horizon exceeded, or carrier maxConcurrentBookings policy reached"
@@ -1022,6 +1054,9 @@
                             "type": "integer"
                         },
                         "description": "Booking ID"
+                    },
+                    {
+                        "$ref": "#/components/parameters/RequestIdHeader"
                     }
                 ],
                 "requestBody": {
@@ -1056,7 +1091,12 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Booking successfully rescheduled"
+                        "description": "Booking successfully rescheduled",
+                        "headers": {
+                            "X-Request-ID": {
+                                "$ref": "#/components/headers/RequestId"
+                            }
+                        }
                     },
                     "400": {
                         "description": "Invalid slot times, max advance days exceeded, or cross-date rescheduling attempted within lock window"
@@ -1092,6 +1132,9 @@
                             "type": "integer"
                         },
                         "description": "Booking ID"
+                    },
+                    {
+                        "$ref": "#/components/parameters/RequestIdHeader"
                     }
                 ],
                 "requestBody": {
@@ -1126,7 +1169,12 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Booking successfully rescheduled"
+                        "description": "Booking successfully rescheduled",
+                        "headers": {
+                            "X-Request-ID": {
+                                "$ref": "#/components/headers/RequestId"
+                            }
+                        }
                     },
                     "400": {
                         "description": "Invalid slot times, max advance days exceeded, or cross-date rescheduling attempted within lock window"
@@ -1164,6 +1212,9 @@
                             "type": "integer"
                         },
                         "description": "Booking ID"
+                    },
+                    {
+                        "$ref": "#/components/parameters/RequestIdHeader"
                     }
                 ],
                 "requestBody": {
@@ -1183,7 +1234,12 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Booking cancelled and slot released"
+                        "description": "Booking cancelled and slot released",
+                        "headers": {
+                            "X-Request-ID": {
+                                "$ref": "#/components/headers/RequestId"
+                            }
+                        }
                     },
                     "400": {
                         "description": "Booking is already cancelled/arrived, or cancellation attempted within the lock window"
@@ -1216,11 +1272,19 @@
                         "schema": {
                             "type": "integer"
                         }
+                    },
+                    {
+                        "$ref": "#/components/parameters/RequestIdHeader"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Booking cancelled successfully"
+                        "description": "Booking cancelled successfully",
+                        "headers": {
+                            "X-Request-ID": {
+                                "$ref": "#/components/headers/RequestId"
+                            }
+                        }
                     }
                 }
             }
@@ -1393,6 +1457,9 @@
                         "schema": {
                             "type": "integer"
                         }
+                    },
+                    {
+                        "$ref": "#/components/parameters/RequestIdHeader"
                     }
                 ],
                 "requestBody": {
@@ -1421,7 +1488,12 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Booking status updated successfully"
+                        "description": "Booking status updated successfully",
+                        "headers": {
+                            "X-Request-ID": {
+                                "$ref": "#/components/headers/RequestId"
+                            }
+                        }
                     },
                     "400": {
                         "description": "Invalid status transition"
