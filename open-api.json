@@ -55,6 +55,118 @@
         }
     ],
     "paths": {
+        "/health": {
+            "get": {
+                "summary": "Service and database health probe",
+                "description": "Public readiness/liveness probe for container orchestrators (Kubernetes, ECS, Docker healthcheck).\n\nRuns a trivial query (SELECT 1) against MySQL through Prisma. Returns 200 when the database\nanswers and 503 when it is unreachable, errors, or exceeds HEALTH_CHECK_TIMEOUT_MS\n(default 3000ms). Responses are sent with Cache-Control: no-store so proxies never cache them.\n\nNo authentication is required, and the route sits outside /api and ahead of the Redis-backed\nrate limiter so authentication or Redis outages cannot affect the probe itself.",
+                "tags": [
+                    "Health"
+                ],
+                "security": [],
+                "servers": [
+                    {
+                        "url": "http://localhost:5000",
+                        "description": "Root server"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Service is up and the database answered the probe.",
+                        "headers": {
+                            "X-Request-ID": {
+                                "$ref": "#/components/headers/RequestId"
+                            }
+                        },
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "status",
+                                        "database",
+                                        "timestamp"
+                                    ],
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "enum": [
+                                                "UP"
+                                            ],
+                                            "description": "Overall service status.",
+                                            "example": "UP"
+                                        },
+                                        "database": {
+                                            "type": "string",
+                                            "enum": [
+                                                "connected"
+                                            ],
+                                            "description": "Result of the MySQL probe.",
+                                            "example": "connected"
+                                        },
+                                        "timestamp": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "description": "Time the probe completed (ISO 8601).",
+                                            "example": "2026-10-17T01:57:23.689Z"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service is down: the database is unreachable, the query failed, or the probe timed out.",
+                        "headers": {
+                            "X-Request-ID": {
+                                "$ref": "#/components/headers/RequestId"
+                            }
+                        },
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "status",
+                                        "database",
+                                        "error",
+                                        "timestamp"
+                                    ],
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "enum": [
+                                                "DOWN"
+                                            ],
+                                            "description": "Overall service status.",
+                                            "example": "DOWN"
+                                        },
+                                        "database": {
+                                            "type": "string",
+                                            "enum": [
+                                                "disconnected"
+                                            ],
+                                            "description": "Result of the MySQL probe.",
+                                            "example": "disconnected"
+                                        },
+                                        "error": {
+                                            "type": "string",
+                                            "description": "The failure reason as reported by the database driver or the probe timeout.",
+                                            "example": "Can't reach database server at `127.0.0.1:3306`"
+                                        },
+                                        "timestamp": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "description": "Time the probe failed (ISO 8601).",
+                                            "example": "2026-10-17T01:57:47.374Z"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/warehouses": {
             "get": {
                 "summary": "List all warehouses for the authenticated warehouse operator",
