@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { bookingService } from '../services/booking.service';
+import { sendError } from '../utils/httpError';
 
 /**
  * Creates a new booking for a carrier dispatcher.
@@ -63,11 +64,7 @@ export const createBooking = async (req: Request, res: Response): Promise<void> 
       data: booking,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'An error occurred while creating booking.',
-    });
+    sendError(res, error, 'An error occurred while creating booking.');
   }
 };
 
@@ -139,11 +136,7 @@ export const rescheduleBooking = async (req: Request, res: Response): Promise<vo
       data: updatedBooking,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'An error occurred while rescheduling booking.',
-    });
+    sendError(res, error, 'An error occurred while rescheduling booking.');
   }
 };
 
@@ -189,11 +182,7 @@ export const cancelBooking = async (req: Request, res: Response): Promise<void> 
       data: cancelledBooking,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'An error occurred while cancelling booking.',
-    });
+    sendError(res, error, 'An error occurred while cancelling booking.');
   }
 };
 
@@ -238,11 +227,7 @@ export const updateBooking = async (req: Request, res: Response): Promise<void> 
       data: updatedBooking,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'An error occurred while updating booking.',
-    });
+    sendError(res, error, 'An error occurred while updating booking.');
   }
 };
 
@@ -279,11 +264,7 @@ export const getBookingAuditLogs = async (req: Request, res: Response): Promise<
       data: auditLogs,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'An error occurred while retrieving audit logs.',
-    });
+    sendError(res, error, 'An error occurred while retrieving audit logs.');
   }
 };
 
@@ -308,11 +289,7 @@ export const getBookings = async (req: Request, res: Response): Promise<void> =>
       data: bookings,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'An error occurred while fetching bookings.',
-    });
+    sendError(res, error, 'An error occurred while fetching bookings.');
   }
 };
 
@@ -365,10 +342,6 @@ export const updateBookingStatus = async (req: Request, res: Response): Promise<
       data: updatedBooking,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'An error occurred while updating booking status.',
-    });
+    sendError(res, error, 'An error occurred while updating booking status.');
   }
 };

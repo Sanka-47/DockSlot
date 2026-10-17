@@ -74,7 +74,9 @@ export class HealthService {
       return {
         status: 'DOWN',
         database: 'disconnected',
-        error: err.message,
+        // Generic only. The detailed error stays in the server logs above so an
+        // unauthenticated probe can never learn DB hosts, credentials, or SQL.
+        error: 'Database check failed',
         timestamp,
       };
     }
