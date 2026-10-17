@@ -185,7 +185,7 @@ describe('Booking Idempotency & Mobile Retry Safety Tests', () => {
     const outboxEvents = await prisma.outboxEvent.findMany({
       where: {
         aggregateType: 'BOOKING',
-        aggregateId: String(createdBookingId),
+        aggregateId: createdBookingId,
       },
     });
     expect(outboxEvents.length).toBe(1);

@@ -8,6 +8,7 @@ import {
   generateTimeIntervals,
   zonedDateAndTimeToUtc,
   getZonedDayBounds,
+  normalizeTimeOfDay,
   formatInTimeZone,
 } from '../utils/time.utils';
 
@@ -717,13 +718,17 @@ export class WarehouseService {
    * strictly adhering to the warehouse's IANA timezone and operating hours,
    * and filtering out existing active bookings (BOOKED or ARRIVED) as well as scheduled maintenance closures.
    */
-  async getAvailableSlots(warehouseId: number, targetDate: string): Promise<AvailableDockSlots[]> {
+  async getAvailableSlots(warehouseId: number, targetDate: string, dockId?: number): Promise<AvailableDockSlots[]> {
     if (!warehouseId || isNaN(warehouseId)) {
       throw { status: 400, message: 'Invalid warehouse ID.' };
     }
 
     if (!targetDate || typeof targetDate !== 'string') {
       throw { status: 400, message: 'Missing targetDate parameter.' };
+    }
+
+    if (dockId !== undefined && (isNaN(dockId) || dockId <= 0)) {
+      throw { status: 400, message: 'Invalid dockId parameter.' };
     }
 
     const trimmedDate = targetDate.trim();
@@ -749,7 +754,10 @@ export class WarehouseService {
     // b. Fetch docks for this warehouse with active closures at now() to dynamically evaluate effectiveStatus
     const now = new Date();
     const docks = await prisma.dock.findMany({
-      where: { warehouseId },
+      where: {
+        warehouseId,
+        ...(dockId !== undefined ? { id: dockId } : {}),
+      },
       include: {
         closures: {
           where: {
@@ -804,8 +812,16 @@ export class WarehouseService {
       return [];
     }
 
-    // e. Query existing bookings for all active docks on targetDate (localized to warehouse timezone)
+    // e. Query existing bookings for all active docks on targetDate (localized to warehouse timezone).
+    // Overnight windows can end on the following calendar day, so the lookup window is widened to
+    // cover the last generated interval as well.
     const { startOfDayUtc, endOfDayUtc } = getZonedDayBounds(trimmedDate, warehouse.timezone);
+    const lastIntervalEndUtc = zonedDateAndTimeToUtc(
+      trimmedDate,
+      intervals[intervals.length - 1].end,
+      warehouse.timezone
+    );
+    const lookupEndUtc = lastIntervalEndUtc > endOfDayUtc ? lastIntervalEndUtc : endOfDayUtc;
 
     const bookings = await prisma.booking.findMany({
       where: {
@@ -813,7 +829,7 @@ export class WarehouseService {
         status: { in: [BookingStatus.BOOKED, BookingStatus.ARRIVED] },
         slotStartTime: {
           gte: startOfDayUtc,
-          lt: endOfDayUtc,
+          lt: lookupEndUtc,
         },
       },
       select: {
@@ -829,7 +845,7 @@ export class WarehouseService {
     const closures = await prisma.dockClosure.findMany({
       where: {
         dockId: { in: activeDocks.map((d) => d.id) },
-        startTime: { lt: endOfDayUtc },
+        startTime: { lt: lookupEndUtc },
         endTime: { gt: startOfDayUtc },
       },
       select: {
@@ -877,8 +893,8 @@ export class WarehouseService {
           freeSlots.push({
             slotStartTime: slotStartTime.toISOString(),
             slotEndTime: slotEndTime.toISOString(),
-            localStartTime: interval.start,
-            localEndTime: interval.end,
+            localStartTime: normalizeTimeOfDay(interval.start),
+            localEndTime: normalizeTimeOfDay(interval.end),
           });
         }
       }

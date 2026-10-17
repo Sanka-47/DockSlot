@@ -829,7 +829,7 @@
         "/warehouses/{warehouseId}/slots": {
             "get": {
                 "summary": "Slot Availability Search Engine",
-                "description": "Computes and returns available time slots for active docks on a target date.\nCorrectly evaluates IANA timezone conversions, 24/7 schedules, confirmed bookings, and dock maintenance closures.\n",
+                "description": "Computes and returns available time slots for active docks on a target date.\nCorrectly evaluates IANA timezone conversions, 24/7 schedules, midnight-closing and overnight shifts, confirmed bookings, past slots, and dock maintenance closures.\nEach returned slot carries both UTC instants (`slotStartTime`, `slotEndTime`) and the warehouse-local wall-clock boundaries (`localStartTime`, `localEndTime`) so clients can render times in the dock's own time zone.\n",
                 "tags": [
                     "Warehouses"
                 ],
@@ -883,6 +883,7 @@
                                         },
                                         "data": {
                                             "type": "array",
+                                            "description": "One entry per active dock (or only the requested dock when `dockId` is supplied)",
                                             "items": {
                                                 "type": "object",
                                                 "properties": {
@@ -892,16 +893,31 @@
                                                     "dockName": {
                                                         "type": "string"
                                                     },
-                                                    "slotStartTime": {
-                                                        "type": "string",
-                                                        "format": "date-time"
-                                                    },
-                                                    "slotEndTime": {
-                                                        "type": "string",
-                                                        "format": "date-time"
-                                                    },
-                                                    "isAvailable": {
-                                                        "type": "boolean"
+                                                    "slots": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "slotStartTime": {
+                                                                    "type": "string",
+                                                                    "format": "date-time",
+                                                                    "description": "UTC start instant"
+                                                                },
+                                                                "slotEndTime": {
+                                                                    "type": "string",
+                                                                    "format": "date-time",
+                                                                    "description": "UTC end instant"
+                                                                },
+                                                                "localStartTime": {
+                                                                    "type": "string",
+                                                                    "description": "Warehouse-local start time (HH:mm)"
+                                                                },
+                                                                "localEndTime": {
+                                                                    "type": "string",
+                                                                    "description": "Warehouse-local end time (HH:mm)"
+                                                                }
+                                                            }
+                                                        }
                                                     }
                                                 }
                                             }

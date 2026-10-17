@@ -442,7 +442,21 @@ export const getAvailableSlots = async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    const slots = await warehouseService.getAvailableSlots(warehouseId, trimmedDate);
+    const rawDockId = req.query.dockId;
+    let dockId: number | undefined;
+    if (rawDockId !== undefined) {
+      const parsedDockId = parseParamId(rawDockId as string | string[]);
+      if (isNaN(parsedDockId) || parsedDockId <= 0) {
+        res.status(400).json({
+          success: false,
+          message: 'Invalid dockId query parameter.',
+        });
+        return;
+      }
+      dockId = parsedDockId;
+    }
+
+    const slots = await warehouseService.getAvailableSlots(warehouseId, trimmedDate, dockId);
     res.status(200).json({
       success: true,
       data: slots,

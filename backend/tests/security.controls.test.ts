@@ -78,14 +78,17 @@ describe('Configurable Security Controls Integration Tests', () => {
   });
 
   beforeEach(async () => {
-    // Restore default security env vars and flush Redis before each test
-    process.env.JWT_EXPIRES_IN = originalEnv.JWT_EXPIRES_IN || '15m';
-    process.env.JWT_REFRESH_EXPIRES_IN = originalEnv.JWT_REFRESH_EXPIRES_IN || '7d';
-    process.env.RATE_LIMIT_WINDOW_MS = originalEnv.RATE_LIMIT_WINDOW_MS || '60000';
-    process.env.RATE_LIMIT_API_MAX = originalEnv.RATE_LIMIT_API_MAX || '100';
-    process.env.RATE_LIMIT_BOOKING_MAX = originalEnv.RATE_LIMIT_BOOKING_MAX || '10';
-    process.env.MAX_FAILED_LOGIN_ATTEMPTS = originalEnv.MAX_FAILED_LOGIN_ATTEMPTS || '5';
-    process.env.LOGIN_LOCKOUT_DURATION_MINUTES = originalEnv.LOGIN_LOCKOUT_DURATION_MINUTES || '15';
+    // Pin security settings to known test values and flush Redis before each
+    // test. Using hard-coded values (instead of restoring the developer's local
+    // .env entries) keeps the assertions deterministic — .env may override, for
+    // example, JWT_EXPIRES_IN to a value the tests do not expect.
+    process.env.JWT_EXPIRES_IN = '15m';
+    process.env.JWT_REFRESH_EXPIRES_IN = '7d';
+    process.env.RATE_LIMIT_WINDOW_MS = '60000';
+    process.env.RATE_LIMIT_API_MAX = '100';
+    process.env.RATE_LIMIT_BOOKING_MAX = '10';
+    process.env.MAX_FAILED_LOGIN_ATTEMPTS = '5';
+    process.env.LOGIN_LOCKOUT_DURATION_MINUTES = '15';
     await redis.flushall();
   });
 
