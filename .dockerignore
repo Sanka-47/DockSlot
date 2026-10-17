@@ -1,0 +1,25 @@
+# Keep the build context small and keep local secrets / host-built artifacts
+# out of the image. The Dockerfile only COPYs backend/package*.json,
+# backend/prisma and backend/src, but everything here would otherwise still be
+# uploaded to the daemon on every build.
+**/node_modules
+**/dist
+**/coverage
+
+.git
+.gitignore
+.specstory
+.claude
+
+# Local configuration and secrets
+**/.env
+**/.env.*
+!**/.env.example
+
+# Build / documentation artifacts that the image does not use
+frontend
+open-api.json
+PLAN.md
+README.md
+*.log
+.DS_Store

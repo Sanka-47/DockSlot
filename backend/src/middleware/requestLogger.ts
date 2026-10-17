@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import { v4 as uuidv4 } from 'uuid';
+// Node's built-in v4 generator: the `uuid` package (v14) is ESM-only and cannot
+// be require()'d by the CommonJS build on the Node 18 runtime image.
+import { randomUUID } from 'crypto';
 import { childLogger } from '../utils/logger';
 import { runWithRequestContext } from '../utils/requestContext';
 
@@ -57,7 +59,7 @@ export function resolveRequestId(req: Request): string {
     return candidate;
   }
 
-  return uuidv4();
+  return randomUUID();
 }
 
 export const requestLogger = (req: Request, res: Response, next: NextFunction): void => {
