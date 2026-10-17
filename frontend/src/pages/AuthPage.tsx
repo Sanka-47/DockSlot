@@ -162,12 +162,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({
   /**
    * Stores the final JWT, syncs global auth context, and routes to the right dashboard.
    */
-  const completeSignIn = (token: string, user: User, successText: string, refreshToken?: string) => {
-    // Store access + refresh tokens in HTTP cookies and localStorage
-    storage.setTokens(token, refreshToken);
+  const completeSignIn = (token: string, user: User, successText: string) => {
+    // Store the access token; the refresh token lives in an HttpOnly cookie.
+    storage.setToken(token);
 
     // Update global context
-    setAuthContextUser(token, user, refreshToken);
+    setAuthContextUser(token, user);
 
     setSuccessMessage(successText);
 
@@ -255,13 +255,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
       const token = response.token || response.data?.token;
       const user = response.user || response.data?.user;
-      const refreshToken = response.refreshToken || response.data?.refreshToken;
 
       if (!token || !user) {
         throw new Error('Authentication succeeded but received an incomplete server response.');
       }
 
-      completeSignIn(token, user, 'Login successful! Redirecting to dashboard...', refreshToken);
+      completeSignIn(token, user, 'Login successful! Redirecting to dashboard...');
     } catch (err: any) {
       const serverMessage =
         err.response?.data?.message || err.message || 'Login failed. Please check your credentials.';
@@ -299,7 +298,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
       const token = response.token || response.data?.token;
       const user = response.user || response.data?.user;
-      const refreshToken = response.refreshToken || response.data?.refreshToken;
 
       if (!token || !user) {
         throw new Error('Verification succeeded but received an incomplete server response.');
@@ -307,7 +305,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
       setPendingTempToken(null);
       setTotpCode('');
-      completeSignIn(token, user, 'Two-factor verification successful! Redirecting to dashboard...', refreshToken);
+      completeSignIn(token, user, 'Two-factor verification successful! Redirecting to dashboard...');
     } catch (err: any) {
       const serverMessage =
         err.response?.data?.message ||
@@ -372,17 +370,16 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
       const token = response.token || response.data?.token;
       const user = response.user || response.data?.user;
-      const refreshToken = response.refreshToken || response.data?.refreshToken;
 
       if (!token || !user) {
         throw new Error('Registration completed but received an incomplete server response.');
       }
 
-      // Store access + refresh tokens in HTTP cookies and localStorage
-      storage.setTokens(token, refreshToken);
+      // Store the access token; the refresh token lives in an HttpOnly cookie.
+      storage.setToken(token);
 
       // Update global context
-      setAuthContextUser(token, user, refreshToken);
+      setAuthContextUser(token, user);
 
       setSuccessMessage('Organization registered successfully! Setting up your workspace...');
 

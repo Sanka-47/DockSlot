@@ -5,6 +5,8 @@ const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 export const apiClient = axios.create({
   baseURL,
+  // Required so the browser stores and sends the backend's HttpOnly refresh cookie.
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -28,34 +30,25 @@ export const AUTH_SESSION_EXPIRED_EVENT = 'auth:session-expired';
 /** Single-flight guard so concurrent 401s trigger only one refresh request. */
 let refreshPromise: Promise<string> | null = null;
 
-const extractTokens = (payload: any): { token?: string; refreshToken?: string } => {
-  const body = payload?.data ?? payload;
-  return {
-    token: body?.token ?? payload?.token,
-    refreshToken: body?.refreshToken ?? payload?.refreshToken,
-  };
-};
-
 /**
- * Redeems the stored refresh token for a fresh access token. Uses a bare axios
- * instance (not `apiClient`) so the call cannot re-enter this interceptor.
+ * Asks the backend to exchange the HttpOnly refresh cookie for a fresh access
+ * token. Uses a bare axios instance (not `apiClient`) so the call cannot
+ * re-enter this interceptor. `withCredentials` makes the browser attach the
+ * refresh cookie automatically; the response rotates that cookie.
  */
 const refreshAccessToken = async (): Promise<string> => {
-  const refreshToken = storage.getRefreshToken();
-  if (!refreshToken) {
-    throw new Error('No refresh token available.');
-  }
+  const { data } = await axios.post(
+    `${baseURL}/auth/refresh`,
+    {},
+    { withCredentials: true, headers: { 'Content-Type': 'application/json' } }
+  );
 
-  const { data } = await axios.post(`${baseURL}/auth/refresh`, { refreshToken }, {
-    headers: { 'Content-Type': 'application/json' },
-  });
-
-  const { token, refreshToken: rotated } = extractTokens(data);
+  const token = data?.token ?? data?.data?.token;
   if (!token) {
     throw new Error('Refresh response did not include an access token.');
   }
 
-  storage.setTokens(token, rotated);
+  storage.setToken(token);
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(AUTH_TOKEN_REFRESHED_EVENT, { detail: { token } }));
   }
@@ -93,8 +86,10 @@ apiClient.interceptors.response.use(
         }
         return apiClient(original);
       } catch (refreshError) {
-        // Refresh failed (expired/revoked refresh token): end the session.
+        // Refresh failed (expired/revoked/missing cookie): end the session and
+        // make a best-effort attempt to clear the server-side cookie.
         storage.removeToken();
+        axios.post(`${baseURL}/auth/logout`, {}, { withCredentials: true }).catch(() => {});
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent(AUTH_SESSION_EXPIRED_EVENT));
         }

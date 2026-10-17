@@ -18,12 +18,17 @@ export const authApi = {
   },
 
   /**
-   * Exchange a refresh token for a new access token (and rotated refresh token).
-   * The response interceptor in `client.ts` performs this automatically on 401,
-   * so this is only needed when refreshing explicitly.
+   * Exchange the HttpOnly refresh cookie for a new access token (sent
+   * automatically by the browser). The response interceptor in `client.ts`
+   * performs this automatically on 401, so this is only needed explicitly.
    */
-  refresh: async (refreshToken: string): Promise<AuthResponse> => {
-    const response = await apiClient.post<AuthResponse>('/auth/refresh', { refreshToken });
+  refresh: async (): Promise<AuthResponse> => {
+    const response = await apiClient.post<AuthResponse>('/auth/refresh');
+    return response.data;
+  },
+
+  logout: async (): Promise<{ success: boolean; message: string }> => {
+    const response = await apiClient.post<{ success: boolean; message: string }>('/auth/logout');
     return response.data;
   },
 

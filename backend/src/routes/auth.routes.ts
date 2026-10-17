@@ -3,6 +3,7 @@ import {
   register,
   login,
   refresh,
+  logout,
   forgotPassword,
   resetPassword,
   changePassword,
@@ -125,27 +126,27 @@ router.post('/login', login);
  *   post:
  *     summary: Exchange a refresh token for a new access token
  *     description: |
- *       Redeems a long-lived refresh JWT (JWT_REFRESH_EXPIRES_IN) for a fresh access token
- *       (JWT_EXPIRES_IN) and a rotated refresh token. The supplied token must be of type
- *       `refresh` and will be rejected if the user is deactivated or has logged out of all
+ *       Redeems the refresh JWT stored in the `refreshToken` HttpOnly cookie for a fresh access
+ *       token (JWT_EXPIRES_IN) and a rotated refresh cookie (JWT_REFRESH_EXPIRES_IN). A raw
+ *       `refreshToken` may also be supplied in the body for non-browser clients. The token must be
+ *       of type `refresh` and will be rejected if the user is deactivated or has logged out of all
  *       devices (token version revoked).
  *     tags:
  *       - Authentication
  *     requestBody:
- *       required: true
+ *       required: false
  *       content:
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - refreshToken
  *             properties:
  *               refreshToken:
  *                 type: string
+ *                 description: Optional fallback for non-browser clients; browsers use the cookie.
  *                 example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
  *     responses:
  *       200:
- *         description: New access and refresh tokens issued
+ *         description: New access token issued; refresh cookie rotated
  *         content:
  *           application/json:
  *             schema:
@@ -157,9 +158,6 @@ router.post('/login', login);
  *                 token:
  *                   type: string
  *                   description: New access JWT
- *                 refreshToken:
- *                   type: string
- *                   description: Rotated refresh JWT
  *                 user:
  *                   $ref: '#/components/schemas/User'
  *       400:
@@ -172,6 +170,21 @@ router.post('/login', login);
  *         description: Too many API requests (rate limit exceeded)
  */
 router.post('/refresh', refresh);
+
+/**
+ * @openapi
+ * /auth/logout:
+ *   post:
+ *     summary: Log out the current browser session
+ *     description: Clears the `refreshToken` HttpOnly cookie. Already-issued access tokens remain valid until they expire; use /auth/logout-all to revoke those too.
+ *     tags:
+ *       - Authentication
+ *     security: []
+ *     responses:
+ *       200:
+ *         description: Refresh cookie cleared
+ */
+router.post('/logout', logout);
 
 /**
  * @openapi

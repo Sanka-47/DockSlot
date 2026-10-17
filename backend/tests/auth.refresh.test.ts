@@ -5,10 +5,19 @@ import app from '../src/index';
 import { prisma } from '../src/config/db.config';
 import redis from '../src/config/redis';
 import { securityConfig } from '../src/config/security.config';
-import { signRefreshToken } from '../src/utils/jwt.utils';
+import { signAccessToken, signRefreshToken } from '../src/utils/jwt.utils';
 import { OrganizationType, UserRole } from '@prisma/client';
 
-describe('JWT Refresh Token Flow (POST /api/auth/refresh)', () => {
+const COOKIE_NAME = securityConfig.refreshCookieName;
+
+/** Extract the refresh-token Set-Cookie header from a response, if present. */
+const getRefreshSetCookie = (res: request.Response): string | undefined => {
+  const raw = res.headers['set-cookie'];
+  const cookies = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  return cookies.find((cookie) => cookie.startsWith(`${COOKIE_NAME}=`));
+};
+
+describe('JWT Refresh Token Flow (HttpOnly cookie)', () => {
   const ts = Date.now();
 
   let orgId: number;
@@ -16,8 +25,8 @@ describe('JWT Refresh Token Flow (POST /api/auth/refresh)', () => {
   const email = `refresh_admin_${ts}@swiftrefresh.com`;
   const password = 'Password123!';
 
+  const agent = request.agent(app);
   let accessToken: string;
-  let refreshToken: string;
 
   beforeAll(async () => {
     const org = await prisma.organization.create({
@@ -45,26 +54,35 @@ describe('JWT Refresh Token Flow (POST /api/auth/refresh)', () => {
     await prisma.organization.delete({ where: { id: orgId } }).catch(() => {});
   });
 
-  it('issues both an access and a refresh token on login', async () => {
-    const res = await request(app).post('/api/auth/login').send({ email, password });
+  it('sets an HttpOnly refresh cookie on login and never returns the token in the body', async () => {
+    const res = await agent.post('/api/auth/login').send({ email, password });
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(typeof res.body.token).toBe('string');
-    expect(typeof res.body.refreshToken).toBe('string');
+
+    // Refresh token must NOT leak into the JSON payload.
+    expect(res.body.refreshToken).toBeUndefined();
+    expect(res.body.data?.refreshToken).toBeUndefined();
+
+    // ...it must arrive as an HttpOnly cookie instead.
+    const setCookie = getRefreshSetCookie(res);
+    expect(setCookie).toBeDefined();
+    expect(setCookie).toMatch(/HttpOnly/i);
 
     accessToken = res.body.token;
-    refreshToken = res.body.refreshToken;
   });
 
-  it('exchanges a valid refresh token for a new access token that the API accepts', async () => {
-    const res = await request(app).post('/api/auth/refresh').send({ refreshToken });
+  it('exchanges the cookie for a new access token that the API accepts', async () => {
+    const res = await agent.post('/api/auth/refresh').send({});
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(typeof res.body.token).toBe('string');
-    // A rotated refresh token is returned
-    expect(typeof res.body.refreshToken).toBe('string');
+    expect(res.body.refreshToken).toBeUndefined();
+
+    // The rotated cookie is re-issued.
+    expect(getRefreshSetCookie(res)).toBeDefined();
 
     const me = await request(app)
       .get('/api/auth/me')
@@ -74,20 +92,37 @@ describe('JWT Refresh Token Flow (POST /api/auth/refresh)', () => {
     expect(me.body.data.id).toBe(userId);
   });
 
-  it('rejects a missing refresh token with 400', async () => {
+  it('clears the refresh cookie on logout', async () => {
+    const res = await request(app).post('/api/auth/logout');
+
+    expect(res.status).toBe(200);
+    const setCookie = getRefreshSetCookie(res);
+    expect(setCookie).toBeDefined();
+    // Express clears a cookie by setting an empty value with an expiry in the past.
+    expect(setCookie).toMatch(new RegExp(`${COOKIE_NAME}=;`));
+  });
+
+  it('rejects a request with no refresh cookie with 400', async () => {
     const res = await request(app).post('/api/auth/refresh').send({});
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
   });
 
-  it('rejects a malformed refresh token with 401', async () => {
-    const res = await request(app).post('/api/auth/refresh').send({ refreshToken: 'not-a-jwt' });
+  it('rejects a malformed refresh cookie with 401', async () => {
+    const res = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', `${COOKIE_NAME}=not-a-jwt`)
+      .send({});
     expect(res.status).toBe(401);
     expect(res.body.success).toBe(false);
   });
 
   it('rejects an access token presented as a refresh token (wrong type) with 401', async () => {
-    const res = await request(app).post('/api/auth/refresh').send({ refreshToken: accessToken });
+    const res = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', `${COOKIE_NAME}=${accessToken}`)
+      .send({});
+
     expect(res.status).toBe(401);
     expect(res.body.success).toBe(false);
     expect(res.body.message).toBe('Invalid refresh token.');
@@ -107,13 +142,17 @@ describe('JWT Refresh Token Flow (POST /api/auth/refresh)', () => {
       tokenVersion: 0,
     });
 
-    const res = await request(app).post('/api/auth/refresh').send({ refreshToken: revoked });
+    const res = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', `${COOKIE_NAME}=${revoked}`)
+      .send({});
+
     expect(res.status).toBe(401);
     expect(res.body.success).toBe(false);
     expect(res.body.message).toContain('revoked');
   });
 
-  it('rejects refresh tokens for a deactivated account with 403', async () => {
+  it('rejects refresh cookies for a deactivated account with 403', async () => {
     const versionStr = await redis.get(`user:${userId}:tokenVersion`);
     const currentVersion = parseInt(versionStr || '0', 10);
 
@@ -128,7 +167,11 @@ describe('JWT Refresh Token Flow (POST /api/auth/refresh)', () => {
       tokenVersion: currentVersion,
     });
 
-    const res = await request(app).post('/api/auth/refresh').send({ refreshToken: token });
+    const res = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', `${COOKIE_NAME}=${token}`)
+      .send({});
+
     expect(res.status).toBe(403);
     expect(res.body.success).toBe(false);
 

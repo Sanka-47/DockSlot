@@ -22,7 +22,19 @@ const app = express();
 // id is available to anything downstream (services, outbox payload).
 app.use(requestLogger);
 
-app.use(cors());
+// CORS: credentials must be enabled so the browser sends/stores the HttpOnly
+// refresh-token cookie. Origins may be restricted via a comma-separated
+// CORS_ORIGIN env var; otherwise the request origin is reflected.
+const corsOrigins = process.env.CORS_ORIGIN?.split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin: corsOrigins && corsOrigins.length > 0 ? corsOrigins : true,
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 // Swagger Documentation UI

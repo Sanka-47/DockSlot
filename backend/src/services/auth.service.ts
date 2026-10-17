@@ -115,7 +115,7 @@ export class AuthService {
    * user, or whose `tokenVersion` no longer matches the value in Redis (i.e.
    * it was revoked via logout-all).
    */
-  public async refresh(refreshToken: string): Promise<AuthResponse> {
+  public async refresh(refreshToken?: string): Promise<AuthResponse> {
     if (!refreshToken || typeof refreshToken !== 'string') {
       throw { status: 400, message: 'Refresh token is required.' };
     }

@@ -2,6 +2,11 @@ import { Request, Response } from 'express';
 import { authService } from '../services/auth.service';
 import { invitationService } from '../services/invitation.service';
 import { totpService } from '../services/totp.service';
+import {
+  setRefreshTokenCookie,
+  clearRefreshTokenCookie,
+  getRefreshTokenFromRequest,
+} from '../utils/cookie.utils';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -11,12 +16,16 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       organizationType: req.body.organizationType || req.body.orgType,
     };
     const result = await authService.register(payload);
+    // Refresh token travels in an HttpOnly cookie, never in the response body.
+    if (result.refreshToken) {
+      setRefreshTokenCookie(res, result.refreshToken);
+    }
+    const { refreshToken: _refreshToken, ...data } = result;
     res.status(201).json({
       success: true,
       message: 'User registered successfully. A verification email has been sent.',
-      data: result,
+      data,
       token: result.token,
-      refreshToken: result.refreshToken,
       user: result.user,
     });
   } catch (error: any) {
@@ -41,12 +50,16 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       });
       return;
     }
+    // Refresh token travels in an HttpOnly cookie, never in the response body.
+    if (result.refreshToken) {
+      setRefreshTokenCookie(res, result.refreshToken);
+    }
+    const { refreshToken: _refreshToken, ...loginData } = result;
     res.status(200).json({
       success: true,
       message: 'Login successful.',
-      data: result,
+      data: loginData,
       token: result.token,
-      refreshToken: result.refreshToken,
       user: result.user,
     });
   } catch (error: any) {
@@ -60,21 +73,48 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
 export const refresh = async (req: Request, res: Response): Promise<void> => {
   try {
-    const refreshToken = req.body?.refreshToken ?? req.body?.refresh_token;
+    // Primary source is the HttpOnly cookie; the body fallback keeps non-browser
+    // clients (e.g. tests, mobile apps) working.
+    const refreshToken =
+      getRefreshTokenFromRequest(req) ?? req.body?.refreshToken ?? req.body?.refresh_token;
+
     const result = await authService.refresh(refreshToken);
+
+    // Rotate the cookie on every successful refresh.
+    if (result.refreshToken) {
+      setRefreshTokenCookie(res, result.refreshToken);
+    }
+    const { refreshToken: _refreshToken, ...refreshData } = result;
     res.status(200).json({
       success: true,
       message: 'Token refreshed successfully.',
-      data: result,
+      data: refreshData,
       token: result.token,
-      refreshToken: result.refreshToken,
       user: result.user,
+    });
+  } catch (error: any) {
+    // A stale/invalid cookie should not keep being sent by the browser.
+    clearRefreshTokenCookie(res);
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'An error occurred while refreshing the token.',
+    });
+  }
+};
+
+export const logout = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    clearRefreshTokenCookie(res);
+    res.status(200).json({
+      success: true,
+      message: 'Logged out successfully.',
     });
   } catch (error: any) {
     const status = error.status || 500;
     res.status(status).json({
       success: false,
-      message: error.message || 'An error occurred while refreshing the token.',
+      message: error.message || 'An error occurred while logging out.',
     });
   }
 };
@@ -259,6 +299,8 @@ export const logoutAll = async (req: Request, res: Response): Promise<void> => {
 
     await authService.logoutAll(userId);
 
+    clearRefreshTokenCookie(res);
+
     res.status(200).json({
       success: true,
       message: 'Successfully logged out of all devices.',
@@ -360,12 +402,15 @@ export const loginVerify2FA = async (req: Request, res: Response): Promise<void>
   try {
     const { tempToken, token, email, password } = req.body;
     const result = await totpService.loginVerify({ tempToken, token, email, password });
+    if (result.refreshToken) {
+      setRefreshTokenCookie(res, result.refreshToken);
+    }
+    const { refreshToken: _refreshToken, ...twoFactorData } = result;
     res.status(200).json({
       success: true,
       message: 'Two-factor authentication verified successfully. Logged in.',
-      data: result,
+      data: twoFactorData,
       token: result.token,
-      refreshToken: result.refreshToken,
       user: result.user,
     });
   } catch (error: any) {

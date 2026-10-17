@@ -1,9 +1,11 @@
 const TOKEN_KEY = 'dockslot_auth_token';
-const REFRESH_TOKEN_KEY = 'dockslot_refresh_token';
 
 /**
  * Cookie storage helper for managing JWT tokens.
  * Sets a persistent cookie with SameSite=Lax and 7-day expiration.
+ *
+ * Note: the refresh token is NOT stored here — it is held in an HttpOnly cookie
+ * set by the backend and is never accessible to client-side JavaScript.
  */
 export const setAuthCookie = (token: string, days = 7): void => {
   if (typeof document === 'undefined') return;
@@ -33,34 +35,9 @@ export const storage = {
       setAuthCookie(token);
     }
   },
-  getRefreshToken: (): string | null => {
-    if (typeof window === 'undefined') return null;
-    return localStorage.getItem(REFRESH_TOKEN_KEY);
-  },
-  setRefreshToken: (refreshToken: string): void => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
-    }
-  },
-  removeRefreshToken: (): void => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem(REFRESH_TOKEN_KEY);
-    }
-  },
-  /**
-   * Persist a fresh access token and (optionally) its rotated refresh token
-   * in a single call. Used after login and after an automatic token refresh.
-   */
-  setTokens: (token: string, refreshToken?: string | null): void => {
-    storage.setToken(token);
-    if (refreshToken) {
-      storage.setRefreshToken(refreshToken);
-    }
-  },
   removeToken: (): void => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(REFRESH_TOKEN_KEY);
       removeAuthCookie();
     }
   },

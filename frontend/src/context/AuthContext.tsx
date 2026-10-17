@@ -10,7 +10,7 @@ import {
 export interface AuthContextType {
   user: User | null;
   token: string | null;
-  login: (token: string, user: User, refreshToken?: string) => void;
+  login: (token: string, user: User) => void;
   logout: () => void;
   logoutAll: () => Promise<void>;
   /** Re-reads the current user from the server (e.g. after a 2FA change). */
@@ -75,13 +75,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
   }, []);
 
-  const login = (newToken: string, newUser: User, refreshToken?: string) => {
-    storage.setTokens(newToken, refreshToken);
+  const login = (newToken: string, newUser: User) => {
+    storage.setToken(newToken);
     setToken(newToken);
     setUser(newUser);
   };
 
   const logout = () => {
+    // Best-effort: clear the server-side HttpOnly refresh cookie.
+    authApi.logout().catch(() => {});
     storage.removeToken();
     setToken(null);
     setUser(null);
