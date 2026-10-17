@@ -35,6 +35,7 @@ import type {
 } from '../types/warehouse.types';
 import type { User } from '../types/user.types';
 import { useAuth } from '../hooks/useAuth';
+import { getTimezoneOptions } from '../utils/timezones';
 
 interface ScheduleDay {
   day: string;
@@ -773,17 +774,21 @@ export const WarehouseAdminDashboard: React.FC = () => {
                     <label htmlFor="wh-timezone" className="block text-xs font-semibold text-gray-700 mb-1">
                       IANA Timezone
                     </label>
-                    <input
+                    <select
                       id="wh-timezone"
-                      type="text"
                       value={editingWarehouseForm.timezone || ''}
                       onChange={(e) =>
                         setEditingWarehouseForm((prev) => ({ ...prev, timezone: e.target.value }))
                       }
                       required
-                      placeholder="e.g. Asia/Colombo"
-                      className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2F4F4F] focus:outline-none"
-                    />
+                      className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2F4F4F] focus:outline-none bg-white"
+                    >
+                      {getTimezoneOptions(editingWarehouseForm.timezone).map((tz) => (
+                        <option key={tz} value={tz}>
+                          {tz}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div>
@@ -1473,14 +1478,19 @@ export const WarehouseAdminDashboard: React.FC = () => {
                   <label htmlFor="create-wh-timezone" className="block text-xs font-semibold text-gray-700 mb-1">
                     Timezone
                   </label>
-                  <input
+                  <select
                     id="create-wh-timezone"
-                    type="text"
                     value={newWarehouseForm.timezone}
                     onChange={(e) => setNewWarehouseForm((prev) => ({ ...prev, timezone: e.target.value }))}
                     required
-                    className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2F4F4F] focus:outline-none"
-                  />
+                    className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2F4F4F] focus:outline-none bg-white"
+                  >
+                    {getTimezoneOptions(newWarehouseForm.timezone).map((tz) => (
+                      <option key={tz} value={tz}>
+                        {tz}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
