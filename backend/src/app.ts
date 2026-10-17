@@ -12,10 +12,20 @@ import healthRoutes from './routes/health.route';
 import { apiRateLimiter } from './middleware/rateLimit.middleware';
 import { errorHandler } from './middleware/error.middleware';
 import { requestLogger } from './middleware/requestLogger';
+import { parseTrustProxy } from './config/proxy.config';
 
 dotenv.config();
 
 const app = express();
+
+// Horizontal scaling: when running 2+ instances behind a load balancer, Express
+// must trust the proxy so `req.ip` is the real client address rather than the
+// proxy's (IP-keyed rate limiting and request logs depend on it). Unset leaves
+// Express's default (trust nothing) in place. See config/proxy.config.ts.
+const trustProxy = parseTrustProxy(process.env.TRUST_PROXY);
+if (trustProxy !== undefined) {
+  app.set('trust proxy', trustProxy);
+}
 
 // Correlation id + structured logging. Mounted first so every request -
 // including ones rejected by the rate limiter or auth - is traced, and so the

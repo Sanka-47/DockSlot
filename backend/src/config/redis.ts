@@ -9,6 +9,31 @@ const inMemoryExpiry = new Map<string, number>();
 const inMemoryScripts = new Map<string, string>();
 let isRedisConnected = false;
 
+// The in-memory fallback exists ONLY for local development / CI without Docker.
+// In production it must be disabled: a per-process Map silently diverges from
+// other instances, breaking cross-instance session revocation, the isActive
+// cache, and global rate limiting (i.e. a split-brain). When disabled, a Redis
+// outage fails fast instead of degrading to inconsistent local state.
+const inMemoryFallbackEnabled = process.env.NODE_ENV !== 'production';
+
+/** Falls back to the local store, or throws when running in production. */
+function memFallback(args: string[]): any {
+  if (!inMemoryFallbackEnabled) {
+    throw new Error(
+      '[Redis] Redis is unreachable and the in-memory fallback is disabled in production. ' +
+        'A shared, highly-available Redis is required for multi-instance correctness.'
+    );
+  }
+  return executeInMemoryCommand(args);
+}
+
+/** Mirrors a command into the local store while connected (dev only). */
+function mirrorToMemory(args: string[]): void {
+  if (inMemoryFallbackEnabled) {
+    executeInMemoryCommand(args);
+  }
+}
+
 function getInMemoryPttl(key: string): number {
   if (!inMemoryStore.has(key)) {
     inMemoryExpiry.delete(key);
@@ -183,9 +208,9 @@ export const redis = {
    * Executes a raw Redis command (used by rate-limit-redis RedisStore).
    */
   async call(...args: string[]): Promise<any> {
-    // Always register SCRIPT LOAD in memory so SHA1 is known if fallback is needed
+    // Register SCRIPT LOAD in memory (dev only) so SHA1 is known if fallback is needed
     if ((args[0] || '').toUpperCase() === 'SCRIPT' && (args[1] || '').toUpperCase() === 'LOAD') {
-      executeInMemoryCommand(args);
+      mirrorToMemory(args);
     }
 
     if (isRedisConnected) {
@@ -200,7 +225,7 @@ export const redis = {
       }
     }
 
-    return executeInMemoryCommand(args);
+    return memFallback(args);
   },
 
   /**
@@ -221,7 +246,7 @@ export const redis = {
         // Fall back to in-memory store if Redis command fails
       }
     }
-    return executeInMemoryCommand(['GET', key]);
+    return memFallback(['GET', key]);
   },
 
   /**
@@ -229,15 +254,15 @@ export const redis = {
    */
   async set(key: string, value: string | number, ...args: any[]): Promise<'OK' | string | null> {
     const strVal = String(value);
-    executeInMemoryCommand(['SET', key, strVal, ...args.map(String)]);
+    mirrorToMemory(['SET', key, strVal, ...args.map(String)]);
     if (isRedisConnected) {
       try {
         return await (rawRedis as any).set(key, strVal, ...args);
       } catch {
-        // Fall back to in-memory store
+        // Fall through to the local store / production guard
       }
     }
-    return 'OK';
+    return memFallback(['SET', key, strVal, ...args.map(String)]);
   },
 
   /**
@@ -248,28 +273,28 @@ export const redis = {
     if (isRedisConnected) {
       try {
         const val = await rawRedis.incr(key);
-        inMemoryStore.set(key, String(val));
+        mirrorToMemory(['SET', key, String(val)]);
         return val;
       } catch {
-        // Fall back to in-memory store
+        // Fall through to the local store / production guard
       }
     }
-    return executeInMemoryCommand(['INCR', key]);
+    return memFallback(['INCR', key]);
   },
 
   /**
    * Removes the specified key.
    */
   async del(key: string): Promise<number> {
-    const existed = executeInMemoryCommand(['DEL', key]);
+    mirrorToMemory(['DEL', key]);
     if (isRedisConnected) {
       try {
         return await rawRedis.del(key);
       } catch {
-        // Fall back to in-memory store
+        // Fall through to the local store / production guard
       }
     }
-    return existed;
+    return memFallback(['DEL', key]);
   },
 
   /**
@@ -280,8 +305,11 @@ export const redis = {
       try {
         return await rawRedis.ping();
       } catch {
-        // Fall back
+        // Fall through
       }
+    }
+    if (!inMemoryFallbackEnabled) {
+      throw new Error('[Redis] ping failed: Redis is unreachable (in-memory fallback disabled in production).');
     }
     return 'PONG';
   },
@@ -290,8 +318,10 @@ export const redis = {
    * Clears the store.
    */
   async flushall(): Promise<'OK'> {
-    inMemoryStore.clear();
-    inMemoryExpiry.clear();
+    if (inMemoryFallbackEnabled) {
+      inMemoryStore.clear();
+      inMemoryExpiry.clear();
+    }
     if (isRedisConnected) {
       try {
         await rawRedis.flushall();
