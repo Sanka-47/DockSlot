@@ -119,7 +119,7 @@ export class InvitationService {
     } else {
       throw {
         status: 403,
-        message: `Forbidden. Role '${requester.role}' cannot invite users. Only CARRIER_ADMIN and WAREHOUSE_ADMIN are authorized.`,
+        message: `Only Carrier Admin and Warehouse Admin are authorized to invite User`,
       };
     }
 

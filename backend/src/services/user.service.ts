@@ -69,7 +69,7 @@ export class UserService {
     } else {
       throw {
         status: 403,
-        message: `Forbidden. Role '${requester.role}' cannot invite users. Only CARRIER_ADMIN and WAREHOUSE_ADMIN are authorized.`,
+        message: `Only Carrier Admin and Warehouse Admin  are authorized to invite Users`,
       };
     }
 
@@ -155,7 +155,7 @@ export class UserService {
     if (requester.role !== 'CARRIER_ADMIN' && requester.role !== 'WAREHOUSE_ADMIN') {
       throw {
         status: 403,
-        message: `Forbidden. Role '${requester.role}' cannot deactivate users. Only CARRIER_ADMIN and WAREHOUSE_ADMIN are authorized.`,
+        message: `Only Carrier Admin and Wharehouse Admins are authorized to diactivate Users.`,
       };
     }
 
@@ -220,7 +220,7 @@ export class UserService {
     if (requester.role !== 'CARRIER_ADMIN' && requester.role !== 'WAREHOUSE_ADMIN') {
       throw {
         status: 403,
-        message: `Forbidden. Role '${requester.role}' cannot reactivate users. Only CARRIER_ADMIN and WAREHOUSE_ADMIN are authorized.`,
+        message: `Only Carrier Admin and Warehouse Admin are authorized to Reactivate User.`,
       };
     }
 
@@ -281,7 +281,7 @@ export class UserService {
     if (requester.role !== 'CARRIER_ADMIN' && requester.role !== 'WAREHOUSE_ADMIN') {
       throw {
         status: 403,
-        message: `Forbidden. Role '${requester.role}' cannot list organization users.`,
+        message: `You do not have authorization to list organization users.`,
       };
     }
 
