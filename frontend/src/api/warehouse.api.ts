@@ -12,6 +12,8 @@ import type {
   UpdateWarehouseRequest,
   CreateDockRequest,
   UpdateDockRequest,
+  WarehouseHours,
+  UpdateOperatingHoursRequest,
 } from '../types/warehouse.types';
 
 export const warehouseApi = {
@@ -46,8 +48,26 @@ export const warehouseApi = {
     return response.data;
   },
 
-  getDocks: async (warehouseId: number): Promise<{ success: boolean; data: Dock[] }> => {
-    const response = await apiClient.get<{ success: boolean; data: Dock[] }>(
+  getHours: async (warehouseId: number): Promise<{ success: boolean; data: WarehouseHours }> => {
+    const response = await apiClient.get<{ success: boolean; data: WarehouseHours }>(
+      `/warehouses/${warehouseId}/hours`
+    );
+    return response.data;
+  },
+
+  updateHours: async (
+    warehouseId: number,
+    data: UpdateOperatingHoursRequest
+  ): Promise<{ success: boolean; message: string; data: WarehouseHours }> => {
+    const response = await apiClient.put<{
+      success: boolean;
+      message: string;
+      data: WarehouseHours;
+    }>(`/warehouses/${warehouseId}/hours`, data);
+    return response.data;
+  },
+
+  getDocks: async (warehouseId: number): Promise<{ success: boolean; data: Dock[] }> => {    const response = await apiClient.get<{ success: boolean; data: Dock[] }>(
       `/warehouses/${warehouseId}/docks`
     );
     return response.data;

@@ -31,9 +31,80 @@ import type {
   CreateWarehouseRequest,
   UpdateWarehouseRequest,
   CreateDockRequest,
+  OperatingHour,
 } from '../types/warehouse.types';
 import type { User } from '../types/user.types';
 import { useAuth } from '../hooks/useAuth';
+
+interface ScheduleDay {
+  day: string;
+  dayOfWeek: number;
+  isOpen: boolean;
+  openTime: string;
+  closeTime: string;
+  is24h: boolean;
+}
+
+const DEFAULT_WEEKLY_SCHEDULE: ScheduleDay[] = [
+  { day: 'Monday', dayOfWeek: 1, isOpen: true, openTime: '08:00', closeTime: '18:00', is24h: false },
+  { day: 'Tuesday', dayOfWeek: 2, isOpen: true, openTime: '08:00', closeTime: '18:00', is24h: false },
+  { day: 'Wednesday', dayOfWeek: 3, isOpen: true, openTime: '08:00', closeTime: '18:00', is24h: false },
+  { day: 'Thursday', dayOfWeek: 4, isOpen: true, openTime: '08:00', closeTime: '18:00', is24h: false },
+  { day: 'Friday', dayOfWeek: 5, isOpen: true, openTime: '08:00', closeTime: '18:00', is24h: false },
+  { day: 'Saturday', dayOfWeek: 6, isOpen: true, openTime: '08:00', closeTime: '14:00', is24h: false },
+  { day: 'Sunday', dayOfWeek: 7, isOpen: false, openTime: '08:00', closeTime: '18:00', is24h: false },
+];
+
+const cloneDefaultSchedule = (): ScheduleDay[] =>
+  DEFAULT_WEEKLY_SCHEDULE.map((day) => ({ ...day }));
+
+const timeToMinutes = (value: string): number => {
+  const [hours, minutes] = value.split(':').map(Number);
+  return (hours || 0) * 60 + (minutes || 0);
+};
+
+const minutesToTime = (totalMinutes: number): string => {
+  const normalized = ((totalMinutes % 1440) + 1440) % 1440;
+  const hours = Math.floor(normalized / 60);
+  const minutes = normalized % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+};
+
+// A close time at or before the open time means the window ends on the next day,
+// mirroring `resolveOperatingWindowMinutes` on the backend.
+const resolveScheduleWindow = (openTime: string, closeTime: string): { openMin: number; closeMin: number } => {
+  const openMin = timeToMinutes(openTime);
+  let closeMin = timeToMinutes(closeTime);
+  if (closeMin <= openMin) {
+    closeMin += 1440;
+  }
+  return { openMin, closeMin };
+};
+
+// <input type="time"> cannot represent 24:00; 00:00 resolves to the same end of day.
+const toScheduleInputTime = (time: string): string => (time === '24:00' ? '00:00' : time);
+
+const mergeScheduleWithHours = (hours: OperatingHour[]): ScheduleDay[] =>
+  DEFAULT_WEEKLY_SCHEDULE.map((day) => {
+    const stored = hours.find(
+      (hour) =>
+        hour.dayOfWeek === day.dayOfWeek || (day.dayOfWeek === 7 && hour.dayOfWeek === 0)
+    );
+
+    if (!stored) {
+      return { ...day, isOpen: false };
+    }
+
+    return {
+      ...day,
+      isOpen: true,
+      openTime: toScheduleInputTime(stored.openTime),
+      closeTime: toScheduleInputTime(stored.closeTime),
+      is24h:
+        stored.openTime === '00:00' &&
+        (stored.closeTime === '24:00' || stored.closeTime === '00:00'),
+    };
+  });
 
 export const WarehouseAdminDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -82,15 +153,9 @@ export const WarehouseAdminDashboard: React.FC = () => {
   // Tab 2: Operating Hours & Slots
   const [scheduleSlotLength, setScheduleSlotLength] = useState<number>(60);
   const [isSavingSlotLength, setIsSavingSlotLength] = useState<boolean>(false);
-  const [weeklySchedule, setWeeklySchedule] = useState([
-    { day: 'Monday', isOpen: true, openTime: '08:00', closeTime: '18:00', is24h: false },
-    { day: 'Tuesday', isOpen: true, openTime: '08:00', closeTime: '18:00', is24h: false },
-    { day: 'Wednesday', isOpen: true, openTime: '08:00', closeTime: '18:00', is24h: false },
-    { day: 'Thursday', isOpen: true, openTime: '08:00', closeTime: '18:00', is24h: false },
-    { day: 'Friday', isOpen: true, openTime: '08:00', closeTime: '18:00', is24h: false },
-    { day: 'Saturday', isOpen: true, openTime: '08:00', closeTime: '14:00', is24h: false },
-    { day: 'Sunday', isOpen: false, openTime: '08:00', closeTime: '18:00', is24h: false },
-  ]);
+  const [weeklySchedule, setWeeklySchedule] = useState<ScheduleDay[]>(cloneDefaultSchedule);
+  const [isLoadingSchedule, setIsLoadingSchedule] = useState<boolean>(false);
+  const [isSavingSchedule, setIsSavingSchedule] = useState<boolean>(false);
   const [scheduleSavedToast, setScheduleSavedToast] = useState<boolean>(false);
 
   // Tab 3: Policies
@@ -161,8 +226,7 @@ export const WarehouseAdminDashboard: React.FC = () => {
   }, []);
 
   // 3. Fetch Policy for selected warehouse
-  const fetchPolicy = useCallback(async (warehouseId: number) => {
-    setIsLoadingPolicy(true);
+  const fetchPolicy = useCallback(async (warehouseId: number) => {    setIsLoadingPolicy(true);
     try {
       const res = await warehouseApi.getPolicy(warehouseId);
       if (res?.data) {
@@ -184,7 +248,25 @@ export const WarehouseAdminDashboard: React.FC = () => {
     }
   }, []);
 
-  // 4. Fetch Organization Users
+  // 4. Fetch the weekly operating schedule for the selected warehouse
+  const fetchScheduleHours = useCallback(async (warehouseId: number) => {
+    setIsLoadingSchedule(true);
+    try {
+      const res = await warehouseApi.getHours(warehouseId);
+      setWeeklySchedule(mergeScheduleWithHours(res.data?.operatingHours || []));
+      if (res.data?.slotLengthMinutes) {
+        setScheduleSlotLength(res.data.slotLengthMinutes);
+      }
+    } catch (err: any) {
+      setErrorBanner(
+        err.response?.data?.message || 'Failed to load the weekly operational schedule template.'
+      );
+    } finally {
+      setIsLoadingSchedule(false);
+    }
+  }, []);
+
+  // 5. Fetch Organization Users
   const fetchUsers = useCallback(async () => {
     setIsLoadingUsers(true);
     try {
@@ -206,6 +288,7 @@ export const WarehouseAdminDashboard: React.FC = () => {
     if (selectedWarehouseId) {
       fetchDocks(selectedWarehouseId);
       fetchPolicy(selectedWarehouseId);
+      fetchScheduleHours(selectedWarehouseId);
 
       const currentWh = warehouses.find((w) => w.id === selectedWarehouseId);
       if (currentWh) {
@@ -220,7 +303,7 @@ export const WarehouseAdminDashboard: React.FC = () => {
     } else {
       setDocks([]);
     }
-  }, [selectedWarehouseId, warehouses, fetchDocks, fetchPolicy]);
+  }, [selectedWarehouseId, warehouses, fetchDocks, fetchPolicy, fetchScheduleHours]);
 
   // Tab 1 Handlers: Create & Update Warehouse
   const handleCreateWarehouse = async (e: React.FormEvent) => {
@@ -350,9 +433,79 @@ export const WarehouseAdminDashboard: React.FC = () => {
     }
   };
 
-  const handleSaveScheduleDesign = () => {
-    setScheduleSavedToast(true);
-    setTimeout(() => setScheduleSavedToast(false), 4000);
+  const handleAdjustScheduleTime = (
+    index: number,
+    field: 'openTime' | 'closeTime',
+    direction: 1 | -1
+  ) => {
+    const stepMinutes = scheduleSlotLength > 0 ? scheduleSlotLength : 60;
+
+    setWeeklySchedule((current) =>
+      current.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+
+        const { openMin, closeMin } = resolveScheduleWindow(item.openTime, item.closeTime);
+
+        if (field === 'openTime') {
+          const maxOpenMin = Math.min(1439, Math.max(0, closeMin - stepMinutes));
+          const nextOpenMin = Math.min(
+            Math.max(0, openMin + direction * stepMinutes),
+            maxOpenMin
+          );
+          return { ...item, openTime: minutesToTime(nextOpenMin) };
+        }
+
+        // Keep overnight windows intact by allowing the extended minute space to
+        // grow past 24:00 when the existing close already rolled over.
+        const maxCloseMin = closeMin > 1440 ? 2880 : 1440;
+        const nextCloseMin = Math.min(
+          Math.max(openMin + stepMinutes, closeMin + direction * stepMinutes),
+          maxCloseMin
+        );
+        return { ...item, closeTime: minutesToTime(nextCloseMin), is24h: false };
+      })
+    );
+  };
+
+  const getScheduleSlotEstimate = (item: ScheduleDay): number => {
+    if (!item.isOpen) return 0;
+    const { openMin, closeMin } = resolveScheduleWindow(item.openTime, item.closeTime);
+    const stepMinutes = scheduleSlotLength > 0 ? scheduleSlotLength : 60;
+    return Math.max(0, Math.floor((closeMin - openMin) / stepMinutes));
+  };
+
+  const handleSaveScheduleDesign = async () => {
+    if (!selectedWarehouseId) return;
+
+    setIsSavingSchedule(true);
+    setErrorBanner(null);
+    setScheduleSavedToast(false);
+    try {
+      const res = await warehouseApi.updateHours(selectedWarehouseId, {
+        hours: weeklySchedule.map((item) => ({
+          dayOfWeek: item.dayOfWeek,
+          isOpen: item.isOpen,
+          ...(item.isOpen
+            ? { openTime: item.openTime, closeTime: item.closeTime }
+            : {}),
+          slotLengthMinutes: scheduleSlotLength,
+        })),
+      });
+
+      setWeeklySchedule(mergeScheduleWithHours(res.data?.operatingHours || []));
+      setScheduleSavedToast(true);
+      setTimeout(() => setScheduleSavedToast(false), 4000);
+      await fetchWarehouses();
+    } catch (err: any) {
+      // Surface the backend's booking-collision message verbatim, e.g.
+      // "Cannot update starting/end time: bookings available in related time."
+      setErrorBanner(
+        err.response?.data?.message ||
+          'Failed to update the weekly operational schedule template.'
+      );
+    } finally {
+      setIsSavingSchedule(false);
+    }
   };
 
   // Tab 3 Handlers: Booking Policies
@@ -875,10 +1028,15 @@ export const WarehouseAdminDashboard: React.FC = () => {
               </h4>
               <button
                 onClick={handleSaveScheduleDesign}
-                className="px-3 py-1.5 text-xs font-semibold text-white bg-[#2F4F4F] hover:bg-[#1E3333] rounded-lg transition-colors flex items-center space-x-1.5"
+                disabled={isSavingSchedule || isLoadingSchedule || !selectedWarehouseId}
+                className="px-3 py-1.5 text-xs font-semibold text-white bg-[#2F4F4F] hover:bg-[#1E3333] rounded-lg transition-colors flex items-center space-x-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Save className="w-3.5 h-3.5" />
-                <span>Save Schedule Template</span>
+                {isSavingSchedule ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Save className="w-3.5 h-3.5" />
+                )}
+                <span>{isSavingSchedule ? 'Saving...' : 'Save Schedule Template'}</span>
               </button>
             </div>
 
@@ -889,67 +1047,134 @@ export const WarehouseAdminDashboard: React.FC = () => {
               </div>
             )}
 
-            <div className="border border-gray-200 rounded-xl overflow-hidden divide-y divide-gray-100">
-              {weeklySchedule.map((item, index) => (
-                <div key={item.day} className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white hover:bg-gray-50/50">
-                  <div className="flex items-center space-x-3 w-36">
-                    <input
-                      type="checkbox"
-                      checked={item.isOpen}
-                      onChange={(e) => {
-                        const copy = [...weeklySchedule];
-                        copy[index].isOpen = e.target.checked;
-                        setWeeklySchedule(copy);
-                      }}
-                      className="rounded border-gray-300 text-[#2F4F4F] focus:ring-[#2F4F4F]"
-                    />
-                    <span className={`text-xs font-bold ${item.isOpen ? 'text-gray-900' : 'text-gray-400 line-through'}`}>
-                      {item.day}
-                    </span>
-                  </div>
-
-                  {item.isOpen ? (
-                    <div className="flex items-center space-x-3">
-                      <div className="flex items-center space-x-1.5 text-xs">
-                        <span className="text-gray-500">Opens:</span>
-                        <input
-                          type="time"
-                          value={item.openTime}
-                          onChange={(e) => {
-                            const copy = [...weeklySchedule];
-                            copy[index].openTime = e.target.value;
-                            setWeeklySchedule(copy);
-                          }}
-                          className="px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-[#2F4F4F]"
-                        />
-                      </div>
-
-                      <span className="text-gray-400">—</span>
-
-                      <div className="flex items-center space-x-1.5 text-xs">
-                        <span className="text-gray-500">Closes:</span>
-                        <input
-                          type="time"
-                          value={item.closeTime}
-                          onChange={(e) => {
-                            const copy = [...weeklySchedule];
-                            copy[index].closeTime = e.target.value;
-                            setWeeklySchedule(copy);
-                          }}
-                          className="px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-[#2F4F4F]"
-                        />
-                      </div>
+            {isLoadingSchedule ? (
+              <div className="py-8 text-center text-xs text-gray-500">
+                <RefreshCw className="w-5 h-5 animate-spin mx-auto text-gray-400 mb-2" />
+                Loading weekly schedule...
+              </div>
+            ) : (
+              <div className="border border-gray-200 rounded-xl overflow-hidden divide-y divide-gray-100">
+                {weeklySchedule.map((item, index) => (
+                  <div key={item.day} className="p-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white hover:bg-gray-50/50">
+                    <div className="flex items-center space-x-3 w-36">
+                      <input
+                        type="checkbox"
+                        checked={item.isOpen}
+                        disabled={isSavingSchedule}
+                        onChange={(e) => {
+                          const isOpen = e.target.checked;
+                          setWeeklySchedule((current) =>
+                            current.map((day, dayIndex) =>
+                              dayIndex === index ? { ...day, isOpen } : day
+                            )
+                          );
+                        }}
+                        className="rounded border-gray-300 text-[#2F4F4F] focus:ring-[#2F4F4F]"
+                      />
+                      <span className={`text-xs font-bold ${item.isOpen ? 'text-gray-900' : 'text-gray-400 line-through'}`}>
+                        {item.day}
+                      </span>
                     </div>
-                  ) : (
-                    <span className="text-xs text-gray-400 italic">Facility Closed</span>
-                  )}
 
-                  <div className="text-[11px] text-gray-500 font-medium">
-                    {item.isOpen ? `${Math.floor((10 * 60) / scheduleSlotLength)} slots/dock est.` : '0 slots'}
+                    {item.isOpen ? (
+                      <div className="flex flex-wrap items-center gap-3">
+                        <div className="flex items-center space-x-1.5 text-xs">
+                          <span className="text-gray-500">Opens:</span>
+                          <div className="flex items-center space-x-1">
+                            <button
+                              type="button"
+                              aria-label={`Move ${item.day} opening ${scheduleSlotLength} minutes earlier`}
+                              title={`-${scheduleSlotLength} min`}
+                              disabled={isSavingSchedule}
+                              onClick={() => handleAdjustScheduleTime(index, 'openTime', -1)}
+                              className="w-6 h-6 flex items-center justify-center rounded-md border border-gray-300 text-gray-600 font-bold leading-none hover:border-[#2F4F4F] hover:text-[#2F4F4F] disabled:opacity-40"
+                            >
+                              −
+                            </button>
+                            <input
+                              type="time"
+                              value={item.openTime}
+                              disabled={isSavingSchedule}
+                              onChange={(e) => {
+                                const openTime = e.target.value;
+                                setWeeklySchedule((current) =>
+                                  current.map((day, dayIndex) =>
+                                    dayIndex === index ? { ...day, openTime } : day
+                                  )
+                                );
+                              }}
+                              className="px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-[#2F4F4F]"
+                            />
+                            <button
+                              type="button"
+                              aria-label={`Move ${item.day} opening ${scheduleSlotLength} minutes later`}
+                              title={`+${scheduleSlotLength} min`}
+                              disabled={isSavingSchedule}
+                              onClick={() => handleAdjustScheduleTime(index, 'openTime', 1)}
+                              className="w-6 h-6 flex items-center justify-center rounded-md border border-gray-300 text-gray-600 font-bold leading-none hover:border-[#2F4F4F] hover:text-[#2F4F4F] disabled:opacity-40"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+
+                        <span className="text-gray-400">—</span>
+
+                        <div className="flex items-center space-x-1.5 text-xs">
+                          <span className="text-gray-500">Closes:</span>
+                          <div className="flex items-center space-x-1">
+                            <button
+                              type="button"
+                              aria-label={`Move ${item.day} closing ${scheduleSlotLength} minutes earlier`}
+                              title={`-${scheduleSlotLength} min`}
+                              disabled={isSavingSchedule}
+                              onClick={() => handleAdjustScheduleTime(index, 'closeTime', -1)}
+                              className="w-6 h-6 flex items-center justify-center rounded-md border border-gray-300 text-gray-600 font-bold leading-none hover:border-[#2F4F4F] hover:text-[#2F4F4F] disabled:opacity-40"
+                            >
+                              −
+                            </button>
+                            <input
+                              type="time"
+                              value={item.closeTime}
+                              disabled={isSavingSchedule}
+                              onChange={(e) => {
+                                const closeTime = e.target.value;
+                                setWeeklySchedule((current) =>
+                                  current.map((day, dayIndex) =>
+                                    dayIndex === index
+                                      ? { ...day, closeTime, is24h: false }
+                                      : day
+                                  )
+                                );
+                              }}
+                              className="px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-[#2F4F4F]"
+                            />
+                            <button
+                              type="button"
+                              aria-label={`Move ${item.day} closing ${scheduleSlotLength} minutes later`}
+                              title={`+${scheduleSlotLength} min`}
+                              disabled={isSavingSchedule}
+                              onClick={() => handleAdjustScheduleTime(index, 'closeTime', 1)}
+                              className="w-6 h-6 flex items-center justify-center rounded-md border border-gray-300 text-gray-600 font-bold leading-none hover:border-[#2F4F4F] hover:text-[#2F4F4F] disabled:opacity-40"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-400 italic">Facility Closed</span>
+                    )}
+
+                    <div className="text-[11px] text-gray-500 font-medium">
+                      {item.isOpen
+                        ? `${getScheduleSlotEstimate(item)} slots/dock`
+                        : '0 slots'}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

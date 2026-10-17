@@ -211,6 +211,100 @@ export const updateWarehouseSettings = async (req: Request, res: Response): Prom
 };
 
 /**
+ * Retrieves the weekly operating schedule for a warehouse.
+ * GET /api/warehouses/:warehouseId/hours
+ */
+export const getWarehouseHours = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) {
+      res.status(401).json({
+        success: false,
+        message: 'Unauthorized. Organization context required.',
+      });
+      return;
+    }
+
+    const warehouseId = parseParamId(req.params.warehouseId || req.params.id);
+    if (isNaN(warehouseId)) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid warehouse ID.',
+      });
+      return;
+    }
+
+    const data = await warehouseService.getWarehouseHours(warehouseId, organizationId);
+    res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error: any) {
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Internal server error while fetching warehouse operating hours.',
+    });
+  }
+};
+
+/**
+ * Replaces the weekly operating schedule for a warehouse.
+ * PUT /api/warehouses/:warehouseId/hours
+ *
+ * Days are addressed 1 (Monday) - 7 (Sunday). An update that prunes an opening or
+ * closing boundary is rejected with HTTP 400 when active bookings occupy the
+ * removed range.
+ */
+export const updateWarehouseHours = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) {
+      res.status(401).json({
+        success: false,
+        message: 'Unauthorized. Organization context required.',
+      });
+      return;
+    }
+
+    const warehouseId = parseParamId(req.params.warehouseId || req.params.id);
+    if (isNaN(warehouseId)) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid warehouse ID.',
+      });
+      return;
+    }
+
+    const hours = req.body?.hours ?? req.body?.operatingHours;
+    if (!Array.isArray(hours) || hours.length === 0) {
+      res.status(400).json({
+        success: false,
+        message:
+          'Missing operating hours. Provide a non-empty days array in the request body.',
+      });
+      return;
+    }
+
+    const data = await warehouseService.updateWarehouseHours(warehouseId, organizationId, {
+      hours,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Warehouse operating hours updated successfully',
+      data,
+    });
+  } catch (error: any) {
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Internal server error while updating warehouse operating hours.',
+    });
+  }
+};
+
+/**
  * Creates a physical dock for a specific warehouse.
  * POST /api/warehouses/:warehouseId/docks
  */

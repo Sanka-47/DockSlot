@@ -10,6 +10,8 @@ import {
   getZonedDayBounds,
   normalizeTimeOfDay,
   formatInTimeZone,
+  timeStringToMinutes,
+  resolveOperatingWindowMinutes,
 } from '../utils/time.utils';
 
 export interface CreateWarehouseInput {
@@ -37,6 +39,18 @@ export interface UpdateWarehousePolicyInput {
   maxConcurrentBookings?: number;
   maxAdvanceDays?: number;
   bookingLockWindowHours?: number;
+}
+
+export interface UpdateOperatingHourInput {
+  dayOfWeek: number;
+  isOpen?: boolean;
+  openTime?: string;
+  closeTime?: string;
+  slotLengthMinutes?: number;
+}
+
+export interface UpdateWarehouseHoursInput {
+  hours: UpdateOperatingHourInput[];
 }
 
 export interface CreateDockInput {
@@ -69,6 +83,49 @@ export interface AvailableDockSlots {
 }
 
 export { isValidIanaTimeZone };
+
+const OPERATING_HOURS_BOOKING_CONFLICT_MESSAGE =
+  'Cannot update starting/end time: bookings available in related time.';
+
+const TIME_OF_DAY_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/**
+ * Validates an operating-hours time boundary. "24:00" is only accepted as a
+ * closing boundary; an opening boundary must be a real time of day.
+ */
+function isValidTimeOfDay(value: unknown, allowEndOfDay: boolean = false): value is string {
+  if (typeof value !== 'string') return false;
+  if (value === '24:00') return allowEndOfDay;
+  return TIME_OF_DAY_PATTERN.test(value);
+}
+
+/**
+ * Normalizes the legacy Sunday conventions (0 and 7) to the 1 (Monday) - 7 (Sunday)
+ * convention used by the schedule template.
+ */
+function normalizeDayOfWeek(dayOfWeek: number): number {
+  return dayOfWeek === 0 ? 7 : dayOfWeek;
+}
+
+interface OperatingWindowMinutes {
+  openMin: number;
+  closeMin: number;
+}
+
+/**
+ * Resolves a booking instant into the local calendar date and minute-of-day in the
+ * warehouse timezone, so it can be matched against a weekday schedule.
+ */
+function getZonedBookingPosition(
+  bookingStart: Date,
+  timeZone: string
+): { localDate: string; localMinutes: number } {
+  return {
+    localDate: formatInTimeZone(bookingStart, timeZone, 'yyyy-MM-dd'),
+    localMinutes: timeStringToMinutes(formatInTimeZone(bookingStart, timeZone, 'HH:mm')),
+  };
+}
+
 
 export class WarehouseService {
   /**
@@ -406,6 +463,328 @@ export class WarehouseService {
     });
 
     return updated;
+  }
+
+  /**
+   * Retrieves the weekly operational schedule for a warehouse, enforcing tenant isolation.
+   */
+  async getWarehouseHours(warehouseId: number, organizationId: number) {
+    if (!warehouseId || isNaN(warehouseId)) {
+      throw { status: 400, message: 'Invalid warehouse ID.' };
+    }
+
+    const warehouse = await prisma.warehouse.findUnique({
+      where: { id: warehouseId },
+      select: {
+        id: true,
+        organizationId: true,
+        timezone: true,
+        slotLengthMinutes: true,
+        operatingHours: {
+          orderBy: { dayOfWeek: 'asc' },
+        },
+      },
+    });
+
+    if (!warehouse) {
+      throw { status: 404, message: 'Warehouse not found.' };
+    }
+
+    if (warehouse.organizationId !== organizationId) {
+      throw {
+        status: 403,
+        message: 'Forbidden. You do not have permission to view operating hours for this warehouse.',
+      };
+    }
+
+    return {
+      warehouseId: warehouse.id,
+      timezone: warehouse.timezone,
+      slotLengthMinutes: warehouse.slotLengthMinutes,
+      operatingHours: warehouse.operatingHours,
+    };
+  }
+
+  /**
+   * Updates the weekly operational schedule for a warehouse.
+   *
+   * Days are addressed 1 (Monday) - 7 (Sunday); `isOpen: false` removes that day's
+   * operating hours entirely. When an update prunes part of an existing operating
+   * window (opening later, closing earlier, or closing the day), any active
+   * BOOKED/ARRIVED booking that falls inside the removed range blocks the change
+   * with a deterministic validation error.
+   */
+  async updateWarehouseHours(
+    warehouseId: number,
+    organizationId: number,
+    data: UpdateWarehouseHoursInput
+  ) {
+    if (!warehouseId || isNaN(warehouseId)) {
+      throw { status: 400, message: 'Invalid warehouse ID.' };
+    }
+
+    if (!data || !Array.isArray(data.hours) || data.hours.length === 0) {
+      throw {
+        status: 400,
+        message: 'Missing operating hours. Provide a non-empty days array.',
+      };
+    }
+
+    const warehouse = await prisma.warehouse.findUnique({
+      where: { id: warehouseId },
+      include: { operatingHours: true },
+    });
+
+    if (!warehouse) {
+      throw { status: 404, message: 'Warehouse not found.' };
+    }
+
+    if (warehouse.organizationId !== organizationId) {
+      throw {
+        status: 403,
+        message: 'Forbidden. You do not have permission to update operating hours for this warehouse.',
+      };
+    }
+
+    const allowedIncrements = [15, 30, 45, 60, 90, 120];
+    const existingByDay = new Map<number, (typeof warehouse.operatingHours)[number]>();
+    for (const hour of warehouse.operatingHours) {
+      const day = normalizeDayOfWeek(hour.dayOfWeek);
+      // Prefer an exact 7 (Sunday) record over the legacy 0 form.
+      if (!existingByDay.has(day) || hour.dayOfWeek === day) {
+        existingByDay.set(day, hour);
+      }
+    }
+
+    interface NormalizedHour {
+      dayOfWeek: number;
+      isOpen: boolean;
+      openTime?: string;
+      closeTime?: string;
+      slotLengthMinutes: number;
+      existingId?: number;
+    }
+
+    const normalized: NormalizedHour[] = [];
+    const seenDays = new Set<number>();
+
+    for (const raw of data.hours) {
+      if (!raw || typeof raw !== 'object') {
+        throw { status: 400, message: 'Invalid operating hour entry.' };
+      }
+
+      const dayOfWeek = normalizeDayOfWeek(Number(raw.dayOfWeek));
+      if (!Number.isInteger(dayOfWeek) || dayOfWeek < 1 || dayOfWeek > 7) {
+        throw {
+          status: 400,
+          message: `Invalid dayOfWeek: ${raw.dayOfWeek}. Must be an integer between 1 (Monday) and 7 (Sunday).`,
+        };
+      }
+
+      if (seenDays.has(dayOfWeek)) {
+        throw {
+          status: 400,
+          message: `Duplicate operating hours entry for dayOfWeek ${dayOfWeek}.`,
+        };
+      }
+      seenDays.add(dayOfWeek);
+
+      const existing = existingByDay.get(dayOfWeek);
+      const isOpen = raw.isOpen === undefined ? true : raw.isOpen;
+
+      if (typeof isOpen !== 'boolean') {
+        throw {
+          status: 400,
+          message: `Invalid isOpen value for dayOfWeek ${dayOfWeek}. Must be a boolean.`,
+        };
+      }
+
+      const slotLengthMinutes =
+        raw.slotLengthMinutes ?? existing?.slotLengthMinutes ?? warehouse.slotLengthMinutes;
+
+      if (
+        typeof slotLengthMinutes !== 'number' ||
+        !Number.isInteger(slotLengthMinutes) ||
+        slotLengthMinutes <= 0 ||
+        (!allowedIncrements.includes(slotLengthMinutes) && 1440 % slotLengthMinutes !== 0)
+      ) {
+        throw {
+          status: 400,
+          message: `Invalid slotLengthMinutes: ${slotLengthMinutes}. Allowed increments must divide evenly into operating schedules (e.g., 30, 45, 60 minutes).`,
+        };
+      }
+
+      if (!isOpen) {
+        normalized.push({
+          dayOfWeek,
+          isOpen,
+          slotLengthMinutes,
+          existingId: existing?.id,
+        });
+        continue;
+      }
+
+      const openTime = raw.openTime ?? existing?.openTime;
+      const closeTime = raw.closeTime ?? existing?.closeTime;
+
+      if (!isValidTimeOfDay(openTime)) {
+        throw {
+          status: 400,
+          message: `Invalid openTime for dayOfWeek ${dayOfWeek}. Expected HH:mm between 00:00 and 23:59.`,
+        };
+      }
+
+      if (!isValidTimeOfDay(closeTime, true)) {
+        throw {
+          status: 400,
+          message: `Invalid closeTime for dayOfWeek ${dayOfWeek}. Expected HH:mm between 00:00 and 24:00.`,
+        };
+      }
+
+      const { openMin, closeMin } = resolveOperatingWindowMinutes(openTime, closeTime);
+      if (closeMin - openMin < slotLengthMinutes) {
+        throw {
+          status: 400,
+          message: `Operating window for dayOfWeek ${dayOfWeek} must be at least one slot (${slotLengthMinutes} minutes) long.`,
+        };
+      }
+
+      normalized.push({
+        dayOfWeek,
+        isOpen,
+        openTime,
+        closeTime,
+        slotLengthMinutes,
+        existingId: existing?.id,
+      });
+    }
+
+    // Detect days whose operating window shrinks. Only these can orphan a booking.
+    const oldWindows = new Map<number, OperatingWindowMinutes>();
+    for (const hour of warehouse.operatingHours) {
+      const day = normalizeDayOfWeek(hour.dayOfWeek);
+      if (!oldWindows.has(day)) {
+        oldWindows.set(day, resolveOperatingWindowMinutes(hour.openTime, hour.closeTime));
+      }
+    }
+
+    const newWindows = new Map<number, OperatingWindowMinutes | null>();
+    for (const entry of normalized) {
+      newWindows.set(
+        entry.dayOfWeek,
+        entry.isOpen
+          ? resolveOperatingWindowMinutes(entry.openTime as string, entry.closeTime as string)
+          : null
+      );
+    }
+
+    const pruningDays = normalized.filter((entry) => {
+      const oldWindow = oldWindows.get(entry.dayOfWeek);
+      if (!oldWindow) return false;
+
+      const newWindow = newWindows.get(entry.dayOfWeek);
+      if (!newWindow) return true;
+
+      return newWindow.openMin > oldWindow.openMin || newWindow.closeMin < oldWindow.closeMin;
+    });
+
+    if (pruningDays.length > 0) {
+      const activeBookings = await prisma.booking.findMany({
+        where: {
+          dock: { warehouseId },
+          status: { in: [BookingStatus.BOOKED, BookingStatus.ARRIVED] },
+          slotEndTime: { gt: new Date() },
+        },
+        select: {
+          id: true,
+          slotStartTime: true,
+          slotEndTime: true,
+        },
+      });
+
+      for (const entry of pruningDays) {
+        const oldWindow = oldWindows.get(entry.dayOfWeek) as OperatingWindowMinutes;
+        const newWindow = newWindows.get(entry.dayOfWeek) ?? null;
+
+        const hasBookingInPrunedRange = activeBookings.some((booking) => {
+          const { localDate, localMinutes } = getZonedBookingPosition(
+            booking.slotStartTime,
+            warehouse.timezone
+          );
+          const durationMinutes = Math.max(
+            0,
+            Math.round(
+              (booking.slotEndTime.getTime() - booking.slotStartTime.getTime()) / 60000
+            )
+          );
+          const localDay = getDayOfWeekInTimeZone(localDate, warehouse.timezone);
+          const previousDay = localDay === 1 ? 7 : localDay - 1;
+
+          const candidateRanges: Array<{ start: number; end: number }> = [];
+          if (localDay === entry.dayOfWeek) {
+            candidateRanges.push({
+              start: localMinutes,
+              end: localMinutes + durationMinutes,
+            });
+          }
+          // An overnight window belongs to the previous day's schedule, so the
+          // boundary is shifted into the extended minute space (past 24:00).
+          if (previousDay === entry.dayOfWeek) {
+            candidateRanges.push({
+              start: localMinutes + 1440,
+              end: localMinutes + 1440 + durationMinutes,
+            });
+          }
+
+          return candidateRanges.some(({ start, end }) => {
+            const overlapsOldWindow =
+              start < oldWindow.closeMin && end > oldWindow.openMin;
+            const fullyWithinNewWindow =
+              !!newWindow && start >= newWindow.openMin && end <= newWindow.closeMin;
+
+            return overlapsOldWindow && !fullyWithinNewWindow;
+          });
+        });
+
+        if (hasBookingInPrunedRange) {
+          throw { status: 400, message: OPERATING_HOURS_BOOKING_CONFLICT_MESSAGE };
+        }
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      for (const entry of normalized) {
+        if (!entry.isOpen) {
+          if (entry.existingId) {
+            await tx.operatingHour.delete({ where: { id: entry.existingId } });
+          }
+          continue;
+        }
+
+        if (entry.existingId) {
+          await tx.operatingHour.update({
+            where: { id: entry.existingId },
+            data: {
+              openTime: entry.openTime as string,
+              closeTime: entry.closeTime as string,
+              slotLengthMinutes: entry.slotLengthMinutes,
+            },
+          });
+        } else {
+          await tx.operatingHour.create({
+            data: {
+              warehouseId,
+              dayOfWeek: entry.dayOfWeek,
+              openTime: entry.openTime as string,
+              closeTime: entry.closeTime as string,
+              slotLengthMinutes: entry.slotLengthMinutes,
+            },
+          });
+        }
+      }
+    });
+
+    return this.getWarehouseHours(warehouseId, organizationId);
   }
 
   /**

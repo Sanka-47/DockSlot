@@ -47,6 +47,80 @@
                 },
                 "example": "7f8a1b2c-3d4e-5f6a-7b8c-9d0e1f2a3b4c"
             }
+        },
+        "schemas": {
+            "OperatingHour": {
+                "type": "object",
+                "description": "One row of the weekly operational schedule template. A missing row means the facility is closed that day.",
+                "required": [
+                    "dayOfWeek",
+                    "openTime",
+                    "closeTime",
+                    "slotLengthMinutes"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "warehouseId": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "dayOfWeek": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 7,
+                        "description": "1 = Monday ... 7 = Sunday. The legacy value 0 is also read as Sunday.",
+                        "example": 1
+                    },
+                    "openTime": {
+                        "type": "string",
+                        "description": "Local opening boundary in HH:mm.",
+                        "example": "08:00"
+                    },
+                    "closeTime": {
+                        "type": "string",
+                        "description": "Local closing boundary in HH:mm. 24:00 or 00:00 closes at end of day; a value at or before openTime denotes an overnight window.",
+                        "example": "18:00"
+                    },
+                    "slotLengthMinutes": {
+                        "type": "integer",
+                        "example": 30
+                    }
+                }
+            },
+            "UpdateOperatingHourRequest": {
+                "type": "object",
+                "required": [
+                    "dayOfWeek"
+                ],
+                "properties": {
+                    "dayOfWeek": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 7,
+                        "example": 1
+                    },
+                    "isOpen": {
+                        "type": "boolean",
+                        "description": "Set to false to close the day and remove its operating hours.",
+                        "example": true
+                    },
+                    "openTime": {
+                        "type": "string",
+                        "example": "08:00"
+                    },
+                    "closeTime": {
+                        "type": "string",
+                        "example": "18:00"
+                    },
+                    "slotLengthMinutes": {
+                        "type": "integer",
+                        "example": 30
+                    }
+                }
+            }
         }
     },
     "security": [
@@ -551,6 +625,225 @@
                     },
                     "400": {
                         "description": "Invalid slot length (must be 30, 45, or 60)"
+                    },
+                    "403": {
+                        "description": "Forbidden. Tenant boundary violation"
+                    }
+                }
+            }
+        },
+        "/warehouses/{warehouseId}/hours": {
+            "get": {
+                "summary": "Get the weekly operational schedule template",
+                "description": "Returns the weekly operating hours for the warehouse using the 1 (Monday) - 7 (Sunday) convention. Restricted to WAREHOUSE_ADMIN of the owning organization.",
+                "tags": [
+                    "Warehouses"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "warehouseId",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Weekly operating schedule",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "warehouseId": {
+                                                    "type": "integer",
+                                                    "example": 1
+                                                },
+                                                "timezone": {
+                                                    "type": "string",
+                                                    "example": "Asia/Colombo"
+                                                },
+                                                "slotLengthMinutes": {
+                                                    "type": "integer",
+                                                    "example": 30
+                                                },
+                                                "operatingHours": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/OperatingHour"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden. Tenant boundary violation"
+                    },
+                    "404": {
+                        "description": "Warehouse not found"
+                    }
+                }
+            },
+            "put": {
+                "summary": "Update the weekly operational schedule template",
+                "description": "Replaces the operating hours for the supplied days. Days use the 1 (Monday) - 7 (Sunday) convention; isOpen false closes the day.\n\nWhen opening is moved later, closing is moved earlier, or a day is closed, the API checks active BOOKED and ARRIVED bookings on every dock. If any booking falls inside the removed time range the update is rejected with HTTP 400 and the message:\n\n\"Cannot update starting/end time: bookings available in related time.\"\n\nRestricted to WAREHOUSE_ADMIN of the owning organization.\n",
+                "tags": [
+                    "Warehouses"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "warehouseId",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "hours"
+                                ],
+                                "properties": {
+                                    "hours": {
+                                        "type": "array",
+                                        "minItems": 1,
+                                        "items": {
+                                            "$ref": "#/components/schemas/UpdateOperatingHourRequest"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Weekly operating schedule updated",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Warehouse operating hours updated successfully"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "warehouseId": {
+                                                    "type": "integer",
+                                                    "example": 1
+                                                },
+                                                "timezone": {
+                                                    "type": "string",
+                                                    "example": "Asia/Colombo"
+                                                },
+                                                "slotLengthMinutes": {
+                                                    "type": "integer",
+                                                    "example": 30
+                                                },
+                                                "operatingHours": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/OperatingHour"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid schedule payload, or active bookings occupy the time being removed",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": false
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Cannot update starting/end time: bookings available in related time."
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden. Tenant boundary violation"
+                    },
+                    "404": {
+                        "description": "Warehouse not found"
+                    }
+                }
+            },
+            "patch": {
+                "summary": "Update the weekly operational schedule template (alias)",
+                "description": "Alias of PUT /warehouses/{warehouseId}/hours. Restricted to WAREHOUSE_ADMIN.",
+                "tags": [
+                    "Warehouses"
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "warehouseId",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Weekly operating schedule updated"
+                    },
+                    "400": {
+                        "description": "Invalid schedule payload, or active bookings occupy the time being removed"
                     },
                     "403": {
                         "description": "Forbidden. Tenant boundary violation"
