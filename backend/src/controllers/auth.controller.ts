@@ -16,6 +16,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       message: 'User registered successfully. A verification email has been sent.',
       data: result,
       token: result.token,
+      refreshToken: result.refreshToken,
       user: result.user,
     });
   } catch (error: any) {
@@ -45,6 +46,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       message: 'Login successful.',
       data: result,
       token: result.token,
+      refreshToken: result.refreshToken,
       user: result.user,
     });
   } catch (error: any) {
@@ -52,6 +54,27 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     res.status(status).json({
       success: false,
       message: error.message || 'An error occurred during login.',
+    });
+  }
+};
+
+export const refresh = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const refreshToken = req.body?.refreshToken ?? req.body?.refresh_token;
+    const result = await authService.refresh(refreshToken);
+    res.status(200).json({
+      success: true,
+      message: 'Token refreshed successfully.',
+      data: result,
+      token: result.token,
+      refreshToken: result.refreshToken,
+      user: result.user,
+    });
+  } catch (error: any) {
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'An error occurred while refreshing the token.',
     });
   }
 };

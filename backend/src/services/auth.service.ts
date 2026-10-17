@@ -108,6 +108,78 @@ export class AuthService {
   }
 
   /**
+   * Exchange a valid refresh token for a new access token plus a rotated
+   * refresh token.
+   *
+   * Rejects tokens that are not of type `refresh`, belong to a deactivated
+   * user, or whose `tokenVersion` no longer matches the value in Redis (i.e.
+   * it was revoked via logout-all).
+   */
+  public async refresh(refreshToken: string): Promise<AuthResponse> {
+    if (!refreshToken || typeof refreshToken !== 'string') {
+      throw { status: 400, message: 'Refresh token is required.' };
+    }
+
+    let decoded: any;
+    try {
+      decoded = verifyJwtToken(refreshToken);
+    } catch {
+      throw { status: 401, message: 'Invalid or expired refresh token.' };
+    }
+
+    // Only genuine refresh tokens may be redeemed here. Access and 2FA
+    // challenge tokens must never be accepted.
+    if (!decoded || decoded.type !== 'refresh') {
+      throw { status: 401, message: 'Invalid refresh token.' };
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      include: {
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw { status: 401, message: 'Invalid refresh token.' };
+    }
+
+    if (!user.isActive) {
+      throw { status: 403, message: 'Account is deactivated. Please contact support.' };
+    }
+
+    // Revocation check: logout-all increments the Redis token version, which
+    // instantly invalidates every previously issued refresh token.
+    const currentVersion = await this.getUserTokenVersion(user.id);
+    if ((decoded.tokenVersion ?? 0) !== currentVersion) {
+      throw { status: 401, message: 'Refresh token has been revoked. Please login again.' };
+    }
+
+    const token = this.generateToken(user, currentVersion);
+    const rotatedRefreshToken = this.generateRefreshToken(user, currentVersion);
+
+    return {
+      token,
+      refreshToken: rotatedRefreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        organizationId: user.organizationId,
+        isEmailVerified: user.isEmailVerified,
+        isTwoFactorEnabled: user.isTwoFactorEnabled,
+        organization: user.organization,
+      },
+    };
+  }
+
+  /**
    * Fetch user's current token version from Redis (defaults to 0 if not set).
    */
   public async getUserTokenVersion(userId: number): Promise<number> {

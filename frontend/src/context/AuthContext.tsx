@@ -2,11 +2,15 @@ import React, { createContext, useState, useEffect, type ReactNode } from 'react
 import type { User } from '../types/user.types';
 import { storage } from '../utils/storage';
 import { authApi } from '../api/auth.api';
+import {
+  AUTH_SESSION_EXPIRED_EVENT,
+  AUTH_TOKEN_REFRESHED_EVENT,
+} from '../api/client';
 
 export interface AuthContextType {
   user: User | null;
   token: string | null;
-  login: (token: string, user: User) => void;
+  login: (token: string, user: User, refreshToken?: string) => void;
   logout: () => void;
   logoutAll: () => Promise<void>;
   /** Re-reads the current user from the server (e.g. after a 2FA change). */
@@ -45,8 +49,34 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     initializeAuth();
   }, []);
 
-  const login = (newToken: string, newUser: User) => {
-    storage.setToken(newToken);
+  // Keep React state in sync with session changes driven by the axios
+  // interceptor: a successful silent refresh, or a hard session expiry.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleTokenRefreshed = (event: Event) => {
+      const detail = (event as CustomEvent<{ token?: string }>).detail;
+      if (detail?.token) {
+        setToken(detail.token);
+      }
+    };
+
+    const handleSessionExpired = () => {
+      storage.removeToken();
+      setToken(null);
+      setUser(null);
+    };
+
+    window.addEventListener(AUTH_TOKEN_REFRESHED_EVENT, handleTokenRefreshed);
+    window.addEventListener(AUTH_SESSION_EXPIRED_EVENT, handleSessionExpired);
+    return () => {
+      window.removeEventListener(AUTH_TOKEN_REFRESHED_EVENT, handleTokenRefreshed);
+      window.removeEventListener(AUTH_SESSION_EXPIRED_EVENT, handleSessionExpired);
+    };
+  }, []);
+
+  const login = (newToken: string, newUser: User, refreshToken?: string) => {
+    storage.setTokens(newToken, refreshToken);
     setToken(newToken);
     setUser(newUser);
   };

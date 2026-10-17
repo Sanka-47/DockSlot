@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   register,
   login,
+  refresh,
   forgotPassword,
   resetPassword,
   changePassword,
@@ -117,6 +118,60 @@ router.post('/register', register);
  *         description: Too many API requests (rate limit exceeded)
  */
 router.post('/login', login);
+
+/**
+ * @openapi
+ * /auth/refresh:
+ *   post:
+ *     summary: Exchange a refresh token for a new access token
+ *     description: |
+ *       Redeems a long-lived refresh JWT (JWT_REFRESH_EXPIRES_IN) for a fresh access token
+ *       (JWT_EXPIRES_IN) and a rotated refresh token. The supplied token must be of type
+ *       `refresh` and will be rejected if the user is deactivated or has logged out of all
+ *       devices (token version revoked).
+ *     tags:
+ *       - Authentication
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - refreshToken
+ *             properties:
+ *               refreshToken:
+ *                 type: string
+ *                 example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *     responses:
+ *       200:
+ *         description: New access and refresh tokens issued
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 token:
+ *                   type: string
+ *                   description: New access JWT
+ *                 refreshToken:
+ *                   type: string
+ *                   description: Rotated refresh JWT
+ *                 user:
+ *                   $ref: '#/components/schemas/User'
+ *       400:
+ *         description: Refresh token missing
+ *       401:
+ *         description: Refresh token invalid, expired, wrong type, or revoked
+ *       403:
+ *         description: Account deactivated
+ *       429:
+ *         description: Too many API requests (rate limit exceeded)
+ */
+router.post('/refresh', refresh);
 
 /**
  * @openapi

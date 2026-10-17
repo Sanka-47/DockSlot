@@ -17,6 +17,16 @@ export const authApi = {
     return response.data;
   },
 
+  /**
+   * Exchange a refresh token for a new access token (and rotated refresh token).
+   * The response interceptor in `client.ts` performs this automatically on 401,
+   * so this is only needed when refreshing explicitly.
+   */
+  refresh: async (refreshToken: string): Promise<AuthResponse> => {
+    const response = await apiClient.post<AuthResponse>('/auth/refresh', { refreshToken });
+    return response.data;
+  },
+
   register: async (data: RegisterRequest): Promise<AuthResponse> => {
     const response = await apiClient.post<AuthResponse>('/auth/register', data);
     return response.data;
