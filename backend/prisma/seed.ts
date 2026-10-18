@@ -3,6 +3,21 @@ import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
+/**
+ * Builds operating-hours rows for a set of weekdays.
+ *
+ * Day convention matches the slot engine (`src/utils/time.utils.ts` and
+ * `warehouse.service.ts`): 1 = Monday ... 7 = Sunday.
+ */
+function operatingHoursFor(
+  days: number[],
+  openTime: string,
+  closeTime: string,
+  slotLengthMinutes: number
+) {
+  return days.map((dayOfWeek) => ({ dayOfWeek, openTime, closeTime, slotLengthMinutes }));
+}
+
 async function main() {
   console.log('🌱 Starting DockSlot database seed...');
 
@@ -23,51 +38,51 @@ async function main() {
   // 3. Create Organizations
   console.log('🏢 Creating organizations...');
   // Warehouse Operators
-  const apexOrg = await prisma.organization.create({
+  const lankaOrg = await prisma.organization.create({
     data: {
-      name: 'Apex Logistics Hubs',
+      name: 'Lanka Logistics Parks',
       type: OrganizationType.WAREHOUSE_OPERATOR,
     },
   });
 
-  const gmtOrg = await prisma.organization.create({
+  const maasOrg = await prisma.organization.create({
     data: {
-      name: 'Global Maritime Terminals',
+      name: 'Maas Distribution',
       type: OrganizationType.WAREHOUSE_OPERATOR,
     },
   });
 
   // Carriers
-  const swiftOrg = await prisma.organization.create({
+  const ceylonOrg = await prisma.organization.create({
     data: {
-      name: 'SwiftFreight Transport',
+      name: 'Ceylon Freight',
       type: OrganizationType.CARRIER,
     },
   });
 
-  const falconOrg = await prisma.organization.create({
+  const gulfOrg = await prisma.organization.create({
     data: {
-      name: 'Falcon Express Haulage',
+      name: 'Gulf Haulage',
       type: OrganizationType.CARRIER,
     },
   });
 
   // 4. Create Pre-registered Users
   console.log('👥 Creating users...');
-  // Apex Logistics Hubs Users
+  // Lanka Logistics Parks Users
   await prisma.user.createMany({
     data: [
       {
-        organizationId: apexOrg.id,
-        email: 'warehouse_admin@apex.com',
+        organizationId: lankaOrg.id,
+        email: 'warehouse_admin@lankalogistics.com',
         passwordHash,
         role: UserRole.WAREHOUSE_ADMIN,
         isActive: true,
         isEmailVerified: true,
       },
       {
-        organizationId: apexOrg.id,
-        email: 'dock_manager@apex.com',
+        organizationId: lankaOrg.id,
+        email: 'dock_manager@lankalogistics.com',
         passwordHash,
         role: UserRole.DOCK_MANAGER,
         isActive: true,
@@ -76,20 +91,20 @@ async function main() {
     ],
   });
 
-  // Global Maritime Terminals Users
+  // Maas Distribution Users
   await prisma.user.createMany({
     data: [
       {
-        organizationId: gmtOrg.id,
-        email: 'admin@gmtlogistics.com',
+        organizationId: maasOrg.id,
+        email: 'warehouse_admin@maasdistribution.com',
         passwordHash,
         role: UserRole.WAREHOUSE_ADMIN,
         isActive: true,
         isEmailVerified: true,
       },
       {
-        organizationId: gmtOrg.id,
-        email: 'dock_manager@gmtlogistics.com',
+        organizationId: maasOrg.id,
+        email: 'dock_manager@maasdistribution.com',
         passwordHash,
         role: UserRole.DOCK_MANAGER,
         isActive: true,
@@ -98,20 +113,28 @@ async function main() {
     ],
   });
 
-  // SwiftFreight Transport Users
+  // Ceylon Freight Users (1 Carrier Admin, 2 Dispatchers)
   await prisma.user.createMany({
     data: [
       {
-        organizationId: swiftOrg.id,
-        email: 'carrier_admin@swiftfreight.com',
+        organizationId: ceylonOrg.id,
+        email: 'carrier_admin@ceylonfreight.com',
         passwordHash,
         role: UserRole.CARRIER_ADMIN,
         isActive: true,
         isEmailVerified: true,
       },
       {
-        organizationId: swiftOrg.id,
-        email: 'dispatcher@swiftfreight.com',
+        organizationId: ceylonOrg.id,
+        email: 'dispatcher1@ceylonfreight.com',
+        passwordHash,
+        role: UserRole.DISPATCHER,
+        isActive: true,
+        isEmailVerified: true,
+      },
+      {
+        organizationId: ceylonOrg.id,
+        email: 'dispatcher2@ceylonfreight.com',
         passwordHash,
         role: UserRole.DISPATCHER,
         isActive: true,
@@ -120,20 +143,20 @@ async function main() {
     ],
   });
 
-  // Falcon Express Haulage Users
+  // Gulf Haulage Users (1 Carrier Admin, 1 Dispatcher)
   await prisma.user.createMany({
     data: [
       {
-        organizationId: falconOrg.id,
-        email: 'carrier_admin@falconexpress.com',
+        organizationId: gulfOrg.id,
+        email: 'carrier_admin@gulfhaulage.com',
         passwordHash,
         role: UserRole.CARRIER_ADMIN,
         isActive: true,
         isEmailVerified: true,
       },
       {
-        organizationId: falconOrg.id,
-        email: 'dispatcher@falconexpress.com',
+        organizationId: gulfOrg.id,
+        email: 'dispatcher@gulfhaulage.com',
         passwordHash,
         role: UserRole.DISPATCHER,
         isActive: true,
@@ -145,91 +168,72 @@ async function main() {
   // 5. Create Warehouses in different IANA time zones
   console.log('🏭 Creating warehouses with docks and operating hours...');
 
-  // Warehouse 1: Colombo DC (Asia/Colombo) under Apex
+  // Warehouse 1: Colombo DC (Asia/Colombo) under Lanka Logistics Parks
   const colomboWarehouse = await prisma.warehouse.create({
     data: {
-      organizationId: apexOrg.id,
+      organizationId: lankaOrg.id,
       name: 'Colombo DC',
       address: 'Port Access Road, Peliyagoda, Colombo 11010, Sri Lanka',
       timezone: 'Asia/Colombo',
+      slotLengthMinutes: 60,
       docks: {
         create: [
           { name: 'Dock C1 (Inbound General)', status: DockStatus.ACTIVE },
           { name: 'Dock C2 (Cold Storage)', status: DockStatus.ACTIVE },
           { name: 'Dock C3 (Outbound Express)', status: DockStatus.ACTIVE },
-          { name: 'Dock C4 (Heavy Machinery Bay)', status: DockStatus.MAINTENANCE },
+          { name: 'Dock C4 (Heavy Machinery Bay)', status: DockStatus.ACTIVE },
         ],
       },
+      // Mon-Sat: 06:00 - 22:00, 60 min slots
       operatingHours: {
-        create: [
-          // Mon-Fri: 08:00 - 18:00, 30 min slots
-          { dayOfWeek: 1, openTime: '08:00', closeTime: '18:00', slotLengthMinutes: 30 },
-          { dayOfWeek: 2, openTime: '08:00', closeTime: '18:00', slotLengthMinutes: 30 },
-          { dayOfWeek: 3, openTime: '08:00', closeTime: '18:00', slotLengthMinutes: 30 },
-          { dayOfWeek: 4, openTime: '08:00', closeTime: '18:00', slotLengthMinutes: 30 },
-          { dayOfWeek: 5, openTime: '08:00', closeTime: '18:00', slotLengthMinutes: 30 },
-          // Sat: 08:00 - 13:00, 30 min slots
-          { dayOfWeek: 6, openTime: '08:00', closeTime: '13:00', slotLengthMinutes: 30 },
-        ],
+        create: operatingHoursFor([1, 2, 3, 4, 5, 6], '06:00', '22:00', 60),
       },
     },
   });
 
-  // Warehouse 2: Jebel Ali Hub (Asia/Dubai) under Apex
+  // Warehouse 2: Jebel Ali Hub (Asia/Dubai) under Lanka Logistics Parks
   const jebelAliWarehouse = await prisma.warehouse.create({
     data: {
-      organizationId: apexOrg.id,
+      organizationId: lankaOrg.id,
       name: 'Jebel Ali Hub',
       address: 'Gate 4, JAFZA North, Jebel Ali Freezone, Dubai, UAE',
       timezone: 'Asia/Dubai',
+      slotLengthMinutes: 30,
       docks: {
         create: [
           { name: 'Dock J1 (Fast Freight)', status: DockStatus.ACTIVE },
           { name: 'Dock J2 (Standard Cross-Dock)', status: DockStatus.ACTIVE },
-          { name: 'Dock J3 (Dangerous Goods)', status: DockStatus.MAINTENANCE },
+          { name: 'Dock J3 (Dangerous Goods)', status: DockStatus.ACTIVE },
         ],
       },
+      // Every day: 07:00 - 19:00, 30 min slots
       operatingHours: {
-        create: [
-          // Sun-Thu: 07:00 - 19:00, 45 min slots
-          { dayOfWeek: 0, openTime: '07:00', closeTime: '19:00', slotLengthMinutes: 45 },
-          { dayOfWeek: 1, openTime: '07:00', closeTime: '19:00', slotLengthMinutes: 45 },
-          { dayOfWeek: 2, openTime: '07:00', closeTime: '19:00', slotLengthMinutes: 45 },
-          { dayOfWeek: 3, openTime: '07:00', closeTime: '19:00', slotLengthMinutes: 45 },
-          { dayOfWeek: 4, openTime: '07:00', closeTime: '19:00', slotLengthMinutes: 45 },
-          // Sat: 08:00 - 14:00, 45 min slots
-          { dayOfWeek: 6, openTime: '08:00', closeTime: '14:00', slotLengthMinutes: 45 },
-        ],
+        create: operatingHoursFor([1, 2, 3, 4, 5, 6, 7], '07:00', '19:00', 30),
       },
     },
   });
 
-  // Warehouse 3: Rotterdam Port DC (Europe/Amsterdam) under GMT
+  // Warehouse 3: Rotterdam Port DC (Europe/Amsterdam) under Maas Distribution
   const rotterdamWarehouse = await prisma.warehouse.create({
     data: {
-      organizationId: gmtOrg.id,
+      organizationId: maasOrg.id,
       name: 'Rotterdam Port DC',
       address: 'Maasvlakte 2, Europaweg 905, 3199 LC Rotterdam, Netherlands',
       timezone: 'Europe/Amsterdam',
+      slotLengthMinutes: 60,
       docks: {
         create: [
           { name: 'Dock R1 (Deep Sea Container Bay)', status: DockStatus.ACTIVE },
           { name: 'Dock R2 (Reefer Temperature-Controlled)', status: DockStatus.ACTIVE },
           { name: 'Dock R3 (Intermodal Rail/Truck)', status: DockStatus.ACTIVE },
-          { name: 'Dock R4 (High-Speed Automated Bay)', status: DockStatus.MAINTENANCE },
+          { name: 'Dock R4 (High-Speed Automated Bay)', status: DockStatus.ACTIVE },
+          { name: 'Dock R5 (Bulk Cargo Bay)', status: DockStatus.ACTIVE },
+          { name: 'Dock R6 (Oversized Project Cargo)', status: DockStatus.ACTIVE },
         ],
       },
+      // 24/7: 00:00 - 24:00, 60 min slots
       operatingHours: {
-        create: [
-          // Mon-Fri: 06:00 - 22:00, 60 min slots
-          { dayOfWeek: 1, openTime: '06:00', closeTime: '22:00', slotLengthMinutes: 60 },
-          { dayOfWeek: 2, openTime: '06:00', closeTime: '22:00', slotLengthMinutes: 60 },
-          { dayOfWeek: 3, openTime: '06:00', closeTime: '22:00', slotLengthMinutes: 60 },
-          { dayOfWeek: 4, openTime: '06:00', closeTime: '22:00', slotLengthMinutes: 60 },
-          { dayOfWeek: 5, openTime: '06:00', closeTime: '22:00', slotLengthMinutes: 60 },
-          // Sat: 07:00 - 15:00, 60 min slots
-          { dayOfWeek: 6, openTime: '07:00', closeTime: '15:00', slotLengthMinutes: 60 },
-        ],
+        create: operatingHoursFor([1, 2, 3, 4, 5, 6, 7], '00:00', '24:00', 60),
       },
     },
   });
@@ -237,27 +241,28 @@ async function main() {
   console.log('\n✅ Seeding complete!');
   console.log('----------------------------------------------------');
   console.log('Seeded Organizations:');
-  console.log(` - ${apexOrg.name} (WAREHOUSE_OPERATOR)`);
-  console.log(` - ${gmtOrg.name} (WAREHOUSE_OPERATOR)`);
-  console.log(` - ${swiftOrg.name} (CARRIER)`);
-  console.log(` - ${falconOrg.name} (CARRIER)`);
+  console.log(` - ${lankaOrg.name} (WAREHOUSE_OPERATOR)`);
+  console.log(` - ${maasOrg.name} (WAREHOUSE_OPERATOR)`);
+  console.log(` - ${ceylonOrg.name} (CARRIER)`);
+  console.log(` - ${gulfOrg.name} (CARRIER)`);
   console.log('\nSeeded Warehouses:');
   console.log(` - ${colomboWarehouse.name} (${colomboWarehouse.timezone})`);
   console.log(` - ${jebelAliWarehouse.name} (${jebelAliWarehouse.timezone})`);
   console.log(` - ${rotterdamWarehouse.name} (${rotterdamWarehouse.timezone})`);
   console.log('\nSeeded User Accounts (Default password for all: 12345678):');
   console.log(' [Warehouse Admins]');
-  console.log('  - warehouse_admin@apex.com');
-  console.log('  - admin@gmtlogistics.com');
+  console.log('  - warehouse_admin@lankalogistics.com');
+  console.log('  - warehouse_admin@maasdistribution.com');
   console.log(' [Dock Managers]');
-  console.log('  - dock_manager@apex.com');
-  console.log('  - dock_manager@gmtlogistics.com');
+  console.log('  - dock_manager@lankalogistics.com');
+  console.log('  - dock_manager@maasdistribution.com');
   console.log(' [Carrier Admins]');
-  console.log('  - carrier_admin@swiftfreight.com');
-  console.log('  - carrier_admin@falconexpress.com');
+  console.log('  - carrier_admin@ceylonfreight.com');
+  console.log('  - carrier_admin@gulfhaulage.com');
   console.log(' [Dispatchers]');
-  console.log('  - dispatcher@swiftfreight.com');
-  console.log('  - dispatcher@falconexpress.com');
+  console.log('  - dispatcher1@ceylonfreight.com');
+  console.log('  - dispatcher2@ceylonfreight.com');
+  console.log('  - dispatcher@gulfhaulage.com');
   console.log('----------------------------------------------------');
 }
 
