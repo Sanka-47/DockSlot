@@ -1,4 +1,4 @@
-the first iteration of ui did not follow the exact color theame that i provided in the prompt, but it followed the general requirements that i provided. The color pallate that ai used fits better, so im thinking of sticking to it for know
+The first iteration of ui did not follow the exact color theame that i provided in the prompt, but it followed the general requirements that i provided. The color pallate that ai used fits better, so im thinking of sticking to it for know
 
 ![alt text](FirstAIDesing.png)
 ![alt text](<Screenshot 2026-10-14 070434.png>)
@@ -20,12 +20,14 @@ Ai fixed this by -
 
 added back end and front end validation so maintainance reasone is required and we can't choose past dates, and add validation so we are only able to change booking status on Arrive/ No Show after the the schedule start time has passed.
 ![alt text](image.png)
-
+![alt text](<Screenshot 2026-10-18 123527.png>)
 
 Dispatcher Dashbaord -
 
 ui implemented without any issues 
 ![alt text](image-1.png)
+![alt text](<Screenshot 2026-10-18 120621.png>)
+
 
 
 Warehouse Admin Dashboard - 
@@ -33,14 +35,18 @@ Warehouse Admin Dashboard -
 ui implemented without any issues
 ![alt text](image-2.png)
 
-
+![alt text](<Screenshot 2026-10-18 123103.png>)
 
 Carrier Admin Dashbaord
 
 ![alt text](image-3.png)
+
+![alt text](<Screenshot 2026-10-18 123347.png>)
 
 in the first implimantation the there was a two dipatch and booking sections, 
 1.the dedicated dispatch and bookign section 
 2.dispatch and booking section in the admin console tabs 
 
 the  dispatch and booking section in the admin console tab was unnecessary so i asked ai to remove the this section from tabs in frontend\src\pages\CarrierAdminDashboard.tsx
+
+
