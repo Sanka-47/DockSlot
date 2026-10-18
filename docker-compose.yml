@@ -4,14 +4,15 @@
 #
 # Services:
 #   db            MySQL 8.0 with a persistent volume and a readiness healthcheck
+#   redis         Redis 7 backing rate limiting and session state
 #   mock-carrier  carrier webhook receiver (chaos off by default) on :4001
 #   backend       runs `prisma db push` + `prisma db seed`, then the API and the
 #                 transactional outbox worker on :5000
 #
-# Redis is intentionally not part of the stack: the app ships with an in-memory
-# fallback (backend/src/config/redis.ts), so auth and rate limiting work in a
-# single container without an extra dependency. Point REDIS_URL at a Redis
-# instance later if you need state to survive restarts.
+# Redis backs rate-limit counters, tokenVersion session revocation and the
+# isActive cache. The app's in-memory fallback (backend/src/config/redis.ts) is
+# disabled under NODE_ENV=production, so Redis must be reachable for the /api
+# routes to serve requests.
 #
 # Re-running `docker compose up` re-runs the seed. The seed is destructive by
 # design (it clears and recreates the demo data), so `docker compose down -v`
@@ -54,6 +55,19 @@ services:
       retries: 30
       start_period: 30s
 
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
   mock-carrier:
     <<: *app
     command: ["node", "dist/mock-carrier/server.js"]
@@ -83,6 +97,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       mock-carrier:
         condition: service_healthy
     environment:
@@ -96,6 +112,8 @@ services:
       DB_USER: ${MYSQL_USER:-dockslot}
       DB_PASSWORD: ${MYSQL_PASSWORD:-dockslot}
       DB_NAME: ${MYSQL_DATABASE:-dockslot_db}
+      # Shared Redis for rate limiting / session revocation (service above).
+      REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-dockslot-local-jwt-secret-change-me}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
       JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}

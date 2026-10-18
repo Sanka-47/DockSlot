@@ -166,6 +166,39 @@ function executeInMemoryCommand(args: string[]): any {
   return 'OK';
 }
 
+// Initial-connection readiness signal.
+//
+// ioredis connects asynchronously, but some callers issue their very first
+// command synchronously at import time - notably express-rate-limit's
+// RedisStore.init(), which runs SCRIPT LOAD when the middleware is constructed.
+// Without this gate that command races the TCP handshake, observes
+// `isRedisConnected === false`, and either throws (production, where the
+// in-memory fallback is disabled) or latches a failed init that 500s every
+// subsequent request. Callers await `waitForRedis()` so a reachable Redis gets
+// a chance to finish connecting before we decide to fall back.
+const REDIS_READY_TIMEOUT_MS = Number(process.env.REDIS_READY_TIMEOUT_MS) || 3000;
+// True only while the connection can accept commands (ioredis `ready`), as
+// opposed to `isRedisConnected`, which is also set on the earlier `connect`
+// event - before the handshake completes.
+let isRedisReady = false;
+let isRedisReadySettled = false;
+let settleRedisReady: (ready: boolean) => void = () => {};
+const redisReady = new Promise<boolean>((resolve) => {
+  settleRedisReady = resolve;
+});
+
+function markRedisReady(ready: boolean): void {
+  if (isRedisReadySettled) return;
+  isRedisReadySettled = true;
+  settleRedisReady(ready);
+}
+
+/** Resolves true once Redis is usable, false once it is known to be unreachable. */
+async function waitForRedis(): Promise<boolean> {
+  if (isRedisReady) return true;
+  return redisReady;
+}
+
 export const rawRedis = new Redis(redisUrl, {
   maxRetriesPerRequest: 1,
   lazyConnect: true,
@@ -183,16 +216,31 @@ rawRedis.on('connect', () => {
 
 rawRedis.on('ready', () => {
   isRedisConnected = true;
+  isRedisReady = true;
+  markRedisReady(true);
 });
 
 rawRedis.on('error', () => {
   isRedisConnected = false;
+  isRedisReady = false;
   // Non-fatal warning for local development without Docker
 });
 
 rawRedis.on('close', () => {
   isRedisConnected = false;
+  isRedisReady = false;
 });
+
+// ioredis emits `end` once `retryStrategy` has given up; surface it so callers
+// stop waiting and fall back (or fail fast in production) immediately.
+rawRedis.on('end', () => {
+  isRedisReady = false;
+  markRedisReady(false);
+});
+
+// Backstop in case neither `ready` nor `end` fires (e.g. a stalled handshake).
+const redisReadyTimeout = setTimeout(() => markRedisReady(false), REDIS_READY_TIMEOUT_MS);
+redisReadyTimeout.unref?.();
 
 // Attempt background connection if Redis is running locally
 rawRedis.connect().catch(() => {
@@ -213,7 +261,7 @@ export const redis = {
       mirrorToMemory(args);
     }
 
-    if (isRedisConnected) {
+    if (await waitForRedis()) {
       try {
         const [command, ...rest] = args;
         return await (rawRedis as any).call(command, ...rest);
@@ -239,7 +287,7 @@ export const redis = {
    * Retrieves the string value associated with key.
    */
   async get(key: string): Promise<string | null> {
-    if (isRedisConnected) {
+    if (await waitForRedis()) {
       try {
         return await rawRedis.get(key);
       } catch {
@@ -255,7 +303,7 @@ export const redis = {
   async set(key: string, value: string | number, ...args: any[]): Promise<'OK' | string | null> {
     const strVal = String(value);
     mirrorToMemory(['SET', key, strVal, ...args.map(String)]);
-    if (isRedisConnected) {
+    if (await waitForRedis()) {
       try {
         return await (rawRedis as any).set(key, strVal, ...args);
       } catch {
@@ -270,7 +318,7 @@ export const redis = {
    * If key does not exist, it is set to 0 before performing the operation.
    */
   async incr(key: string): Promise<number> {
-    if (isRedisConnected) {
+    if (await waitForRedis()) {
       try {
         const val = await rawRedis.incr(key);
         mirrorToMemory(['SET', key, String(val)]);
@@ -287,7 +335,7 @@ export const redis = {
    */
   async del(key: string): Promise<number> {
     mirrorToMemory(['DEL', key]);
-    if (isRedisConnected) {
+    if (await waitForRedis()) {
       try {
         return await rawRedis.del(key);
       } catch {
@@ -301,7 +349,7 @@ export const redis = {
    * Returns PONG if client/fallback is ready.
    */
   async ping(): Promise<string> {
-    if (isRedisConnected) {
+    if (await waitForRedis()) {
       try {
         return await rawRedis.ping();
       } catch {
