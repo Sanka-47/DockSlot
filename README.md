@@ -24,7 +24,7 @@ and host port overrides.
 
 ## Seeded demo accounts
 
-All seeded accounts are pre-verified and share the same password:
+All seeded accounts are pre-verified and share the same password:12345678
 
 | Email | Password | Role | Organization |
 | --- | --- | --- | --- |
