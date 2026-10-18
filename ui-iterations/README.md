@@ -9,7 +9,7 @@ This record documents the evolution of the UI components, design decisions, and 
 * **Observation:** The AI's first UI iteration did not follow the exact color theme provided in the initial prompt, but it successfully met all structural and layout requirements. 
 * **Decision:** Because the color palette chosen by the AI looked cleaner and fit the application better, I chose to stick with it for the rest of the project.
 * **Screenshots:**
-  * ![First AI Design](../FirstAIDesing.png)
+![alt text](FirstAIDesing.png)
   * ![Initial Iteration Screenshot](../Screenshot%202026-10-14%20070434.png)
 
 ---
