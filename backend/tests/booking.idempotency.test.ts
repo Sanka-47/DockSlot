@@ -107,7 +107,7 @@ describe('Booking Idempotency & Mobile Retry Safety Tests', () => {
         where: {
           aggregateType: 'BOOKING',
           payload: {
-            path: ['dockId'],
+            path: '$.booking.dockId',
             equals: testDockId,
           },
         },

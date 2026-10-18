@@ -98,7 +98,7 @@ describe('Booking Concurrency & Double-Booking Prevention Integration Tests', ()
         where: {
           aggregateType: 'BOOKING',
           payload: {
-            path: ['dockId'],
+            path: '$.booking.dockId',
             equals: testDockId,
           },
         },

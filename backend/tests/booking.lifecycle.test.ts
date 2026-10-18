@@ -168,7 +168,7 @@ describe('Booking Lifecycle Management Integration Tests', () => {
         where: {
           aggregateType: 'BOOKING',
           payload: {
-            path: ['warehouseId'],
+            path: '$.booking.warehouseId',
             equals: testWarehouseId,
           },
         },

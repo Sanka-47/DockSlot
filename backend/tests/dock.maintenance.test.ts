@@ -186,7 +186,7 @@ describe('Dock Maintenance Closures & Booking Status Management Tests', () => {
       await prisma.outboxEvent.deleteMany({
         where: {
           aggregateType: 'BOOKING',
-          payload: { path: ['warehouseId'], equals: testWarehouseId },
+          payload: { path: '$.booking.warehouseId', equals: testWarehouseId },
         },
       });
       await prisma.booking.deleteMany({ where: { dockId: { in: [dock1Id, dock2Id] } } });
