@@ -4,9 +4,11 @@ import {
   formatInTimeZone,
   getDayOfWeekInTimeZone,
   timeStringToMinutes,
+  resolveOperatingWindowMinutes,
 } from '../utils/time.utils';
 import { auditLogService } from './audit.service';
 import { outboxService, OUTBOX_EVENT_TYPE } from './outbox.service';
+import { getRequestId } from '../utils/requestContext';
 
 export interface CreateBookingInput {
   dockId: number;
@@ -46,26 +48,46 @@ export class BookingService {
     const dateStr = formatInTimeZone(slotStart, warehouseTz, 'yyyy-MM-dd');
     const startLocal = formatInTimeZone(slotStart, warehouseTz, 'HH:mm');
     const endLocal = formatInTimeZone(slotEnd, warehouseTz, 'HH:mm');
-    const dayOfWeek = getDayOfWeekInTimeZone(dateStr, warehouseTz);
 
-    const opHour = warehouse.operatingHours.find(
-      (oh: any) => oh.dayOfWeek === dayOfWeek || (dayOfWeek === 7 && oh.dayOfWeek === 0)
-    );
+    const hoursForDate = (date: string) => {
+      const dow = getDayOfWeekInTimeZone(date, warehouseTz);
+      return warehouse.operatingHours.find(
+        (oh: any) => oh.dayOfWeek === dow || (dow === 7 && oh.dayOfWeek === 0)
+      );
+    };
+
+    let opHour = hoursForDate(dateStr);
+
+    // A slot just after midnight can belong to the previous day's overnight shift.
+    if (!opHour) {
+      const previousDate = new Date(`${dateStr}T00:00:00Z`);
+      previousDate.setUTCDate(previousDate.getUTCDate() - 1);
+      const previousHour = hoursForDate(previousDate.toISOString().slice(0, 10));
+      if (previousHour) {
+        const { closeMin } = resolveOperatingWindowMinutes(previousHour.openTime, previousHour.closeTime);
+        if (closeMin > 1440) {
+          opHour = previousHour;
+        }
+      }
+    }
 
     if (!opHour) {
       throw { status: 400, message: 'Warehouse is closed on the requested date.' };
     }
 
-    const startMin = timeStringToMinutes(startLocal);
+    let startMin = timeStringToMinutes(startLocal);
     let endMin = timeStringToMinutes(endLocal);
-    if (endLocal === '00:00' && endMin === 0) {
-      endMin = 1440;
-    }
 
-    const openMin = timeStringToMinutes(opHour.openTime);
-    let closeMin = timeStringToMinutes(opHour.closeTime);
-    if ((opHour.closeTime === '24:00' || opHour.closeTime === '00:00') && openMin === 0) {
-      closeMin = 1440;
+    const { openMin, closeMin } = resolveOperatingWindowMinutes(opHour.openTime, opHour.closeTime);
+
+    // Place both boundaries in the operating window's frame: slots in the
+    // after-midnight tail of an overnight shift (e.g. 01:00 for 22:00-06:00) and
+    // slots that end at midnight ("00:00") roll into the following day.
+    if (startMin < openMin) {
+      startMin += 1440;
+    }
+    if (endMin < startMin) {
+      endMin += 1440;
     }
 
     if (startMin < openMin || endMin > closeMin) {
@@ -256,11 +278,14 @@ export class BookingService {
 
         // Simultaneously create an OutboxEvent record in the same transaction, so the
         // booking and its carrier notification either both commit or both roll back.
+        // The originating request id rides along in the payload so the background
+        // worker can trace the delivery back to this HTTP request.
         const summary = outboxService.toBookingSummary(booking);
         await outboxService.enqueue(tx, {
           aggregateType: 'BOOKING',
           aggregateId: booking.id,
           eventType: OUTBOX_EVENT_TYPE.BOOKING_CREATED,
+          requestId: getRequestId(),
           carrierOrg: { id: booking.carrierOrg.id, name: booking.carrierOrg.name },
           booking: summary,
           message:
@@ -497,6 +522,7 @@ export class BookingService {
           aggregateType: 'BOOKING',
           aggregateId: booking.id,
           eventType: OUTBOX_EVENT_TYPE.BOOKING_RESCHEDULED,
+          requestId: getRequestId(),
           carrierOrg: { id: booking.carrierOrg.id, name: booking.carrierOrg.name },
           booking: summary,
           message:
@@ -629,6 +655,7 @@ export class BookingService {
         aggregateType: 'BOOKING',
         aggregateId: booking.id,
         eventType: OUTBOX_EVENT_TYPE.BOOKING_CANCELLED,
+        requestId: getRequestId(),
         carrierOrg: { id: booking.carrierOrg.id, name: booking.carrierOrg.name },
         booking: summary,
         message:
@@ -858,6 +885,7 @@ export class BookingService {
         aggregateType: 'BOOKING',
         aggregateId: booking.id,
         eventType: OUTBOX_EVENT_TYPE.BOOKING_STATUS_CHANGED,
+        requestId: getRequestId(),
         carrierOrg: { id: booking.carrierOrg.id, name: booking.carrierOrg.name },
         booking: summary,
         message:

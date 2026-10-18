@@ -5,6 +5,8 @@ import {
   createWarehouse,
   updateWarehouse,
   updateWarehouseSettings,
+  getWarehouseHours,
+  updateWarehouseHours,
   createDock,
   getDocks,
   updateDockStatus,
@@ -295,6 +297,141 @@ router.put('/:warehouseId', authMiddleware, requireVerifiedEmail, authorize(['WA
  */
 router.patch('/:warehouseId', authMiddleware, requireVerifiedEmail, authorize(['WAREHOUSE_ADMIN']), updateWarehouseSettings);
 router.patch('/:warehouseId/settings', authMiddleware, requireVerifiedEmail, authorize(['WAREHOUSE_ADMIN']), updateWarehouseSettings);
+
+/**
+ * @openapi
+ * /warehouses/{warehouseId}/hours:
+ *   get:
+ *     summary: Get the weekly operational schedule template
+ *     description: |
+ *       Returns the weekly operating hours for the warehouse. Days use the
+ *       1 (Monday) - 7 (Sunday) convention. Restricted to WAREHOUSE_ADMIN of the
+ *       owning organization.
+ *     tags:
+ *       - Warehouses
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: warehouseId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Weekly operating schedule
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     warehouseId:
+ *                       type: integer
+ *                     timezone:
+ *                       type: string
+ *                       example: Asia/Colombo
+ *                     slotLengthMinutes:
+ *                       type: integer
+ *                       example: 30
+ *                     operatingHours:
+ *                       type: array
+ *                       items:
+ *                         $ref: '#/components/schemas/OperatingHour'
+ *       403:
+ *         description: Forbidden. Tenant boundary violation
+ *       404:
+ *         description: Warehouse not found
+ */
+router.get(
+  '/:warehouseId/hours',
+  authMiddleware,
+  requireVerifiedEmail,
+  authorize(['WAREHOUSE_ADMIN']),
+  getWarehouseHours
+);
+
+/**
+ * @openapi
+ * /warehouses/{warehouseId}/hours:
+ *   put:
+ *     summary: Update the weekly operational schedule template
+ *     description: |
+ *       Replaces the operating hours for the supplied days. `isOpen: false` closes the
+ *       day. Opening later, closing earlier, or closing a day is rejected with HTTP 400
+ *       when an active BOOKED or ARRIVED booking falls inside the removed time range,
+ *       returning: "Cannot update starting/end time: bookings available in related time."
+ *       Restricted to WAREHOUSE_ADMIN of the owning organization.
+ *     tags:
+ *       - Warehouses
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: warehouseId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - hours
+ *             properties:
+ *               hours:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - dayOfWeek
+ *                   properties:
+ *                     dayOfWeek:
+ *                       type: integer
+ *                       minimum: 1
+ *                       maximum: 7
+ *                       example: 1
+ *                     isOpen:
+ *                       type: boolean
+ *                       example: true
+ *                     openTime:
+ *                       type: string
+ *                       example: '08:00'
+ *                     closeTime:
+ *                       type: string
+ *                       example: '18:00'
+ *                     slotLengthMinutes:
+ *                       type: integer
+ *                       example: 30
+ *     responses:
+ *       200:
+ *         description: Weekly operating schedule updated
+ *       400:
+ *         description: Invalid schedule, or active bookings occupy the time being removed
+ *       403:
+ *         description: Forbidden. Tenant boundary violation
+ */
+router.put(
+  '/:warehouseId/hours',
+  authMiddleware,
+  requireVerifiedEmail,
+  authorize(['WAREHOUSE_ADMIN']),
+  updateWarehouseHours
+);
+router.patch(
+  '/:warehouseId/hours',
+  authMiddleware,
+  requireVerifiedEmail,
+  authorize(['WAREHOUSE_ADMIN']),
+  updateWarehouseHours
+);
 
 /**
  * @openapi

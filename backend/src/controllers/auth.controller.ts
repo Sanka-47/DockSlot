@@ -2,6 +2,12 @@ import { Request, Response } from 'express';
 import { authService } from '../services/auth.service';
 import { invitationService } from '../services/invitation.service';
 import { totpService } from '../services/totp.service';
+import {
+  setRefreshTokenCookie,
+  clearRefreshTokenCookie,
+  getRefreshTokenFromRequest,
+} from '../utils/cookie.utils';
+import { sendError } from '../utils/httpError';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -11,19 +17,20 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       organizationType: req.body.organizationType || req.body.orgType,
     };
     const result = await authService.register(payload);
+    // Refresh token travels in an HttpOnly cookie, never in the response body.
+    if (result.refreshToken) {
+      setRefreshTokenCookie(res, result.refreshToken);
+    }
+    const { refreshToken: _refreshToken, ...data } = result;
     res.status(201).json({
       success: true,
       message: 'User registered successfully. A verification email has been sent.',
-      data: result,
+      data,
       token: result.token,
       user: result.user,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'An error occurred during registration.',
-    });
+    sendError(res, error, 'An error occurred during registration.');
   }
 };
 
@@ -40,19 +47,60 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       });
       return;
     }
+    // Refresh token travels in an HttpOnly cookie, never in the response body.
+    if (result.refreshToken) {
+      setRefreshTokenCookie(res, result.refreshToken);
+    }
+    const { refreshToken: _refreshToken, ...loginData } = result;
     res.status(200).json({
       success: true,
       message: 'Login successful.',
-      data: result,
+      data: loginData,
       token: result.token,
       user: result.user,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'An error occurred during login.',
+    sendError(res, error, 'An error occurred during login.');
+  }
+};
+
+export const refresh = async (req: Request, res: Response): Promise<void> => {
+  try {
+    // Primary source is the HttpOnly cookie; the body fallback keeps non-browser
+    // clients (e.g. tests, mobile apps) working.
+    const refreshToken =
+      getRefreshTokenFromRequest(req) ?? req.body?.refreshToken ?? req.body?.refresh_token;
+
+    const result = await authService.refresh(refreshToken);
+
+    // Rotate the cookie on every successful refresh.
+    if (result.refreshToken) {
+      setRefreshTokenCookie(res, result.refreshToken);
+    }
+    const { refreshToken: _refreshToken, ...refreshData } = result;
+    res.status(200).json({
+      success: true,
+      message: 'Token refreshed successfully.',
+      data: refreshData,
+      token: result.token,
+      user: result.user,
     });
+  } catch (error: any) {
+    // A stale/invalid cookie should not keep being sent by the browser.
+    clearRefreshTokenCookie(res);
+    sendError(res, error, 'An error occurred while refreshing the token.');
+  }
+};
+
+export const logout = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    clearRefreshTokenCookie(res);
+    res.status(200).json({
+      success: true,
+      message: 'Logged out successfully.',
+    });
+  } catch (error: any) {
+    sendError(res, error, 'An error occurred while logging out.');
   }
 };
 
@@ -66,11 +114,7 @@ export const verifyEmail = async (req: Request, res: Response): Promise<void> =>
       data: { email: result.email },
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Email verification failed.',
-    });
+    sendError(res, error, 'Email verification failed.');
   }
 };
 
@@ -85,11 +129,7 @@ export const resendVerification = async (req: Request, res: Response): Promise<v
       message: result.message,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Failed to resend verification email.',
-    });
+    sendError(res, error, 'Failed to resend verification email.');
   }
 };
 
@@ -102,11 +142,7 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
       message: result.message,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'An error occurred during password reset request.',
-    });
+    sendError(res, error, 'An error occurred during password reset request.');
   }
 };
 
@@ -119,11 +155,7 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
       message: result.message,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'An error occurred during password reset.',
-    });
+    sendError(res, error, 'An error occurred during password reset.');
   }
 };
 
@@ -151,11 +183,7 @@ export const changePassword = async (req: Request, res: Response): Promise<void>
       message: result.message,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'An error occurred during password change.',
-    });
+    sendError(res, error, 'An error occurred during password change.');
   }
 };
 
@@ -178,11 +206,7 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
       },
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Failed to retrieve user profile.',
-    });
+    sendError(res, error, 'Failed to retrieve user profile.');
   }
 };
 
@@ -198,11 +222,7 @@ export const acceptInvite = async (req: Request, res: Response): Promise<void> =
       user: result.user,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'An error occurred while accepting the invitation.',
-    });
+    sendError(res, error, 'An error occurred while accepting the invitation.');
   }
 };
 
@@ -215,11 +235,7 @@ export const getInvitationDetails = async (req: Request, res: Response): Promise
       data: result,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Failed to retrieve invitation details.',
-    });
+    sendError(res, error, 'Failed to retrieve invitation details.');
   }
 };
 
@@ -236,16 +252,14 @@ export const logoutAll = async (req: Request, res: Response): Promise<void> => {
 
     await authService.logoutAll(userId);
 
+    clearRefreshTokenCookie(res);
+
     res.status(200).json({
       success: true,
       message: 'Successfully logged out of all devices.',
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'An error occurred while logging out of all devices.',
-    });
+    sendError(res, error, 'An error occurred while logging out of all devices.');
   }
 };
 
@@ -269,11 +283,7 @@ export const setup2FA = async (req: Request, res: Response): Promise<void> => { 
       otpauthUrl: result.otpauthUrl,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Failed to setup 2FA.',
-    });
+    sendError(res, error, 'Failed to setup 2FA.');
   }
 };
 
@@ -297,11 +307,7 @@ export const verifyAndEnable2FA = async (req: Request, res: Response): Promise<v
       isTwoFactorEnabled: result.isTwoFactorEnabled,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Failed to verify and enable 2FA.',
-    });
+    sendError(res, error, 'Failed to verify and enable 2FA.');
   }
 };
 
@@ -325,11 +331,7 @@ export const disable2FA = async (req: Request, res: Response): Promise<void> => 
       isTwoFactorEnabled: result.isTwoFactorEnabled,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Failed to disable 2FA.',
-    });
+    sendError(res, error, 'Failed to disable 2FA.');
   }
 };
 
@@ -337,20 +339,19 @@ export const loginVerify2FA = async (req: Request, res: Response): Promise<void>
   try {
     const { tempToken, token, email, password } = req.body;
     const result = await totpService.loginVerify({ tempToken, token, email, password });
+    if (result.refreshToken) {
+      setRefreshTokenCookie(res, result.refreshToken);
+    }
+    const { refreshToken: _refreshToken, ...twoFactorData } = result;
     res.status(200).json({
       success: true,
       message: 'Two-factor authentication verified successfully. Logged in.',
-      data: result,
+      data: twoFactorData,
       token: result.token,
-      refreshToken: result.refreshToken,
       user: result.user,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Two-factor verification failed.',
-    });
+    sendError(res, error, 'Two-factor verification failed.');
   }
 };
 
@@ -372,10 +373,6 @@ export const get2FAStatus = async (req: Request, res: Response): Promise<void> =
       data: result,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Failed to retrieve 2FA status.',
-    });
+    sendError(res, error, 'Failed to retrieve 2FA status.');
   }
 };

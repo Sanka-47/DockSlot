@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/db.config';
 import { formatInTimeZone } from '../utils/time.utils';
+import { getRequestId } from '../utils/requestContext';
 
 /**
  * OutboxService
@@ -61,12 +62,24 @@ export interface EnqueueOutboxInput {
   message: string;
   /** Structured before/after detail specific to the event type. */
   changes?: Record<string, unknown>;
+  /**
+   * Correlation id of the HTTP request that caused this event. Callers inside a
+   * request scope may omit it: `enqueue` falls back to the ambient
+   * AsyncLocalStorage context, so the id is never lost even if a new call site
+   * forgets to pass it.
+   */
+  requestId?: string;
   maxRetries?: number;
 }
 
 /** The exact JSON document POSTed to the carrier webhook. */
 export interface OutboxPayload {
   eventId: string;
+  /**
+   * Correlated back to the HTTP request that created the booking. Optional
+   * because rows written before tracing was introduced have no such field.
+   */
+  requestId?: string;
   eventType: OutboxEventType;
   aggregateType: string;
   aggregateId: number;
@@ -136,6 +149,7 @@ export class OutboxService {
   public buildPayload(input: EnqueueOutboxInput, eventId: string): OutboxPayload {
     return {
       eventId,
+      ...(input.requestId ? { requestId: input.requestId } : {}),
       eventType: input.eventType,
       aggregateType: input.aggregateType,
       aggregateId: input.aggregateId,
@@ -189,10 +203,20 @@ export class OutboxService {
    * Persists an outbox event. MUST be called with the `tx` client of the same
    * transaction that mutates the booking so the event and the state change
    * commit or roll back together.
+   *
+   * The correlation id is resolved here rather than trusted from the caller: an
+   * explicit `requestId` wins, otherwise the ambient request context is used.
+   * Either way the id lands in the persisted JSON payload, so a worker running
+   * in a different process can trace the event back to the HTTP request that
+   * produced it.
    */
   public async enqueue(tx: Prisma.TransactionClient, input: EnqueueOutboxInput) {
     const eventId = randomUUID();
-    const payload = this.buildPayload(input, eventId);
+    const requestId = input.requestId ?? getRequestId();
+    const payload = this.buildPayload(
+      requestId ? { ...input, requestId } : input,
+      eventId
+    );
 
     return tx.outboxEvent.create({
       data: {

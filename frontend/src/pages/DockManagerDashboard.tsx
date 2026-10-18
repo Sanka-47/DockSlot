@@ -45,6 +45,8 @@ export const DockManagerDashboard: React.FC = () => {
   const [isLoadingWarehouses, setIsLoadingWarehouses] = useState<boolean>(true);
   const [statusActionLoadingId, setStatusActionLoadingId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Booking action errors belong next to the bookings table, not the page-level banner.
+  const [bookingErrorMessage, setBookingErrorMessage] = useState<string | null>(null);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
 
   // Filters
@@ -194,12 +196,12 @@ export const DockManagerDashboard: React.FC = () => {
     bookingId: number,
     newStatus: 'ARRIVED' | 'NO_SHOW' | 'COMPLETED'
   ) => {
-    setErrorMessage(null);
+    setBookingErrorMessage(null);
 
     // Client-side validation: booking slotStartTime must have passed
     const targetBooking = bookings.find((b) => b.id === bookingId);
     if (targetBooking?.slotStartTime && new Date() < new Date(targetBooking.slotStartTime)) {
-      setErrorMessage(
+      setBookingErrorMessage(
         `Cannot update status for booking #${bookingId} before its scheduled slot start time has passed.`
       );
       return;
@@ -225,7 +227,7 @@ export const DockManagerDashboard: React.FC = () => {
         `Booking #${bookingId} successfully ${statusLabels[newStatus] || newStatus}.`
       );
     } catch (err: any) {
-      setErrorMessage(
+      setBookingErrorMessage(
         err.response?.data?.message ||
           err.message ||
           `Failed to update status for booking #${bookingId}.`
@@ -715,6 +717,23 @@ export const DockManagerDashboard: React.FC = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Booking Action Error — shown directly above the bookings table */}
+      {bookingErrorMessage && (
+        <div
+          role="alert"
+          className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800 flex items-start space-x-3 animate-in fade-in duration-200"
+        >
+          <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+          <div className="flex-1 font-medium">{bookingErrorMessage}</div>
+          <button
+            onClick={() => setBookingErrorMessage(null)}
+            className="text-red-400 hover:text-red-600"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Section 2: Warehouse Bookings Table */}
       <Card className="bg-white shadow-sm border border-gray-200 overflow-hidden">

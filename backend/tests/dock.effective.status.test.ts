@@ -134,10 +134,13 @@ describe('Real-Time Dynamic Dock Status Evaluation & Active Closure Enforcement 
     });
     dockBaseMaintenanceId = dock3.id;
 
-    // 6. Schedule an ACTIVE maintenance closure on Dock 2 covering the current timestamp (now - 1 hour to now + 2 hours)
+    // 6. Schedule an ACTIVE maintenance closure on Dock 2 spanning the current
+    //    timestamp and well beyond tomorrow (now - 1h to now + 72h), so the
+    //    "active maintenance" assertions hold no matter what wall-clock time the
+    //    suite runs at.
     const now = new Date();
     const activeStart = new Date(now.getTime() - 60 * 60 * 1000); // 1 hour ago
-    const activeEnd = new Date(now.getTime() + 2 * 60 * 60 * 1000); // 2 hours from now
+    const activeEnd = new Date(now.getTime() + 72 * 60 * 60 * 1000); // 3 days ahead
 
     await prisma.dockClosure.create({
       data: {
@@ -219,15 +222,19 @@ describe('Real-Time Dynamic Dock Status Evaluation & Active Closure Enforcement 
   });
 
   it('slot generation (B1) automatically excludes docks currently undergoing active maintenance', async () => {
-    // Generate target date for today in Colombo timezone (Asia/Colombo UTC+5:30)
+    // Generate target date for *tomorrow* in the warehouse timezone
+    // (Asia/Colombo UTC+5:30). Using a full future day guarantees available
+    // slots regardless of how late in the day this suite happens to run; the
+    // Dock 2 closure above spans this day too.
     const now = new Date();
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     const formatter = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'Asia/Colombo',
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
     });
-    const targetDate = formatter.format(now);
+    const targetDate = formatter.format(tomorrow);
 
     const res = await request(app)
       .get(`/api/warehouses/${warehouseId}/slots?targetDate=${targetDate}`)

@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import { userApi } from '../api/user.api';
 import type { User } from '../types/user.types';
+import { useConfirm } from '../hooks/useConfirm';
+import toast from 'react-hot-toast';
 
 interface TeamManagementModalProps {
   isOpen: boolean;
@@ -28,6 +30,7 @@ export const TeamManagementModal: React.FC<TeamManagementModalProps> = ({
   currentUserRole,
   organizationName,
 }) => {
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [deactivatingId, setDeactivatingId] = useState<number | null>(null);
@@ -64,40 +67,71 @@ export const TeamManagementModal: React.FC<TeamManagementModalProps> = ({
   if (!isOpen) return null;
 
   const handleDeactivate = async (targetUser: User) => {
-    const confirmed = window.confirm(
-      `Are you sure you want to deactivate ${targetUser.email}? Their active sessions will be terminated immediately.`
-    );
+    const confirmed = await confirm({
+      title: 'Deactivate team member',
+      message: (
+        <>
+          Are you sure you want to deactivate <strong>{targetUser.email}</strong>? Their active
+          sessions will be terminated immediately.
+        </>
+      ),
+      confirmLabel: 'Deactivate',
+      variant: 'danger',
+    });
     if (!confirmed) return;
 
     setDeactivatingId(targetUser.id);
-    setErrorMessage(null);
-    setSuccessMessage(null);
     try {
-      const res = await userApi.deactivateUser(targetUser.id);
-      setSuccessMessage(res.message || `User ${targetUser.email} has been deactivated.`);
-      await fetchUsers();
-    } catch (err: any) {
-      setErrorMessage(err.response?.data?.message || 'Failed to deactivate user.');
+      // A toast tracks the whole lifecycle: loading -> success/error.
+      await toast.promise(
+        userApi.deactivateUser(targetUser.id).then(async (res) => {
+          await fetchUsers();
+          return res;
+        }),
+        {
+          loading: `Deactivating ${targetUser.email}...`,
+          success: (res) => res?.message || `User ${targetUser.email} has been deactivated.`,
+          error: (err: any) => err?.response?.data?.message || 'Failed to deactivate user.',
+        }
+      );
+    } catch {
+      // The error toast already surfaced the failure; swallow to avoid an
+      // unhandled rejection from the click handler.
     } finally {
       setDeactivatingId(null);
     }
   };
 
   const handleReactivate = async (targetUser: User) => {
-    const confirmed = window.confirm(
-      `Are you sure you want to reactivate ${targetUser.email}? They will be allowed to log in and access the system.`
-    );
+    const confirmed = await confirm({
+      title: 'Reactivate team member',
+      message: (
+        <>
+          Are you sure you want to reactivate <strong>{targetUser.email}</strong>? They will be
+          allowed to log in and access the system.
+        </>
+      ),
+      confirmLabel: 'Reactivate',
+      variant: 'default',
+    });
     if (!confirmed) return;
 
     setReactivatingId(targetUser.id);
-    setErrorMessage(null);
-    setSuccessMessage(null);
     try {
-      const res = await userApi.reactivateUser(targetUser.id);
-      setSuccessMessage(res.message || `User ${targetUser.email} has been reactivated.`);
-      await fetchUsers();
-    } catch (err: any) {
-      setErrorMessage(err.response?.data?.message || 'Failed to reactivate user.');
+      await toast.promise(
+        userApi.reactivateUser(targetUser.id).then(async (res) => {
+          await fetchUsers();
+          return res;
+        }),
+        {
+          loading: `Reactivating ${targetUser.email}...`,
+          success: (res) => res?.message || `User ${targetUser.email} has been reactivated.`,
+          error: (err: any) => err?.response?.data?.message || 'Failed to reactivate user.',
+        }
+      );
+    } catch {
+      // The error toast already surfaced the failure; swallow to avoid an
+      // unhandled rejection from the click handler.
     } finally {
       setReactivatingId(null);
     }
@@ -317,6 +351,8 @@ export const TeamManagementModal: React.FC<TeamManagementModalProps> = ({
           </button>
         </div>
       </div>
+
+      {confirmDialog}
     </div>
   );
 };

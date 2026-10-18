@@ -116,7 +116,7 @@ describe('Slot Taken Between Viewing and Booking Requirement (DispatcherDashboar
       await prisma.outboxEvent.deleteMany({
         where: {
           aggregateType: 'BOOKING',
-          payload: { path: ['dockId'], equals: testDockId },
+          payload: { path: '$.booking.dockId', equals: testDockId },
         },
       });
       await prisma.auditLog.deleteMany({

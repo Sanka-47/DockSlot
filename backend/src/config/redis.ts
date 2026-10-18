@@ -9,6 +9,31 @@ const inMemoryExpiry = new Map<string, number>();
 const inMemoryScripts = new Map<string, string>();
 let isRedisConnected = false;
 
+// The in-memory fallback exists ONLY for local development / CI without Docker.
+// In production it must be disabled: a per-process Map silently diverges from
+// other instances, breaking cross-instance session revocation, the isActive
+// cache, and global rate limiting (i.e. a split-brain). When disabled, a Redis
+// outage fails fast instead of degrading to inconsistent local state.
+const inMemoryFallbackEnabled = process.env.NODE_ENV !== 'production';
+
+/** Falls back to the local store, or throws when running in production. */
+function memFallback(args: string[]): any {
+  if (!inMemoryFallbackEnabled) {
+    throw new Error(
+      '[Redis] Redis is unreachable and the in-memory fallback is disabled in production. ' +
+        'A shared, highly-available Redis is required for multi-instance correctness.'
+    );
+  }
+  return executeInMemoryCommand(args);
+}
+
+/** Mirrors a command into the local store while connected (dev only). */
+function mirrorToMemory(args: string[]): void {
+  if (inMemoryFallbackEnabled) {
+    executeInMemoryCommand(args);
+  }
+}
+
 function getInMemoryPttl(key: string): number {
   if (!inMemoryStore.has(key)) {
     inMemoryExpiry.delete(key);
@@ -141,6 +166,39 @@ function executeInMemoryCommand(args: string[]): any {
   return 'OK';
 }
 
+// Initial-connection readiness signal.
+//
+// ioredis connects asynchronously, but some callers issue their very first
+// command synchronously at import time - notably express-rate-limit's
+// RedisStore.init(), which runs SCRIPT LOAD when the middleware is constructed.
+// Without this gate that command races the TCP handshake, observes
+// `isRedisConnected === false`, and either throws (production, where the
+// in-memory fallback is disabled) or latches a failed init that 500s every
+// subsequent request. Callers await `waitForRedis()` so a reachable Redis gets
+// a chance to finish connecting before we decide to fall back.
+const REDIS_READY_TIMEOUT_MS = Number(process.env.REDIS_READY_TIMEOUT_MS) || 3000;
+// True only while the connection can accept commands (ioredis `ready`), as
+// opposed to `isRedisConnected`, which is also set on the earlier `connect`
+// event - before the handshake completes.
+let isRedisReady = false;
+let isRedisReadySettled = false;
+let settleRedisReady: (ready: boolean) => void = () => {};
+const redisReady = new Promise<boolean>((resolve) => {
+  settleRedisReady = resolve;
+});
+
+function markRedisReady(ready: boolean): void {
+  if (isRedisReadySettled) return;
+  isRedisReadySettled = true;
+  settleRedisReady(ready);
+}
+
+/** Resolves true once Redis is usable, false once it is known to be unreachable. */
+async function waitForRedis(): Promise<boolean> {
+  if (isRedisReady) return true;
+  return redisReady;
+}
+
 export const rawRedis = new Redis(redisUrl, {
   maxRetriesPerRequest: 1,
   lazyConnect: true,
@@ -158,16 +216,31 @@ rawRedis.on('connect', () => {
 
 rawRedis.on('ready', () => {
   isRedisConnected = true;
+  isRedisReady = true;
+  markRedisReady(true);
 });
 
 rawRedis.on('error', () => {
   isRedisConnected = false;
+  isRedisReady = false;
   // Non-fatal warning for local development without Docker
 });
 
 rawRedis.on('close', () => {
   isRedisConnected = false;
+  isRedisReady = false;
 });
+
+// ioredis emits `end` once `retryStrategy` has given up; surface it so callers
+// stop waiting and fall back (or fail fast in production) immediately.
+rawRedis.on('end', () => {
+  isRedisReady = false;
+  markRedisReady(false);
+});
+
+// Backstop in case neither `ready` nor `end` fires (e.g. a stalled handshake).
+const redisReadyTimeout = setTimeout(() => markRedisReady(false), REDIS_READY_TIMEOUT_MS);
+redisReadyTimeout.unref?.();
 
 // Attempt background connection if Redis is running locally
 rawRedis.connect().catch(() => {
@@ -183,12 +256,12 @@ export const redis = {
    * Executes a raw Redis command (used by rate-limit-redis RedisStore).
    */
   async call(...args: string[]): Promise<any> {
-    // Always register SCRIPT LOAD in memory so SHA1 is known if fallback is needed
+    // Register SCRIPT LOAD in memory (dev only) so SHA1 is known if fallback is needed
     if ((args[0] || '').toUpperCase() === 'SCRIPT' && (args[1] || '').toUpperCase() === 'LOAD') {
-      executeInMemoryCommand(args);
+      mirrorToMemory(args);
     }
 
-    if (isRedisConnected) {
+    if (await waitForRedis()) {
       try {
         const [command, ...rest] = args;
         return await (rawRedis as any).call(command, ...rest);
@@ -200,7 +273,7 @@ export const redis = {
       }
     }
 
-    return executeInMemoryCommand(args);
+    return memFallback(args);
   },
 
   /**
@@ -214,14 +287,14 @@ export const redis = {
    * Retrieves the string value associated with key.
    */
   async get(key: string): Promise<string | null> {
-    if (isRedisConnected) {
+    if (await waitForRedis()) {
       try {
         return await rawRedis.get(key);
       } catch {
         // Fall back to in-memory store if Redis command fails
       }
     }
-    return executeInMemoryCommand(['GET', key]);
+    return memFallback(['GET', key]);
   },
 
   /**
@@ -229,15 +302,15 @@ export const redis = {
    */
   async set(key: string, value: string | number, ...args: any[]): Promise<'OK' | string | null> {
     const strVal = String(value);
-    executeInMemoryCommand(['SET', key, strVal, ...args.map(String)]);
-    if (isRedisConnected) {
+    mirrorToMemory(['SET', key, strVal, ...args.map(String)]);
+    if (await waitForRedis()) {
       try {
         return await (rawRedis as any).set(key, strVal, ...args);
       } catch {
-        // Fall back to in-memory store
+        // Fall through to the local store / production guard
       }
     }
-    return 'OK';
+    return memFallback(['SET', key, strVal, ...args.map(String)]);
   },
 
   /**
@@ -245,43 +318,46 @@ export const redis = {
    * If key does not exist, it is set to 0 before performing the operation.
    */
   async incr(key: string): Promise<number> {
-    if (isRedisConnected) {
+    if (await waitForRedis()) {
       try {
         const val = await rawRedis.incr(key);
-        inMemoryStore.set(key, String(val));
+        mirrorToMemory(['SET', key, String(val)]);
         return val;
       } catch {
-        // Fall back to in-memory store
+        // Fall through to the local store / production guard
       }
     }
-    return executeInMemoryCommand(['INCR', key]);
+    return memFallback(['INCR', key]);
   },
 
   /**
    * Removes the specified key.
    */
   async del(key: string): Promise<number> {
-    const existed = executeInMemoryCommand(['DEL', key]);
-    if (isRedisConnected) {
+    mirrorToMemory(['DEL', key]);
+    if (await waitForRedis()) {
       try {
         return await rawRedis.del(key);
       } catch {
-        // Fall back to in-memory store
+        // Fall through to the local store / production guard
       }
     }
-    return existed;
+    return memFallback(['DEL', key]);
   },
 
   /**
    * Returns PONG if client/fallback is ready.
    */
   async ping(): Promise<string> {
-    if (isRedisConnected) {
+    if (await waitForRedis()) {
       try {
         return await rawRedis.ping();
       } catch {
-        // Fall back
+        // Fall through
       }
+    }
+    if (!inMemoryFallbackEnabled) {
+      throw new Error('[Redis] ping failed: Redis is unreachable (in-memory fallback disabled in production).');
     }
     return 'PONG';
   },
@@ -290,8 +366,10 @@ export const redis = {
    * Clears the store.
    */
   async flushall(): Promise<'OK'> {
-    inMemoryStore.clear();
-    inMemoryExpiry.clear();
+    if (inMemoryFallbackEnabled) {
+      inMemoryStore.clear();
+      inMemoryExpiry.clear();
+    }
     if (isRedisConnected) {
       try {
         await rawRedis.flushall();

@@ -14,10 +14,13 @@ import {
 } from 'lucide-react';
 import { userApi } from '../api/user.api';
 import { useAuth } from '../hooks/useAuth';
+import { useConfirm } from '../hooks/useConfirm';
 import type { User } from '../types/user.types';
+import toast from 'react-hot-toast';
 
 export const CarrierAdminDashboard: React.FC = () => {
   const { user } = useAuth();
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   // Active Tab: 'users' | 'profile'
   const [activeTab, setActiveTab] = useState<'users' | 'profile'>('users');
@@ -93,19 +96,36 @@ export const CarrierAdminDashboard: React.FC = () => {
 
   // Deactivate User Handler
   const handleDeactivateUser = async (targetUser: User) => {
-    const confirmed = window.confirm(
-      `Are you sure you want to deactivate ${targetUser.email}? Their active sessions will be terminated immediately via Redis token revocation.`
-    );
+    const confirmed = await confirm({
+      title: 'Deactivate team member',
+      message: (
+        <>
+          Are you sure you want to deactivate <strong>{targetUser.email}</strong>? Their active
+          sessions will be terminated immediately via Redis token revocation.
+        </>
+      ),
+      confirmLabel: 'Deactivate',
+      variant: 'danger',
+    });
     if (!confirmed) return;
 
     setDeactivatingUserId(targetUser.id);
-    setErrorBanner(null);
     try {
-      const res = await userApi.deactivateUser(targetUser.id);
-      triggerSuccess(res.message || `User ${targetUser.email} has been deactivated.`);
-      await fetchUsers();
-    } catch (err: any) {
-      setErrorBanner(err.response?.data?.message || 'Failed to deactivate user.');
+      // A toast tracks the whole lifecycle: loading -> success/error.
+      await toast.promise(
+        userApi.deactivateUser(targetUser.id).then(async (res) => {
+          await fetchUsers();
+          return res;
+        }),
+        {
+          loading: `Deactivating ${targetUser.email}...`,
+          success: (res) => res?.message || `User ${targetUser.email} has been deactivated.`,
+          error: (err: any) => err?.response?.data?.message || 'Failed to deactivate user.',
+        }
+      );
+    } catch {
+      // The error toast already surfaced the failure; swallow to avoid an
+      // unhandled rejection from the click handler.
     } finally {
       setDeactivatingUserId(null);
     }
@@ -113,19 +133,35 @@ export const CarrierAdminDashboard: React.FC = () => {
 
   // Reactivate User Handler
   const handleReactivateUser = async (targetUser: User) => {
-    const confirmed = window.confirm(
-      `Are you sure you want to reactivate ${targetUser.email}? They will be permitted to log in and resume booking activities.`
-    );
+    const confirmed = await confirm({
+      title: 'Reactivate team member',
+      message: (
+        <>
+          Are you sure you want to reactivate <strong>{targetUser.email}</strong>? They will be
+          permitted to log in and resume booking activities.
+        </>
+      ),
+      confirmLabel: 'Reactivate',
+      variant: 'default',
+    });
     if (!confirmed) return;
 
     setReactivatingUserId(targetUser.id);
-    setErrorBanner(null);
     try {
-      const res = await userApi.reactivateUser(targetUser.id);
-      triggerSuccess(res.message || `User ${targetUser.email} has been reactivated.`);
-      await fetchUsers();
-    } catch (err: any) {
-      setErrorBanner(err.response?.data?.message || 'Failed to reactivate user.');
+      await toast.promise(
+        userApi.reactivateUser(targetUser.id).then(async (res) => {
+          await fetchUsers();
+          return res;
+        }),
+        {
+          loading: `Reactivating ${targetUser.email}...`,
+          success: (res) => res?.message || `User ${targetUser.email} has been reactivated.`,
+          error: (err: any) => err?.response?.data?.message || 'Failed to reactivate user.',
+        }
+      );
+    } catch {
+      // The error toast already surfaced the failure; swallow to avoid an
+      // unhandled rejection from the click handler.
     } finally {
       setReactivatingUserId(null);
     }
@@ -579,6 +615,8 @@ export const CarrierAdminDashboard: React.FC = () => {
           </div>
         </div>
       )}
+
+      {confirmDialog}
     </div>
   );
 };

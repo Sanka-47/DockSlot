@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { userService } from '../services/user.service';
+import { sendError } from '../utils/httpError';
 
 export { inviteUser } from './invitation.controller';
 
@@ -53,11 +54,7 @@ export const deactivateUser = async (req: Request, res: Response): Promise<void>
       data: result.user,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Failed to update user status.',
-    });
+    sendError(res, error, 'Failed to update user status.');
   }
 };
 
@@ -100,11 +97,7 @@ export const reactivateUser = async (req: Request, res: Response): Promise<void>
       data: result.user,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Failed to reactivate user.',
-    });
+    sendError(res, error, 'Failed to reactivate user.');
   }
 };
 
@@ -130,10 +123,6 @@ export const getUsers = async (req: Request, res: Response): Promise<void> => {
       data: users,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Failed to retrieve organization users.',
-    });
+    sendError(res, error, 'Failed to retrieve organization users.');
   }
 };

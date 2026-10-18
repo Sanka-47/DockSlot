@@ -10,6 +10,7 @@ import { DockManagerDashboard } from './pages/DockManagerDashboard';
 import { TeamManagementModal } from './components/TeamManagementModal';
 import { SecuritySettingsModal } from './components/SecuritySettingsModal';
 import { Warehouse, LogOut, Users, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { Toaster } from 'react-hot-toast';
 
 const AppContent: React.FC = () => {
   const { user, isAuthenticated, logout, logoutAll, refreshUser, isLoading } = useAuth();
@@ -208,6 +209,19 @@ export const App: React.FC = () => {
   return (
     <AuthProvider>
       <AppContent />
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          duration: 4000,
+          style: {
+            background: '#2F4F4F',
+            color: '#ffffff',
+            fontSize: '0.875rem',
+          },
+          success: { iconTheme: { primary: '#059669', secondary: '#ffffff' } },
+          error: { iconTheme: { primary: '#dc2626', secondary: '#ffffff' }, duration: 6000 },
+        }}
+      />
     </AuthProvider>
   );
 };

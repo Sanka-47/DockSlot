@@ -1,6 +1,17 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/db.config';
-import { OrganizationType } from '@prisma/client';
+import { OrganizationType, UserRole } from '@prisma/client';
+
+const ROLE_LABELS: Record<UserRole, string> = {
+  WAREHOUSE_ADMIN: 'Warehouse Admin',
+  DOCK_MANAGER: 'Dock Manager',
+  CARRIER_ADMIN: 'Carrier Admin',
+  DISPATCHER: 'Dispatcher',
+};
+
+// Presents enum values such as DOCK_MANAGER to end users as "Dock Manager".
+export const formatRoleLabel = (role: string): string =>
+  ROLE_LABELS[role as UserRole] ?? role;
 
 export const authorize = (allowedRoles: string[]) => {
   return (req: Request, res: Response, next: NextFunction): void => {
@@ -15,7 +26,7 @@ export const authorize = (allowedRoles: string[]) => {
     if (!allowedRoles.includes(req.user.role)) {
       res.status(403).json({
         success: false,
-        message: `Forbidden. Role '${req.user.role}' is not authorized to perform this action.`,
+        message: `Forbidden. Role '${formatRoleLabel(req.user.role)}' is not authorized to perform this action.`,
       });
       return;
     }
@@ -44,7 +55,7 @@ export const requireCarrierDispatcher = async (
   if (req.user.role !== 'DISPATCHER') {
     res.status(403).json({
       success: false,
-      message: `Forbidden. Role '${req.user.role}' is not authorized to perform this action. Only Carrier Dispatchers are permitted.`,
+      message: `Forbidden. Role '${formatRoleLabel(req.user.role)}' is not authorized to perform this action. Only Carrier Dispatchers are permitted.`,
     });
     return;
   }
@@ -85,7 +96,7 @@ export const requireCarrierRole = async (
   if (req.user.role !== 'DISPATCHER' && req.user.role !== 'CARRIER_ADMIN') {
     res.status(403).json({
       success: false,
-      message: `Forbidden. Role '${req.user.role}' is not authorized to perform this action.`,
+      message: `Forbidden. Role '${formatRoleLabel(req.user.role)}' is not authorized to perform this action.`,
     });
     return;
   }
@@ -126,7 +137,7 @@ export const requireDockManager = async (
   if (req.user.role !== 'DOCK_MANAGER') {
     res.status(403).json({
       success: false,
-      message: `Forbidden. Role '${req.user.role}' is not authorized to perform this action. Only Dock Managers are permitted.`,
+      message: `Forbidden. Role '${formatRoleLabel(req.user.role)}' is not authorized to perform this action. Only Dock Managers are permitted.`,
     });
     return;
   }
@@ -167,7 +178,7 @@ export const requireWarehouseStaff = async (
   if (req.user.role !== 'WAREHOUSE_ADMIN' && req.user.role !== 'DOCK_MANAGER') {
     res.status(403).json({
       success: false,
-      message: `Forbidden. Role '${req.user.role}' is not authorized to perform this action.`,
+      message: `Forbidden. Role '${formatRoleLabel(req.user.role)}' is not authorized to perform this action.`,
     });
     return;
   }
@@ -211,7 +222,7 @@ export const requireBookingAuditAccess = async (
   if (!allowedRoles.includes(req.user.role)) {
     res.status(403).json({
       success: false,
-      message: `Forbidden. Role '${req.user.role}' is not authorized to view booking audit logs.`,
+      message: `Forbidden. Role '${formatRoleLabel(req.user.role)}' is not authorized to view booking audit logs.`,
     });
     return;
   }

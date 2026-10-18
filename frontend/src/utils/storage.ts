@@ -3,6 +3,9 @@ const TOKEN_KEY = 'dockslot_auth_token';
 /**
  * Cookie storage helper for managing JWT tokens.
  * Sets a persistent cookie with SameSite=Lax and 7-day expiration.
+ *
+ * Note: the refresh token is NOT stored here — it is held in an HttpOnly cookie
+ * set by the backend and is never accessible to client-side JavaScript.
  */
 export const setAuthCookie = (token: string, days = 7): void => {
   if (typeof document === 'undefined') return;

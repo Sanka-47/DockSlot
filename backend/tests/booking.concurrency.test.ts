@@ -98,7 +98,7 @@ describe('Booking Concurrency & Double-Booking Prevention Integration Tests', ()
         where: {
           aggregateType: 'BOOKING',
           payload: {
-            path: ['dockId'],
+            path: '$.booking.dockId',
             equals: testDockId,
           },
         },
@@ -171,7 +171,7 @@ describe('Booking Concurrency & Double-Booking Prevention Integration Tests', ()
     const outboxEvent = await prisma.outboxEvent.findFirst({
       where: {
         aggregateType: 'BOOKING',
-        aggregateId: String(winningBookingId),
+        aggregateId: winningBookingId,
       },
     });
 

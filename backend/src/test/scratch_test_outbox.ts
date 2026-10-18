@@ -14,6 +14,8 @@
  *   4. Create / reschedule / cancel / status-change each enqueue the right event type.
  *   5. Failures retry with exponential backoff, then park as FAILED after maxRetries.
  *   6. Two concurrent workers never double-deliver the same event.
+ *   7. The request id travels from the HTTP request through the persisted
+ *      payload to the webhook body (end-to-end tracing).
  */
 
 // NOTE: env must be set before the modules that read it are required.
@@ -124,7 +126,7 @@ async function api(path: string, token: string, init: RequestInit = {}) {
   } catch {
     body = { raw: text.slice(0, 300) };
   }
-  return { status: res.status, body };
+  return { status: res.status, body, headers: res.headers };
 }
 
 async function login(email: string) {
@@ -641,6 +643,67 @@ let FIXTURE: {
     );
 
     outboxWorker.config.processingLeaseMs = originalLease;
+
+    // -------------------------------------- TEST 11: end-to-end request tracing
+    // Runs last so the events it creates are not counted by TEST 9's accounting.
+    console.log('\n--- TEST 11: Request id survives HTTP -> outbox row -> webhook ---');
+    await setCarrierConfig({ enabled: true, simulateChaos: false });
+    await clearCarrierLogs();
+
+    const slotTrace = await findSlot(dispatcher.token, 20);
+    const traceId = `e2e-trace-${Date.now()}`;
+    const traced = await api('/bookings', dispatcher.token, {
+      method: 'POST',
+      headers: { 'X-Request-ID': traceId },
+      body: JSON.stringify(makeBookingBody(slotTrace, `TRACE${++bookingCounter}`)),
+    });
+    check('traced booking created (HTTP 201)', traced.status === 201, `HTTP ${traced.status}: ${JSON.stringify(traced.body).slice(0, 200)}`);
+    check(
+      'the id is echoed back on the X-Request-ID response header',
+      traced.headers.get('x-request-id') === traceId,
+      `header=${traced.headers.get('x-request-id')}`
+    );
+
+    const tracedBookingId = traced.body?.data?.id as number;
+    const rowTrace = await getOutboxRow({ aggregateId: tracedBookingId });
+    check(
+      'the id is persisted in the outbox payload',
+      rowTrace?.payload?.requestId === traceId,
+      `payload.requestId=${rowTrace?.payload?.requestId}`
+    );
+
+    const rowTraceDone = await waitForOutbox(
+      { id: rowTrace?.id },
+      (row) => row.status === 'COMPLETED',
+      40000,
+      'traced event COMPLETED'
+    );
+    check('traced event delivered', rowTraceDone?.status === 'COMPLETED', `status=${rowTraceDone?.status}`);
+
+    const logsTrace = await getCarrierLogs();
+    const deliveriesTrace = deliveriesFor(logsTrace, rowTrace.eventId);
+    check(
+      'the id reaches the carrier webhook body',
+      deliveriesTrace[0]?.body?.requestId === traceId,
+      `webhook requestId=${deliveriesTrace[0]?.body?.requestId}`
+    );
+    console.log(`   trace ${traceId}: HTTP request -> outbox row ${rowTrace.id} -> webhook delivery`);
+
+    // A request that supplies no id still gets a server-generated one.
+    const slotAuto = await findSlot(dispatcher.token, 21, 1);
+    const auto = await api('/bookings', dispatcher.token, {
+      method: 'POST',
+      body: JSON.stringify(makeBookingBody(slotAuto, `AUTO${++bookingCounter}`)),
+    });
+    const autoHeader = auto.headers.get('x-request-id') || '';
+    check('a server-generated id is issued when none is supplied', autoHeader.length === 36, autoHeader);
+
+    const rowAuto = await getOutboxRow({ aggregateId: auto.body?.data?.id });
+    check(
+      'the generated id is persisted in the outbox payload',
+      rowAuto?.payload?.requestId === autoHeader,
+      `payload.requestId=${rowAuto?.payload?.requestId} header=${autoHeader}`
+    );
   } catch (error: any) {
     failed++;
     console.error(`\nUNEXPECTED ERROR: ${error?.message || String(error)}`);

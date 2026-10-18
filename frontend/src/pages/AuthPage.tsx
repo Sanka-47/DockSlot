@@ -163,7 +163,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
    * Stores the final JWT, syncs global auth context, and routes to the right dashboard.
    */
   const completeSignIn = (token: string, user: User, successText: string) => {
-    // Store JWT in HTTP cookies and localStorage
+    // Store the access token; the refresh token lives in an HttpOnly cookie.
     storage.setToken(token);
 
     // Update global context
@@ -375,7 +375,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
         throw new Error('Registration completed but received an incomplete server response.');
       }
 
-      // Store JWT in HTTP cookies and localStorage
+      // Store the access token; the refresh token lives in an HttpOnly cookie.
       storage.setToken(token);
 
       // Update global context

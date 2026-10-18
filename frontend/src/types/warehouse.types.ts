@@ -29,6 +29,25 @@ export interface OperatingHour {
   slotLengthMinutes: number;
 }
 
+export interface UpdateOperatingHourRequest {
+  dayOfWeek: number;
+  isOpen?: boolean;
+  openTime?: string;
+  closeTime?: string;
+  slotLengthMinutes?: number;
+}
+
+export interface UpdateOperatingHoursRequest {
+  hours: UpdateOperatingHourRequest[];
+}
+
+export interface WarehouseHours {
+  warehouseId: number;
+  timezone: string;
+  slotLengthMinutes: number;
+  operatingHours: OperatingHour[];
+}
+
 export interface WarehousePolicy {
   id: number;
   warehouseId: number;

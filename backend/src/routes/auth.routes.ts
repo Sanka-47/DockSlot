@@ -2,6 +2,8 @@ import { Router } from 'express';
 import {
   register,
   login,
+  refresh,
+  logout,
   forgotPassword,
   resetPassword,
   changePassword,
@@ -117,6 +119,72 @@ router.post('/register', register);
  *         description: Too many API requests (rate limit exceeded)
  */
 router.post('/login', login);
+
+/**
+ * @openapi
+ * /auth/refresh:
+ *   post:
+ *     summary: Exchange a refresh token for a new access token
+ *     description: |
+ *       Redeems the refresh JWT stored in the `refreshToken` HttpOnly cookie for a fresh access
+ *       token (JWT_EXPIRES_IN) and a rotated refresh cookie (JWT_REFRESH_EXPIRES_IN). A raw
+ *       `refreshToken` may also be supplied in the body for non-browser clients. The token must be
+ *       of type `refresh` and will be rejected if the user is deactivated or has logged out of all
+ *       devices (token version revoked).
+ *     tags:
+ *       - Authentication
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               refreshToken:
+ *                 type: string
+ *                 description: Optional fallback for non-browser clients; browsers use the cookie.
+ *                 example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *     responses:
+ *       200:
+ *         description: New access token issued; refresh cookie rotated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 token:
+ *                   type: string
+ *                   description: New access JWT
+ *                 user:
+ *                   $ref: '#/components/schemas/User'
+ *       400:
+ *         description: Refresh token missing
+ *       401:
+ *         description: Refresh token invalid, expired, wrong type, or revoked
+ *       403:
+ *         description: Account deactivated
+ *       429:
+ *         description: Too many API requests (rate limit exceeded)
+ */
+router.post('/refresh', refresh);
+
+/**
+ * @openapi
+ * /auth/logout:
+ *   post:
+ *     summary: Log out the current browser session
+ *     description: Clears the `refreshToken` HttpOnly cookie. Already-issued access tokens remain valid until they expire; use /auth/logout-all to revoke those too.
+ *     tags:
+ *       - Authentication
+ *     security: []
+ *     responses:
+ *       200:
+ *         description: Refresh cookie cleared
+ */
+router.post('/logout', logout);
 
 /**
  * @openapi

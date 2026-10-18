@@ -8,14 +8,43 @@ import bookingRoutes from './routes/booking.routes';
 import warehouseRoutes from './routes/warehouse.routes';
 import dockRoutes from './routes/dock.routes';
 import userRoutes from './routes/user.routes';
+import healthRoutes from './routes/health.route';
 import { apiRateLimiter } from './middleware/rateLimit.middleware';
 import { errorHandler } from './middleware/error.middleware';
+import { requestLogger } from './middleware/requestLogger';
+import { parseTrustProxy } from './config/proxy.config';
 
 dotenv.config();
 
 const app = express();
 
-app.use(cors());
+// Horizontal scaling: when running 2+ instances behind a load balancer, Express
+// must trust the proxy so `req.ip` is the real client address rather than the
+// proxy's (IP-keyed rate limiting and request logs depend on it). Unset leaves
+// Express's default (trust nothing) in place. See config/proxy.config.ts.
+const trustProxy = parseTrustProxy(process.env.TRUST_PROXY);
+if (trustProxy !== undefined) {
+  app.set('trust proxy', trustProxy);
+}
+
+// Correlation id + structured logging. Mounted first so every request -
+// including ones rejected by the rate limiter or auth - is traced, and so the
+// id is available to anything downstream (services, outbox payload).
+app.use(requestLogger);
+
+// CORS: credentials must be enabled so the browser sends/stores the HttpOnly
+// refresh-token cookie. Origins may be restricted via a comma-separated
+// CORS_ORIGIN env var; otherwise the request origin is reflected.
+const corsOrigins = process.env.CORS_ORIGIN?.split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin: corsOrigins && corsOrigins.length > 0 ? corsOrigins : true,
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 // Swagger Documentation UI
@@ -42,10 +71,8 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/warehouses', warehouseRoutes);
 app.use('/api/docks', dockRoutes);
 
-// Health Check
-app.get('/health', (_req, res) => {
-  res.status(200).json({ status: 'OK', message: 'DockSlot API is running' });
-});
+// Health Check (public readiness/liveness probe; see routes/health.route.ts)
+app.use('/health', healthRoutes);
 
 // Global Error Handler
 app.use(errorHandler);

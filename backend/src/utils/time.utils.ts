@@ -76,9 +76,41 @@ export function minutesToTimeString(totalMinutes: number): string {
 }
 
 /**
+ * Resolves an operating window ("openTime" -> "closeTime") into minutes from midnight.
+ *
+ * A close time at or before the open time means the window ends on the following
+ * day, not that it is empty:
+ *   - "24:00" is already 1440 minutes, so 00:00-24:00 stays a full day.
+ *   - "00:00" used as a close time means midnight ending the day, so an
+ *     08:00-00:00 shift becomes 08:00-24:00 instead of an empty window.
+ *   - Overnight shifts such as 22:00-06:00 become 22:00-30:00.
+ *
+ * Returning minutes beyond 1440 lets callers keep generating slots that roll
+ * past midnight (see `zonedDateAndTimeToUtc`).
+ */
+export function resolveOperatingWindowMinutes(
+  openTime: string,
+  closeTime: string
+): { openMin: number; closeMin: number } {
+  const openMin = timeStringToMinutes(openTime);
+  let closeMin = timeStringToMinutes(closeTime);
+
+  if (closeMin <= openMin) {
+    closeMin += 1440;
+  }
+
+  return { openMin, closeMin };
+}
+
+/**
  * Generates all discrete time slot intervals [start, end] between openTime and closeTime
  * for a given slot length in minutes.
- * Handles 24/7 warehouse facilities where openTime is "00:00" and closeTime is "24:00" (or "00:00").
+ *
+ * Handles 24/7 and midnight-closing facilities where closeTime is "24:00" or "00:00",
+ * as well as overnight windows (e.g. 22:00-06:00). Interval strings past midnight keep
+ * counting upwards ("25:30" = 01:30 the following day) so callers can resolve them to
+ * the correct UTC instant with `zonedDateAndTimeToUtc`.
+ *
  * E.g., openTime: "00:00", closeTime: "24:00", slotLengthMinutes: 60
  * generates 24 full-cycle intervals: [{ start: "00:00", end: "01:00" }, ..., { start: "23:00", end: "24:00" }].
  */
@@ -87,17 +119,12 @@ export function generateTimeIntervals(
   closeTime: string,
   slotLengthMinutes: number
 ): Array<{ start: string; end: string }> {
-  if (slotLengthMinutes <= 0) return [];
+  if (!Number.isFinite(slotLengthMinutes) || slotLengthMinutes <= 0) return [];
 
-  let currentStartMin = timeStringToMinutes(openTime);
-  let closeMin = timeStringToMinutes(closeTime);
-
-  // Handle 24/7 operating hours where closeTime is "24:00" or "00:00" with start at 0
-  if ((closeTime === '24:00' || closeTime === '00:00') && currentStartMin === 0) {
-    closeMin = 1440;
-  }
-
+  const { openMin, closeMin } = resolveOperatingWindowMinutes(openTime, closeTime);
   const intervals: Array<{ start: string; end: string }> = [];
+
+  let currentStartMin = openMin;
 
   while (currentStartMin + slotLengthMinutes <= closeMin) {
     const currentEndMin = currentStartMin + slotLengthMinutes;
@@ -112,24 +139,39 @@ export function generateTimeIntervals(
 }
 
 /**
+ * Normalizes an interval boundary produced by `generateTimeIntervals` to a
+ * time-of-day string in 00:00-23:59. Boundaries past midnight ("25:30") wrap to
+ * the next day's equivalent ("01:30") for display in API responses.
+ */
+export function normalizeTimeOfDay(timeStr: string): string {
+  const totalMinutes = timeStringToMinutes(timeStr);
+  const minutesInDay = ((totalMinutes % 1440) + 1440) % 1440;
+  return minutesToTimeString(minutesInDay);
+}
+
+/**
  * Converts a localized calendar date and "HH:mm" time in a given IANA timezone into a UTC Date object.
- * Correctly handles "24:00" as midnight ending the day (00:00 of the following day).
+ * Correctly handles "24:00" (midnight ending the day) and boundaries past midnight produced by
+ * overnight windows ("25:30" = 01:30 on the following day).
  */
 export function zonedDateAndTimeToUtc(dateStr: string, timeStr: string, timeZone: string): Date {
   const [hoursStr, minutesStr = '00'] = timeStr.split(':');
   const hours = parseInt(hoursStr, 10);
   const minutes = parseInt(minutesStr, 10);
 
-  if (hours === 24) {
-    // 24:00 corresponds to midnight ending the target date (00:00 of the following day)
+  // Boundaries past 24:00 belong to a later calendar day (overnight shifts).
+  const dayOffset = Math.floor(hours / 24);
+  const hoursInDay = ((hours % 24) + 24) % 24;
+
+  let targetDateStr = dateStr;
+  if (dayOffset !== 0) {
     const [year, month, day] = dateStr.split('-').map(Number);
-    const nextDate = new Date(Date.UTC(year, month - 1, day + 1));
-    const nextDateStr = nextDate.toISOString().slice(0, 10);
-    return fromZonedTime(`${nextDateStr} 00:00:00`, timeZone);
+    const targetDate = new Date(Date.UTC(year, month - 1, day + dayOffset));
+    targetDateStr = targetDate.toISOString().slice(0, 10);
   }
 
-  const normalizedTime = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
-  return fromZonedTime(`${dateStr} ${normalizedTime}`, timeZone);
+  const normalizedTime = `${String(hoursInDay).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
+  return fromZonedTime(`${targetDateStr} ${normalizedTime}`, timeZone);
 }
 
 /**

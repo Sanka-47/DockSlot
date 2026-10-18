@@ -15,6 +15,40 @@ function parseEnvString(value: string | undefined, fallback: string): string {
   return cleaned || fallback;
 }
 
+/**
+ * Parses a duration string such as "7d", "60m", "900s" (or a raw number of
+ * seconds) into milliseconds. Used to align the refresh cookie's Max-Age with
+ * JWT_REFRESH_EXPIRES_IN. Falls back when the value cannot be parsed.
+ */
+function parseDurationToMs(value: string | undefined, fallbackMs: number): number {
+  if (!value) return fallbackMs;
+  const cleaned = value.split('#')[0].trim();
+  const match = /^(\d+)\s*(ms|s|m|h|d)?$/i.exec(cleaned);
+  if (!match) return fallbackMs;
+
+  const amount = parseInt(match[1], 10);
+  const unit = (match[2] || 's').toLowerCase();
+  const multipliers: Record<string, number> = {
+    ms: 1,
+    s: 1000,
+    m: 60 * 1000,
+    h: 60 * 60 * 1000,
+    d: 24 * 60 * 60 * 1000,
+  };
+
+  return amount * multipliers[unit];
+}
+
+const REFRESH_SAME_SITE_VALUES = ['lax', 'strict', 'none'] as const;
+type RefreshSameSite = (typeof REFRESH_SAME_SITE_VALUES)[number];
+
+function parseSameSite(value: string | undefined, fallback: RefreshSameSite): RefreshSameSite {
+  const cleaned = parseEnvString(value, fallback).toLowerCase();
+  return (REFRESH_SAME_SITE_VALUES as readonly string[]).includes(cleaned)
+    ? (cleaned as RefreshSameSite)
+    : fallback;
+}
+
 export const securityConfig = {
   get jwtSecret(): string {
     return parseEnvString(process.env.JWT_SECRET, 'default_secret_key');
@@ -45,6 +79,25 @@ export const securityConfig = {
   },
   get loginLockoutDurationMinutes(): number {
     return parseEnvInt(process.env.LOGIN_LOCKOUT_DURATION_MINUTES, 15);
+  },
+
+  // --- Refresh token HttpOnly cookie -----------------------------------------
+  get refreshCookieName(): string {
+    return parseEnvString(process.env.REFRESH_COOKIE_NAME, 'refreshToken');
+  },
+  get refreshCookiePath(): string {
+    return parseEnvString(process.env.REFRESH_COOKIE_PATH, '/api/auth');
+  },
+  get refreshCookieMaxAgeMs(): number {
+    return parseDurationToMs(this.jwtRefreshExpiresIn, 7 * 24 * 60 * 60 * 1000);
+  },
+  get cookieSecure(): boolean {
+    const explicit = parseEnvString(process.env.COOKIE_SECURE, '');
+    if (explicit) return explicit === 'true' || explicit === '1';
+    return process.env.NODE_ENV === 'production';
+  },
+  get cookieSameSite(): RefreshSameSite {
+    return parseSameSite(process.env.COOKIE_SAME_SITE, 'lax');
   },
 
   // Uppercase aliases matching .env variable names

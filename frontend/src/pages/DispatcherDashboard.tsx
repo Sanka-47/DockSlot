@@ -50,6 +50,8 @@ import { formatDateTime } from "../utils/formatters";
 interface SelectedSlotInfo {
   warehouseId: number;
   warehouseName: string;
+  warehouseTimezone?: string;
+  slotDate?: string;
   dockId: number;
   dockName: string;
   slotStartTime: string;
@@ -126,6 +128,48 @@ export const DispatcherDashboard: React.FC = () => {
     return slotStartMs > Date.now();
   }, []);
 
+  // Renders a warehouse-local "HH:mm" boundary as a 12-hour clock label.
+  // Overnight windows roll past midnight ("25:30"), so the value is wrapped
+  // back into the same day before formatting.
+  const formatSlotClock = useCallback((timeStr?: string): string | null => {
+    if (!timeStr) return null;
+    const [hoursStr, minutesStr = "0"] = timeStr.split(":");
+    const hours = Number(hoursStr);
+    const minutes = Number(minutesStr);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+
+    const totalMinutes = (((hours * 60 + minutes) % 1440) + 1440) % 1440;
+    const normalizedHours = Math.floor(totalMinutes / 60);
+    const normalizedMinutes = totalMinutes % 60;
+    const period = normalizedHours >= 12 ? "PM" : "AM";
+    const twelveHour = normalizedHours % 12 === 0 ? 12 : normalizedHours % 12;
+
+    return `${twelveHour}:${String(normalizedMinutes).padStart(2, "0")} ${period}`;
+  }, []);
+
+  // Slots are generated in the warehouse's own time zone. Prefer the local
+  // start/end returned by the API so a dispatcher abroad sees the dock's clock
+  // (the browser's clock is only a fallback for older API responses).
+  const formatSlotWindow = useCallback(
+    (slot: {
+      slotStartTime: string;
+      slotEndTime: string;
+      localStartTime?: string;
+      localEndTime?: string;
+    }): string => {
+      const localStart = formatSlotClock(slot.localStartTime);
+      const localEnd = formatSlotClock(slot.localEndTime);
+      if (localStart && localEnd) {
+        return `${localStart} - ${localEnd}`;
+      }
+      return `${formatDateTime(
+        slot.slotStartTime,
+        "h:mm a",
+      )} - ${formatDateTime(slot.slotEndTime, "h:mm a")}`;
+    },
+    [formatSlotClock],
+  );
+
   const isInsideLockWindow = (booking: Booking | null): boolean => {
     if (!booking || !booking.slotStartTime) return false;
     const slotTime = new Date(booking.slotStartTime).getTime();
@@ -146,6 +190,9 @@ export const DispatcherDashboard: React.FC = () => {
     AvailableDockSlots[] | null
   >(null);
   const [hasSearchedSlots, setHasSearchedSlots] = useState<boolean>(false);
+  // Date the currently displayed results were fetched for (kept separate from
+  // the form input so editing the date does not relabel stale results).
+  const [searchedDate, setSearchedDate] = useState<string | null>(null);
 
   // ---------------------------------------------------------------------------
   // Booking Creation Modal State
@@ -188,6 +235,8 @@ export const DispatcherDashboard: React.FC = () => {
     dockName: string;
     slotStartTime: string;
     slotEndTime: string;
+    localStartTime?: string;
+    localEndTime?: string;
   } | null>(null);
   const [rescheduleReason, setRescheduleReason] = useState<string>("");
   const [rescheduleError, setRescheduleError] = useState<string | null>(null);
@@ -427,6 +476,7 @@ export const DispatcherDashboard: React.FC = () => {
       setErrorMessage(null);
     }
     setHasSearchedSlots(true);
+    setSearchedDate(targetDate);
 
     try {
       const warehouseIdNum = Number(selectedWarehouseId);
@@ -465,6 +515,8 @@ export const DispatcherDashboard: React.FC = () => {
     setSelectedSlotForBooking({
       warehouseId: wh?.id || Number(selectedWarehouseId),
       warehouseName: wh?.name || "Selected Warehouse",
+      warehouseTimezone: wh?.timezone,
+      slotDate: searchedDate || targetDate,
       dockId: dock.id,
       dockName: dock.name,
       slotStartTime: slot.slotStartTime,
@@ -551,10 +603,7 @@ export const DispatcherDashboard: React.FC = () => {
         /conflict|already booked|already taken|unavailable/i.test(rawMsg);
 
       if (isSlotTakenConflict) {
-        const slotWindowLabel = `${formatDateTime(
-          selectedSlotForBooking.slotStartTime,
-          "h:mm a",
-        )} – ${formatDateTime(selectedSlotForBooking.slotEndTime, "h:mm a")}`;
+        const slotWindowLabel = formatSlotWindow(selectedSlotForBooking);
         const clearConflictMessage = `The selected slot (${slotWindowLabel} on ${selectedSlotForBooking.dockName}) was just booked by another carrier while you were viewing it. Available slots have been updated — please select another open slot.`;
 
         // Immediately remove the taken slot from current view
@@ -700,10 +749,7 @@ export const DispatcherDashboard: React.FC = () => {
 
       if (isSlotTakenConflict && selectedRescheduleSlot) {
         const takenSlot = selectedRescheduleSlot;
-        const slotWindowLabel = `${formatDateTime(
-          takenSlot.slotStartTime,
-          "h:mm a",
-        )}  ${formatDateTime(takenSlot.slotEndTime, "h:mm a")}`;
+        const slotWindowLabel = formatSlotWindow(takenSlot);
         const clearConflictMessage = `The selected slot (${slotWindowLabel} on ${takenSlot.dockName}) was just booked by another carrier while you were viewing it. Available slots have been updated — please choose another open slot.`;
 
         setSelectedRescheduleSlot(null);
@@ -1146,13 +1192,15 @@ export const DispatcherDashboard: React.FC = () => {
                 <div className="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center space-x-1.5">
                   <Clock className="w-3.5 h-3.5 text-[#2F4F4F] shrink-0" />
                   <span>
-                    Available Time Slots for {targetDate} ({totalSlotsCount}{" "}
-                    open)
+                    Available Time Slots for {searchedDate || targetDate} (
+                    {totalSlotsCount} open)
                   </span>
                 </div>
                 {totalSlotsCount > 0 && (
                   <span className="text-xs text-gray-500">
-                    Tap any open time window to book
+                    Times in{" "}
+                    {formatTimezoneLabel(selectedWarehouse?.timezone)} · tap a
+                    window to book
                   </span>
                 )}
               </div>
@@ -1164,9 +1212,10 @@ export const DispatcherDashboard: React.FC = () => {
                     No Available Slots Found
                   </p>
                   <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
-                    The warehouse may be closed on this day, or all docking
-                    intervals are fully booked or under scheduled maintenance.
-                    Try choosing another date or dock.
+                    The warehouse may be closed on this day, today's earlier
+                    slots may have already started, or all docking intervals
+                    are fully booked or under scheduled maintenance. Try
+                    choosing another date or dock.
                   </p>
                 </div>
               ) : (
@@ -1195,10 +1244,7 @@ export const DispatcherDashboard: React.FC = () => {
                       ) : (
                         <div className="grid grid-cols-2 gap-2">
                           {dockGroup.slots.map((slot, index) => {
-                            const timeLabel = `${formatDateTime(
-                              slot.slotStartTime,
-                              "h:mm a",
-                            )} - ${formatDateTime(slot.slotEndTime, "h:mm a")}`;
+                            const timeLabel = formatSlotWindow(slot);
 
                             return (
                               <button
@@ -1741,15 +1787,13 @@ export const DispatcherDashboard: React.FC = () => {
                 <div className="flex flex-col sm:flex-row sm:justify-between font-medium gap-0.5">
                   <span className="text-gray-500">Time Window:</span>
                   <span className="font-bold text-[#2F4F4F]">
-                    {formatDateTime(
-                      selectedSlotForBooking.slotStartTime,
-                      "MMM dd, yyyy, h:mm a",
-                    )}{" "}
-                    –{" "}
-                    {formatDateTime(
-                      selectedSlotForBooking.slotEndTime,
-                      "h:mm a",
-                    )}
+                    {selectedSlotForBooking.slotDate
+                      ? `${selectedSlotForBooking.slotDate} · `
+                      : ""}
+                    {formatSlotWindow(selectedSlotForBooking)}
+                    {selectedSlotForBooking.warehouseTimezone
+                      ? ` (${selectedSlotForBooking.warehouseTimezone})`
+                      : ""}
                   </span>
                 </div>
               </div>
@@ -2062,6 +2106,8 @@ export const DispatcherDashboard: React.FC = () => {
                                       dockName: dockGroup.dockName,
                                       slotStartTime: slot.slotStartTime,
                                       slotEndTime: slot.slotEndTime,
+                                      localStartTime: slot.localStartTime,
+                                      localEndTime: slot.localEndTime,
                                     })
                                   }
                                   className={`min-h-[40px] px-2 py-2 rounded text-[11px] sm:text-xs font-semibold border transition-all text-center touch-manipulation ${
@@ -2070,8 +2116,7 @@ export const DispatcherDashboard: React.FC = () => {
                                       : "bg-white text-gray-800 border-gray-200 hover:border-gray-400"
                                   }`}
                                 >
-                                  {formatDateTime(slot.slotStartTime, "h:mm a")}{" "}
-                                  – {formatDateTime(slot.slotEndTime, "h:mm a")}
+                                  {formatSlotWindow(slot)}
                                 </button>
                               );
                             })}

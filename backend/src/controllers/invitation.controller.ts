@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { invitationService } from '../services/invitation.service';
 import { mailConfig } from '../config/mail.config';
+import { sendError } from '../utils/httpError';
 
 export const inviteUser = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -40,10 +41,6 @@ export const inviteUser = async (req: Request, res: Response): Promise<void> => 
       },
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'An error occurred while creating the invitation.',
-    });
+    sendError(res, error, 'An error occurred while creating the invitation.');
   }
 };

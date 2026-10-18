@@ -210,7 +210,7 @@ describe('Warehouse Booking & Anti-Hogging Policy Integration Tests', () => {
       await prisma.outboxEvent.deleteMany({
         where: {
           aggregateType: 'BOOKING',
-          payload: { path: ['warehouseId'], equals: testWarehouseId },
+          payload: { path: '$.booking.warehouseId', equals: testWarehouseId },
         },
       });
       await prisma.booking.deleteMany({

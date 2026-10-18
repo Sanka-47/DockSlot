@@ -1,0 +1,157 @@
+# DockSlot - full stack for local development / demos.
+#
+#   docker compose up --build
+#
+# Services:
+#   db            MySQL 8.0 with a persistent volume and a readiness healthcheck
+#   redis         Redis 7 backing rate limiting and session state
+#   mock-carrier  carrier webhook receiver (chaos off by default) on :4001
+#   backend       runs `prisma db push` + `prisma db seed`, then the API and the
+#                 transactional outbox worker on :5000
+#
+# Redis backs rate-limit counters, tokenVersion session revocation and the
+# isActive cache. The app's in-memory fallback (backend/src/config/redis.ts) is
+# disabled under NODE_ENV=production, so Redis must be reachable for the /api
+# routes to serve requests.
+#
+# Re-running `docker compose up` re-runs the seed. The seed is destructive by
+# design (it clears and recreates the demo data), so `docker compose down -v`
+# is the cleanest way to start over; use `docker compose restart backend` only
+# when you want to keep existing bookings.
+#
+# Host port overrides (useful when something already listens on the defaults):
+#   BACKEND_HOST_PORT=5050 MYSQL_HOST_PORT=3307 docker compose up --build
+
+name: dockslot
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: dockslot-app:latest
+  restart: unless-stopped
+
+services:
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-dockslot_root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-dockslot_db}
+      MYSQL_USER: ${MYSQL_USER:-dockslot}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-dockslot}
+    ports:
+      # 3307 by default so a host MySQL on 3306 does not cause a port clash.
+      - "${MYSQL_HOST_PORT:-3307}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      # CMD-SHELL so $$MYSQL_ROOT_PASSWORD is expanded inside the container.
+      test:
+        - CMD-SHELL
+        - mysqladmin ping -h 127.0.0.1 -uroot -p"$$MYSQL_ROOT_PASSWORD" --silent
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  mock-carrier:
+    <<: *app
+    command: ["node", "dist/mock-carrier/server.js"]
+    environment:
+      NODE_ENV: production
+      MOCK_CARRIER_PORT: "4001"
+      # Deterministic success by default so end-to-end webhook tests are not
+      # flaky. Set MOCK_CARRIER_SIMULATE_CHAOS=true to exercise retries/backoff.
+      MOCK_CARRIER_SIMULATE_CHAOS: ${MOCK_CARRIER_SIMULATE_CHAOS:-false}
+      MOCK_CARRIER_FAIL_RATE: ${MOCK_CARRIER_FAIL_RATE:-0.20}
+      MOCK_CARRIER_HANG_RATE: ${MOCK_CARRIER_HANG_RATE:-0.05}
+    ports:
+      - "${MOCK_CARRIER_HOST_PORT:-4001}:4001"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4001/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  backend:
+    <<: *app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mock-carrier:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: "5000"
+      # Prisma connection used by the app and by `prisma db push` / `db seed`.
+      DATABASE_URL: mysql://${MYSQL_USER:-dockslot}:${MYSQL_PASSWORD:-dockslot}@db:3306/${MYSQL_DATABASE:-dockslot_db}
+      # mysql2 pool configuration (backend/src/config/db.config.ts).
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_USER: ${MYSQL_USER:-dockslot}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-dockslot}
+      DB_NAME: ${MYSQL_DATABASE:-dockslot_db}
+      # Shared Redis for rate limiting / session revocation (service above).
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-dockslot-local-jwt-secret-change-me}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      APP_URL: http://localhost:${BACKEND_HOST_PORT:-5000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      HEALTH_CHECK_TIMEOUT_MS: "3000"
+      # Transactional outbox worker -> mock carrier inside the compose network.
+      OUTBOX_WORKER_ENABLED: ${OUTBOX_WORKER_ENABLED:-true}
+      CARRIER_NOTIFY_URL: http://mock-carrier:4001/notify
+      OUTBOX_POLL_INTERVAL_MS: ${OUTBOX_POLL_INTERVAL_MS:-5000}
+      OUTBOX_MAX_RETRIES: ${OUTBOX_MAX_RETRIES:-5}
+    ports:
+      - "${BACKEND_HOST_PORT:-5000}:5000"
+    # `exec` makes node PID 1 so compose stop/restart reaches the app's SIGTERM
+    # handler (graceful worker drain + Prisma disconnect).
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        echo "[backend] Applying schema (prisma db push)..."
+        npx prisma db push
+        echo "[backend] Loading seed data (prisma db seed)..."
+        npx prisma db seed
+        echo "[backend] Starting API and outbox worker..."
+        exec node dist/index.js
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:5000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      # db push + seed can take a while on first boot.
+      start_period: 90s
+
+volumes:
+  mysql_data:
+    driver: local

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { warehouseService } from '../services/warehouse.service';
 import { isValidDateString } from '../utils/time.utils';
+import { sendError } from '../utils/httpError';
 
 /**
  * Safely parses numeric route parameters.
@@ -39,11 +40,7 @@ export const createWarehouse = async (req: Request, res: Response): Promise<void
       data: warehouse,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Internal server error while creating warehouse.',
-    });
+    sendError(res, error, 'Internal server error while creating warehouse.');
   }
 };
 
@@ -71,11 +68,7 @@ export const getWarehouses = async (req: Request, res: Response): Promise<void> 
       data: warehouses,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Internal server error while fetching warehouses.',
-    });
+    sendError(res, error, 'Internal server error while fetching warehouses.');
   }
 };
 
@@ -112,11 +105,7 @@ export const getWarehouseById = async (req: Request, res: Response): Promise<voi
       data: warehouse,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Internal server error while fetching warehouse.',
-    });
+    sendError(res, error, 'Internal server error while fetching warehouse.');
   }
 };
 
@@ -151,11 +140,7 @@ export const updateWarehouse = async (req: Request, res: Response): Promise<void
       data: updated,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Internal server error while updating warehouse.',
-    });
+    sendError(res, error, 'Internal server error while updating warehouse.');
   }
 };
 
@@ -202,11 +187,93 @@ export const updateWarehouseSettings = async (req: Request, res: Response): Prom
       data: updated,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Internal server error while updating warehouse settings.',
+    sendError(res, error, 'Internal server error while updating warehouse settings.');
+  }
+};
+
+/**
+ * Retrieves the weekly operating schedule for a warehouse.
+ * GET /api/warehouses/:warehouseId/hours
+ */
+export const getWarehouseHours = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) {
+      res.status(401).json({
+        success: false,
+        message: 'Unauthorized. Organization context required.',
+      });
+      return;
+    }
+
+    const warehouseId = parseParamId(req.params.warehouseId || req.params.id);
+    if (isNaN(warehouseId)) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid warehouse ID.',
+      });
+      return;
+    }
+
+    const data = await warehouseService.getWarehouseHours(warehouseId, organizationId);
+    res.status(200).json({
+      success: true,
+      data,
     });
+  } catch (error: any) {
+    sendError(res, error, 'Internal server error while fetching warehouse operating hours.');
+  }
+};
+
+/**
+ * Replaces the weekly operating schedule for a warehouse.
+ * PUT /api/warehouses/:warehouseId/hours
+ *
+ * Days are addressed 1 (Monday) - 7 (Sunday). An update that prunes an opening or
+ * closing boundary is rejected with HTTP 400 when active bookings occupy the
+ * removed range.
+ */
+export const updateWarehouseHours = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) {
+      res.status(401).json({
+        success: false,
+        message: 'Unauthorized. Organization context required.',
+      });
+      return;
+    }
+
+    const warehouseId = parseParamId(req.params.warehouseId || req.params.id);
+    if (isNaN(warehouseId)) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid warehouse ID.',
+      });
+      return;
+    }
+
+    const hours = req.body?.hours ?? req.body?.operatingHours;
+    if (!Array.isArray(hours) || hours.length === 0) {
+      res.status(400).json({
+        success: false,
+        message:
+          'Missing operating hours. Provide a non-empty days array in the request body.',
+      });
+      return;
+    }
+
+    const data = await warehouseService.updateWarehouseHours(warehouseId, organizationId, {
+      hours,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Warehouse operating hours updated successfully',
+      data,
+    });
+  } catch (error: any) {
+    sendError(res, error, 'Internal server error while updating warehouse operating hours.');
   }
 };
 
@@ -246,11 +313,7 @@ export const createDock = async (req: Request, res: Response): Promise<void> => 
       data: dock,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Internal server error while creating dock.',
-    });
+    sendError(res, error, 'Internal server error while creating dock.');
   }
 };
 
@@ -287,11 +350,7 @@ export const getDocks = async (req: Request, res: Response): Promise<void> => {
       data: docks,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Internal server error while fetching docks.',
-    });
+    sendError(res, error, 'Internal server error while fetching docks.');
   }
 };
 
@@ -329,11 +388,7 @@ export const updateDockStatus = async (req: Request, res: Response): Promise<voi
       data: updatedDock,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Internal server error while updating dock status.',
-    });
+    sendError(res, error, 'Internal server error while updating dock status.');
   }
 };
 
@@ -398,11 +453,7 @@ export const updateDock = async (req: Request, res: Response): Promise<void> => 
       data: updatedDock,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Internal server error while updating dock.',
-    });
+    sendError(res, error, 'Internal server error while updating dock.');
   }
 };
 
@@ -442,17 +493,27 @@ export const getAvailableSlots = async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    const slots = await warehouseService.getAvailableSlots(warehouseId, trimmedDate);
+    const rawDockId = req.query.dockId;
+    let dockId: number | undefined;
+    if (rawDockId !== undefined) {
+      const parsedDockId = parseParamId(rawDockId as string | string[]);
+      if (isNaN(parsedDockId) || parsedDockId <= 0) {
+        res.status(400).json({
+          success: false,
+          message: 'Invalid dockId query parameter.',
+        });
+        return;
+      }
+      dockId = parsedDockId;
+    }
+
+    const slots = await warehouseService.getAvailableSlots(warehouseId, trimmedDate, dockId);
     res.status(200).json({
       success: true,
       data: slots,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Internal server error while fetching available slots.',
-    });
+    sendError(res, error, 'Internal server error while fetching available slots.');
   }
 };
 
@@ -526,11 +587,7 @@ export const createDockClosure = async (req: Request, res: Response): Promise<vo
       data: closure,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Internal server error while scheduling dock maintenance closure.',
-    });
+    sendError(res, error, 'Internal server error while scheduling dock maintenance closure.');
   }
 };
 
@@ -565,11 +622,7 @@ export const getDockClosures = async (req: Request, res: Response): Promise<void
       data: closures,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Internal server error while fetching dock maintenance closures.',
-    });
+    sendError(res, error, 'Internal server error while fetching dock maintenance closures.');
   }
 };
 
@@ -604,11 +657,7 @@ export const getWarehousePolicy = async (req: Request, res: Response): Promise<v
       data: policy,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Internal server error while fetching warehouse policy.',
-    });
+    sendError(res, error, 'Internal server error while fetching warehouse policy.');
   }
 };
 
@@ -650,11 +699,7 @@ export const updateWarehousePolicy = async (req: Request, res: Response): Promis
       data: policy,
     });
   } catch (error: any) {
-    const status = error.status || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Internal server error while updating warehouse policy.',
-    });
+    sendError(res, error, 'Internal server error while updating warehouse policy.');
   }
 };
 
