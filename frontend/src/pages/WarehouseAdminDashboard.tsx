@@ -36,6 +36,8 @@ import type {
 import type { User } from '../types/user.types';
 import { useAuth } from '../hooks/useAuth';
 import { getTimezoneOptions } from '../utils/timezones';
+import { useConfirm } from '../hooks/useConfirm';
+import toast from 'react-hot-toast';
 
 interface ScheduleDay {
   day: string;
@@ -109,6 +111,7 @@ const mergeScheduleWithHours = (hours: OperatingHour[]): ScheduleDay[] =>
 
 export const WarehouseAdminDashboard: React.FC = () => {
   const { user } = useAuth();
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   // Active Tab: 'warehouses' | 'schedule' | 'policies' | 'users'
   const [activeTab, setActiveTab] = useState<'warehouses' | 'schedule' | 'policies' | 'users'>('warehouses');
@@ -552,38 +555,71 @@ export const WarehouseAdminDashboard: React.FC = () => {
   };
 
   const handleDeactivateUser = async (targetUser: User) => {
-    const confirmed = window.confirm(
-      `Are you sure you want to deactivate ${targetUser.email}? Their active sessions will be terminated immediately.`
-    );
-    if (!confirmed) return;
+    const ok = await confirm({
+      title: 'Deactivate team member',
+      message: (
+        <>
+          Are you sure you want to deactivate <strong>{targetUser.email}</strong>? Their active
+          sessions will be terminated immediately.
+        </>
+      ),
+      confirmLabel: 'Deactivate',
+      variant: 'danger',
+    });
+    if (!ok) return;
 
     setDeactivatingUserId(targetUser.id);
-    setErrorBanner(null);
     try {
-      const res = await userApi.deactivateUser(targetUser.id);
-      triggerSuccess(res.message || `User ${targetUser.email} has been deactivated.`);
-      await fetchUsers();
-    } catch (err: any) {
-      setErrorBanner(err.response?.data?.message || 'Failed to deactivate user.');
+      // A toast tracks the whole lifecycle: loading -> success/error.
+      await toast.promise(
+        userApi.deactivateUser(targetUser.id).then(async (res) => {
+          await fetchUsers();
+          return res;
+        }),
+        {
+          loading: `Deactivating ${targetUser.email}...`,
+          success: (res) => res?.message || `User ${targetUser.email} has been deactivated.`,
+          error: (err: any) => err?.response?.data?.message || 'Failed to deactivate user.',
+        }
+      );
+    } catch {
+      // The error toast already surfaced the failure; swallow to avoid an
+      // unhandled rejection from the click handler.
     } finally {
       setDeactivatingUserId(null);
     }
   };
 
   const handleReactivateUser = async (targetUser: User) => {
-    const confirmed = window.confirm(
-      `Are you sure you want to reactivate ${targetUser.email}? They will be permitted to log in and access system functions.`
-    );
-    if (!confirmed) return;
+    const ok = await confirm({
+      title: 'Reactivate team member',
+      message: (
+        <>
+          Are you sure you want to reactivate <strong>{targetUser.email}</strong>? They will be
+          permitted to log in and access system functions.
+        </>
+      ),
+      confirmLabel: 'Reactivate',
+      variant: 'default',
+    });
+    if (!ok) return;
 
     setReactivatingUserId(targetUser.id);
-    setErrorBanner(null);
     try {
-      const res = await userApi.reactivateUser(targetUser.id);
-      triggerSuccess(res.message || `User ${targetUser.email} has been reactivated.`);
-      await fetchUsers();
-    } catch (err: any) {
-      setErrorBanner(err.response?.data?.message || 'Failed to reactivate user.');
+      await toast.promise(
+        userApi.reactivateUser(targetUser.id).then(async (res) => {
+          await fetchUsers();
+          return res;
+        }),
+        {
+          loading: `Reactivating ${targetUser.email}...`,
+          success: (res) => res?.message || `User ${targetUser.email} has been reactivated.`,
+          error: (err: any) => err?.response?.data?.message || 'Failed to reactivate user.',
+        }
+      );
+    } catch {
+      // The error toast already surfaced the failure; swallow to avoid an
+      // unhandled rejection from the click handler.
     } finally {
       setReactivatingUserId(null);
     }
@@ -1661,6 +1697,8 @@ export const WarehouseAdminDashboard: React.FC = () => {
           </div>
         </div>
       )}
+
+      {confirmDialog}
     </div>
   );
 };
