@@ -89,4 +89,9 @@ i did not messure time exactly, i think i reached the 24 h mark in the proxy con
 
 Issue i faced - 
 
-in the final day i attempted to export the session after the run because i hit the limit on my model, but when I list sessions with space factory session list the session no longer appeared. I retried the export and many other thing but the CLI returned no file. but all the ai sessions upto that point are available 
+In the final day i attempted to export the session after the run because i hit the limit on my model, but when I list sessions with space factory session list the session no longer appeared. I retried the export and many other thing but the CLI returned no file. but all the ai sessions upto that point are available 
+
+
+
+## Final System Architecture diagram
+<img width="2274" height="1989" alt="1" src="https://github.com/user-attachments/assets/bfdda9cd-7ce8-4c55-9536-5d753c237780" />
