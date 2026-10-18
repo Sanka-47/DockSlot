@@ -10,7 +10,7 @@ This record documents the evolution of the UI components, design decisions, and 
 * **Decision:** Because the color palette chosen by the AI looked cleaner and fit the application better, I chose to stick with it for the rest of the project.
 * **Screenshots:**
 ![alt text](FirstAIDesing.png)
-  * ![Initial Iteration Screenshot](../Screenshot%202026-10-14%20070434.png)
+![alt text](<Screenshot 2026-10-14 070434.png>)
 
 ---
 
@@ -30,24 +30,26 @@ This record documents the evolution of the UI components, design decisions, and 
   4. Restarted the backend server.
 * **Validations Added:** Added robust front- and back-end validation to require a maintenance reason, prevent selecting past dates, and restrict booking status changes (Arrived / No-Show) so they can only be triggered *after* the scheduled start time has passed.
 * **Screenshots:**
-  * ![Dock Manager UI](../image.png)
-  * ![Dock Manager Active View](../Screenshot%202026-10-18%20123527.png)
+![alt text](image.png)
+![alt text](<Screenshot 2026-10-18 123527.png>)
+
 
 ---
 
 ### 4. Dispatcher Dashboard
 * **Implementation:** The Dispatcher dashboard UI and booking slot views were implemented cleanly without issues.
 * **Screenshots:**
-  * ![Dispatcher UI](../image-1.png)
-  * ![Dispatcher Slot Search](../Screenshot%202026-10-18%20120621.png)
+![alt text](image-1.png)
+![alt text](<Screenshot 2026-10-18 120621.png>)
+
 
 ---
 
 ### 5. Warehouse Admin Dashboard
 * **Implementation:** The Warehouse Admin dashboard was successfully built, allowing operators to manage warehouses, docks, and operating hours.
 * **Screenshots:**
-  * ![Warehouse Admin UI](../image-2.png)
-  * ![Warehouse Admin Config View](../Screenshot%202026-10-18%20123103.png)
+![alt text](image-2.png)
+![alt text](<Screenshot 2026-10-18 123103.png>)
 
 ---
 
@@ -58,6 +60,5 @@ This record documents the evolution of the UI components, design decisions, and 
   2. A duplicate dispatch/booking section embedded inside the admin console tabs.
 * **The Fix:** Recognizing that the version inside the admin console tabs was redundant clutter, I instructed the AI to remove that specific section from `frontend/src/pages/CarrierAdminDashboard.tsx`.
 * **Screenshots:**
-  * ![Carrier Admin UI](../image-3.png)
-  * ![Carrier Admin Dashboard View](../Screenshot%202026-10-18%20123347.png)
-
+![alt text](image-3.png)
+![alt text](<Screenshot 2026-10-18 123347.png>)
