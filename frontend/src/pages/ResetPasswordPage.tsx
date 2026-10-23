@@ -14,7 +14,8 @@ import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { authApi } from '../api/auth.api';
+import { resetPasswordPageService } from '../services/resetPasswordPage.service';
+import { getApiErrorMessage } from '../services/errors';
 
 export interface ResetPasswordPageProps {
   token?: string;
@@ -39,9 +40,8 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
   const [isSuccess, setIsSuccess] = useState<boolean>(false);
 
   useEffect(() => {
-    if (!token && typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const queryToken = urlParams.get('token');
+    if (!token) {
+      const queryToken = resetPasswordPageService.getTokenFromUrl();
       if (queryToken) {
         setToken(queryToken);
       }
@@ -52,36 +52,30 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
     e.preventDefault();
     setErrorMessage(null);
 
-    if (!token.trim()) {
-      setErrorMessage(
-        'Missing password reset token. Please use the link provided in your email or request a new one.'
-      );
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      setErrorMessage('New password must be at least 6 characters long.');
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setErrorMessage('Passwords do not match. Please verify both fields.');
+    const validationError = resetPasswordPageService.validateResetInput(
+      token,
+      newPassword,
+      confirmPassword
+    );
+    if (validationError) {
+      setErrorMessage(validationError);
       return;
     }
 
     try {
       setIsLoading(true);
-      await authApi.resetPassword(token.trim(), newPassword);
+      await resetPasswordPageService.resetPassword(token, newPassword);
       setIsSuccess(true);
       if (onSuccess) {
         onSuccess();
       }
-    } catch (err: any) {
-      const serverMessage =
-        err.response?.data?.message ||
-        err.message ||
-        'Failed to reset password. The reset link may be invalid or expired.';
-      setErrorMessage(serverMessage);
+    } catch (err: unknown) {
+      setErrorMessage(
+        getApiErrorMessage(
+          err,
+          'Failed to reset password. The reset link may be invalid or expired.'
+        )
+      );
     } finally {
       setIsLoading(false);
     }

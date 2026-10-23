@@ -25,11 +25,20 @@ import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { bookingApi } from '../api/booking.api';
-import { warehouseApi } from '../api/warehouse.api';
+import {
+  dockManagerDashboardService,
+  aggregateDocks,
+  canUpdateBookingStatus,
+  findFirstAvailableClosureDate,
+  getBookedDatesForDock,
+  getUpcomingDays,
+  hasBookingConflict as detectBookingConflict,
+  validateClosureInput,
+} from '../services/dockManagerDashboard.service';
+import { getApiErrorMessage } from '../services/errors';
 import { BookingAuditLogModal } from '../components/BookingAuditLogModal';
 import type { Booking, BookingStatus } from '../types/booking.types';
-import type { Warehouse, Dock, DockClosure } from '../types/warehouse.types';
+import type { Warehouse, DockClosure } from '../types/warehouse.types';
 import { formatDateTime } from '../utils/formatters';
 
 export const DockManagerDashboard: React.FC = () => {
@@ -73,50 +82,16 @@ export const DockManagerDashboard: React.FC = () => {
       setIsLoadingBookings(true);
       setIsLoadingWarehouses(true);
 
-      const [bookingsRes, warehousesRes] = await Promise.all([
-        bookingApi.getAll(),
-        warehouseApi.getAll(),
-      ]);
-
-      const fetchedBookings = bookingsRes?.data || [];
-      const fetchedWarehouses = warehousesRes?.data || [];
-
-      setBookings(fetchedBookings);
-      setWarehouses(fetchedWarehouses);
-
-      // Fetch closures for all docks across warehouses
-      const allDocks: Dock[] = [];
-      fetchedWarehouses.forEach((wh) => {
-        if (wh.docks) {
-          wh.docks.forEach((d) => allDocks.push(d));
-        }
-      });
-
-      if (allDocks.length > 0) {
-        try {
-          const closurePromises = allDocks.map((dock) =>
-            warehouseApi.getDockClosures(dock.id).catch(() => ({ data: [] }))
-          );
-          const closureResults = await Promise.all(closurePromises);
-          const aggregatedClosures: DockClosure[] = [];
-          closureResults.forEach((res, index) => {
-            if (res?.data) {
-              const dockData = allDocks[index];
-              res.data.forEach((c) => {
-                aggregatedClosures.push({ ...c, dock: dockData });
-              });
-            }
-          });
-          setClosures(aggregatedClosures);
-        } catch {
-          // Non-critical if closures fail to load
-        }
-      }
-    } catch (err: any) {
+      const data = await dockManagerDashboardService.loadDashboardData();
+      setBookings(data.bookings);
+      setWarehouses(data.warehouses);
+      setClosures(data.closures);
+    } catch (err: unknown) {
       setErrorMessage(
-        err.response?.data?.message ||
-          err.message ||
+        getApiErrorMessage(
+          err,
           'Failed to load dock manager dashboard data. Please try again.'
+        )
       );
     } finally {
       setIsLoadingBookings(false);
@@ -137,57 +112,14 @@ export const DockManagerDashboard: React.FC = () => {
   }, [successBanner]);
 
   // Aggregate all docks from warehouses
-  const allDocks = useMemo(() => {
-    const list: (Dock & { warehouseName: string })[] = [];
-    warehouses.forEach((wh) => {
-      if (wh.docks) {
-        wh.docks.forEach((d) => {
-          list.push({ ...d, warehouseName: wh.name });
-        });
-      }
-    });
-    return list;
-  }, [warehouses]);
+  const allDocks = useMemo(() => aggregateDocks(warehouses), [warehouses]);
 
   // Filtered Bookings
   const filteredBookings = useMemo(() => {
-    return bookings.filter((b) => {
-      // Warehouse Filter
-      if (selectedWarehouseId !== 'ALL') {
-        const whId = b.dock?.warehouseId || b.dock?.warehouse?.id;
-        if (whId !== undefined && whId !== Number(selectedWarehouseId)) {
-          return false;
-        }
-      }
-
-      // Status Filter
-      if (selectedStatusFilter !== 'ALL' && b.status !== selectedStatusFilter) {
-        return false;
-      }
-
-      // Search Query (ID, carrier, truck plate, driver name, driver phone, cargo note)
-      if (searchQuery.trim()) {
-        const query = searchQuery.trim().toLowerCase();
-        const matchesId = b.id.toString().includes(query);
-        const matchesCarrier = b.carrierOrg?.name?.toLowerCase().includes(query);
-        const matchesTruck = b.truckPlate?.toLowerCase().includes(query);
-        const matchesDriver = b.driverName?.toLowerCase().includes(query);
-        const matchesPhone = b.driverPhone?.toLowerCase().includes(query);
-        const matchesDock = b.dock?.name?.toLowerCase().includes(query);
-        const matchesNote = b.cargoNote?.toLowerCase().includes(query);
-
-        return (
-          matchesId ||
-          matchesCarrier ||
-          matchesTruck ||
-          matchesDriver ||
-          matchesPhone ||
-          matchesDock ||
-          matchesNote
-        );
-      }
-
-      return true;
+    return dockManagerDashboardService.filterBookings(bookings, {
+      warehouseId: selectedWarehouseId,
+      status: selectedStatusFilter,
+      searchQuery,
     });
   }, [bookings, selectedWarehouseId, selectedStatusFilter, searchQuery]);
 
@@ -200,7 +132,7 @@ export const DockManagerDashboard: React.FC = () => {
 
     // Client-side validation: booking slotStartTime must have passed
     const targetBooking = bookings.find((b) => b.id === bookingId);
-    if (targetBooking?.slotStartTime && new Date() < new Date(targetBooking.slotStartTime)) {
+    if (!canUpdateBookingStatus(targetBooking)) {
       setBookingErrorMessage(
         `Cannot update status for booking #${bookingId} before its scheduled slot start time has passed.`
       );
@@ -209,8 +141,10 @@ export const DockManagerDashboard: React.FC = () => {
 
     setStatusActionLoadingId(bookingId);
     try {
-      const res = await bookingApi.updateStatus(bookingId, newStatus);
-      const updatedBooking = res.data;
+      const updatedBooking = await dockManagerDashboardService.updateBookingStatus(
+        bookingId,
+        newStatus
+      );
 
       // Update local state smoothly
       setBookings((prev) =>
@@ -226,11 +160,12 @@ export const DockManagerDashboard: React.FC = () => {
       setSuccessBanner(
         `Booking #${bookingId} successfully ${statusLabels[newStatus] || newStatus}.`
       );
-    } catch (err: any) {
+    } catch (err: unknown) {
       setBookingErrorMessage(
-        err.response?.data?.message ||
-          err.message ||
+        getApiErrorMessage(
+          err,
           `Failed to update status for booking #${bookingId}.`
+        )
       );
     } finally {
       setStatusActionLoadingId(null);
@@ -245,59 +180,11 @@ export const DockManagerDashboard: React.FC = () => {
 
   // Map of date (YYYY-MM-DD) -> active bookings count on the selected dock bay
   const bookedDatesForSelectedDock = useMemo(() => {
-    const datesMap = new Map<string, number>();
-    const targetDockId = Number(selectedDockForClosure);
-    if (!targetDockId) return datesMap;
-
-    bookings.forEach((b) => {
-      const bDockId = b.dockId ?? b.dock?.id;
-      if (
-        bDockId === targetDockId &&
-        (b.status === 'BOOKED' || b.status === 'ARRIVED')
-      ) {
-        const d = new Date(b.slotStartTime);
-        const yyyy = d.getFullYear();
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const dd = String(d.getDate()).padStart(2, '0');
-        const dateStr = `${yyyy}-${mm}-${dd}`;
-        datesMap.set(dateStr, (datesMap.get(dateStr) || 0) + 1);
-      }
-    });
-
-    return datesMap;
+    return getBookedDatesForDock(bookings, Number(selectedDockForClosure));
   }, [bookings, selectedDockForClosure]);
 
   // Generate next 14 calendar days starting from today for quick selection
-  const upcomingDays = useMemo(() => {
-    const days: {
-      dateStr: string;
-      dayOfWeekShort: string;
-      dayOfMonth: number;
-      monthShort: string;
-    }[] = [];
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    for (let i = 0; i < 14; i++) {
-      const d = new Date(today);
-      d.setDate(today.getDate() + i);
-
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const dd = String(d.getDate()).padStart(2, '0');
-      const dateStr = `${yyyy}-${mm}-${dd}`;
-
-      days.push({
-        dateStr,
-        dayOfWeekShort: d.toLocaleDateString('en-US', { weekday: 'short' }),
-        dayOfMonth: d.getDate(),
-        monthShort: d.toLocaleDateString('en-US', { month: 'short' }),
-      });
-    }
-
-    return days;
-  }, []);
+  const upcomingDays = useMemo(() => getUpcomingDays(14), []);
 
   const isSelectedDateBooked = useMemo(() => {
     if (!selectedClosureDate) return false;
@@ -306,29 +193,20 @@ export const DockManagerDashboard: React.FC = () => {
 
   const hasBookingConflict = useMemo(() => {
     if (isSelectedDateBooked) return true;
-    if (!closureStartTime || !closureEndTime || !selectedDockForClosure) return false;
+    if (!selectedDockForClosure) return false;
 
-    const startDate = new Date(closureStartTime);
-    const endDate = new Date(closureEndTime);
-    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return false;
-
-    const cur = new Date(startDate);
-    cur.setHours(0, 0, 0, 0);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
-
-    while (cur <= end) {
-      const yyyy = cur.getFullYear();
-      const mm = String(cur.getMonth() + 1).padStart(2, '0');
-      const dd = String(cur.getDate()).padStart(2, '0');
-      const dateStr = `${yyyy}-${mm}-${dd}`;
-      if (bookedDatesForSelectedDock.has(dateStr)) {
-        return true;
-      }
-      cur.setDate(cur.getDate() + 1);
-    }
-    return false;
-  }, [isSelectedDateBooked, closureStartTime, closureEndTime, selectedDockForClosure, bookedDatesForSelectedDock]);
+    return detectBookingConflict(
+      closureStartTime,
+      closureEndTime,
+      bookedDatesForSelectedDock
+    );
+  }, [
+    isSelectedDateBooked,
+    closureStartTime,
+    closureEndTime,
+    selectedDockForClosure,
+    bookedDatesForSelectedDock,
+  ]);
 
   // Open Closure Modal (optionally preselecting a dock)
   const handleOpenClosureModal = (dockId?: number) => {
@@ -336,49 +214,16 @@ export const DockManagerDashboard: React.FC = () => {
     const targetDockId = dockId !== undefined ? dockId : allDocks[0]?.id || '';
     setSelectedDockForClosure(targetDockId);
 
-    // Compute booked dates for targetDockId
-    const targetBookedDates = new Set<string>();
-    bookings.forEach((b) => {
-      const bDockId = b.dockId ?? b.dock?.id;
-      if (
-        bDockId === Number(targetDockId) &&
-        (b.status === 'BOOKED' || b.status === 'ARRIVED')
-      ) {
-        const d = new Date(b.slotStartTime);
-        const yyyy = d.getFullYear();
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const dd = String(d.getDate()).padStart(2, '0');
-        targetBookedDates.add(`${yyyy}-${mm}-${dd}`);
-      }
-    });
+    const suggestion = findFirstAvailableClosureDate(
+      bookings,
+      Number(targetDockId)
+    );
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    let chosenDate = '';
-    for (let i = 0; i < 14; i++) {
-      const d = new Date(today);
-      d.setDate(today.getDate() + i);
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const dd = String(d.getDate()).padStart(2, '0');
-      const dateStr = `${yyyy}-${mm}-${dd}`;
-      if (!targetBookedDates.has(dateStr)) {
-        chosenDate = dateStr;
-        break;
-      }
-    }
-    if (!chosenDate) {
-      const yyyy = today.getFullYear();
-      const mm = String(today.getMonth() + 1).padStart(2, '0');
-      const dd = String(today.getDate()).padStart(2, '0');
-      chosenDate = `${yyyy}-${mm}-${dd}`;
-    }
-
-    setSelectedClosureDate(chosenDate);
+    setSelectedClosureDate(suggestion.date);
     setClosureStartTimeOnly('08:00');
     setClosureEndTimeOnly('18:00');
-    setClosureStartTime(`${chosenDate}T08:00`);
-    setClosureEndTime(`${chosenDate}T18:00`);
+    setClosureStartTime(`${suggestion.date}T08:00`);
+    setClosureEndTime(`${suggestion.date}T18:00`);
     setClosureReason('');
     setIsClosureModalOpen(true);
   };
@@ -409,61 +254,32 @@ export const DockManagerDashboard: React.FC = () => {
     e.preventDefault();
     setClosureError(null);
 
-    if (!selectedDockForClosure) {
-      setClosureError('Please select a dock to schedule maintenance.');
-      return;
-    }
-
-    if (hasBookingConflict) {
-      setClosureError(
-        'Cannot schedule maintenance closure: an active booking exists on this dock for that day.'
-      );
-      return;
-    }
-
     const trimmedReason = closureReason.trim();
-    if (!trimmedReason) {
-      setClosureError('Maintenance reason is required and cannot be blank.');
-      return;
-    }
-
-    if (!closureStartTime || !closureEndTime) {
-      setClosureError('Both start time and end time are required.');
+    const validationError = validateClosureInput({
+      dockId: selectedDockForClosure,
+      hasBookingConflict,
+      reason: trimmedReason,
+      startTime: closureStartTime,
+      endTime: closureEndTime,
+    });
+    if (validationError) {
+      setClosureError(validationError);
       return;
     }
 
     const startDate = new Date(closureStartTime);
     const endDate = new Date(closureEndTime);
 
-    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-      setClosureError('Please enter valid start and end dates.');
-      return;
-    }
-
-    // Client-side validation: start time cannot be in the past
-    const now = new Date();
-    if (startDate < now) {
-      setClosureError(
-        'Closure start time cannot be in the past. Please select a current or future time.'
-      );
-      return;
-    }
-
-    if (endDate <= startDate) {
-      setClosureError('End time must be after the start time.');
-      return;
-    }
-
     try {
       setIsSubmittingClosure(true);
 
-      const res = await warehouseApi.createDockClosure(Number(selectedDockForClosure), {
-        startTime: startDate.toISOString(),
-        endTime: endDate.toISOString(),
-        reason: trimmedReason,
-      });
+      const newClosure = await dockManagerDashboardService.createDockClosure(
+        Number(selectedDockForClosure),
+        startDate.toISOString(),
+        endDate.toISOString(),
+        trimmedReason
+      );
 
-      const newClosure = res.data;
       const targetDock = allDocks.find((d) => d.id === Number(selectedDockForClosure));
 
       setClosures((prev) => [{ ...newClosure, dock: targetDock }, ...prev]);
@@ -476,12 +292,13 @@ export const DockManagerDashboard: React.FC = () => {
 
       // Refresh data in background
       fetchData();
-    } catch (err: any) {
-      const serverMessage =
-        err.response?.data?.message ||
-        err.message ||
-        'Failed to schedule dock closure. Please check for scheduling conflicts.';
-      setClosureError(serverMessage);
+    } catch (err: unknown) {
+      setClosureError(
+        getApiErrorMessage(
+          err,
+          'Failed to schedule dock closure. Please check for scheduling conflicts.'
+        )
+      );
     } finally {
       setIsSubmittingClosure(false);
     }

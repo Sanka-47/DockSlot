@@ -14,7 +14,8 @@ import {
   Building2,
 } from 'lucide-react';
 import { Button } from './ui/button';
-import { bookingApi } from '../api/booking.api';
+import { bookingAuditLogModalService } from '../services/bookingAuditLogModal.service';
+import { getApiErrorMessage } from '../services/errors';
 import type { Booking, BookingAuditLog } from '../types/booking.types';
 import { formatDateTime } from '../utils/formatters';
 
@@ -38,13 +39,13 @@ export const BookingAuditLogModal: React.FC<BookingAuditLogModalProps> = ({
     setIsLoading(true);
     setError(null);
     try {
-      const res = await bookingApi.getAuditLog(booking.id);
-      setLogs(res.data || []);
-    } catch (err: any) {
+      setLogs(await bookingAuditLogModalService.fetchAuditLogs(booking.id));
+    } catch (err: unknown) {
       setError(
-        err.response?.data?.message ||
-          err.message ||
+        getApiErrorMessage(
+          err,
           'Failed to load audit history for this booking.'
+        )
       );
     } finally {
       setIsLoading(false);

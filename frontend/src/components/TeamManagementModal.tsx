@@ -10,7 +10,8 @@ import {
   RefreshCw,
   Shield,
 } from 'lucide-react';
-import { userApi } from '../api/user.api';
+import { teamManagementModalService } from '../services/teamManagementModal.service';
+import { getApiErrorMessage } from '../services/errors';
 import type { User } from '../types/user.types';
 import { useConfirm } from '../hooks/useConfirm';
 import toast from 'react-hot-toast';
@@ -44,12 +45,11 @@ export const TeamManagementModal: React.FC<TeamManagementModalProps> = ({
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const res = await userApi.getUsers();
-      if (res?.data) {
-        setUsers(res.data);
-      }
-    } catch (err: any) {
-      setErrorMessage(err.response?.data?.message || 'Failed to load organization team members.');
+      setUsers(await teamManagementModalService.fetchUsers());
+    } catch (err: unknown) {
+      setErrorMessage(
+        getApiErrorMessage(err, 'Failed to load organization team members.')
+      );
     } finally {
       setIsLoading(false);
     }
@@ -84,14 +84,14 @@ export const TeamManagementModal: React.FC<TeamManagementModalProps> = ({
     try {
       // A toast tracks the whole lifecycle: loading -> success/error.
       await toast.promise(
-        userApi.deactivateUser(targetUser.id).then(async (res) => {
+        teamManagementModalService.deactivateUser(targetUser.id).then(async (res) => {
           await fetchUsers();
           return res;
         }),
         {
           loading: `Deactivating ${targetUser.email}...`,
           success: (res) => res?.message || `User ${targetUser.email} has been deactivated.`,
-          error: (err: any) => err?.response?.data?.message || 'Failed to deactivate user.',
+          error: (err: unknown) => getApiErrorMessage(err, 'Failed to deactivate user.'),
         }
       );
     } catch {
@@ -119,14 +119,14 @@ export const TeamManagementModal: React.FC<TeamManagementModalProps> = ({
     setReactivatingId(targetUser.id);
     try {
       await toast.promise(
-        userApi.reactivateUser(targetUser.id).then(async (res) => {
+        teamManagementModalService.reactivateUser(targetUser.id).then(async (res) => {
           await fetchUsers();
           return res;
         }),
         {
           loading: `Reactivating ${targetUser.email}...`,
           success: (res) => res?.message || `User ${targetUser.email} has been reactivated.`,
-          error: (err: any) => err?.response?.data?.message || 'Failed to reactivate user.',
+          error: (err: unknown) => getApiErrorMessage(err, 'Failed to reactivate user.'),
         }
       );
     } catch {
@@ -145,12 +145,12 @@ export const TeamManagementModal: React.FC<TeamManagementModalProps> = ({
     setErrorMessage(null);
     setSuccessMessage(null);
     try {
-      const res = await userApi.inviteUser({ email: inviteEmail.trim() });
-      setSuccessMessage(res.message || `Invitation successfully sent to ${inviteEmail}.`);
+      const result = await teamManagementModalService.inviteUser(inviteEmail);
+      setSuccessMessage(result.message);
       setInviteEmail('');
       await fetchUsers();
-    } catch (err: any) {
-      setErrorMessage(err.response?.data?.message || 'Failed to send invitation.');
+    } catch (err: unknown) {
+      setErrorMessage(getApiErrorMessage(err, 'Failed to send invitation.'));
     } finally {
       setIsInviting(false);
     }

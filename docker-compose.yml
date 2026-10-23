@@ -76,7 +76,7 @@ services:
       MOCK_CARRIER_PORT: "4001"
       # Deterministic success by default so end-to-end webhook tests are not
       # flaky. Set MOCK_CARRIER_SIMULATE_CHAOS=true to exercise retries/backoff.
-      MOCK_CARRIER_SIMULATE_CHAOS: ${MOCK_CARRIER_SIMULATE_CHAOS:-false}
+      MOCK_CARRIER_SIMULATE_CHAOS: ${MOCK_CARRIER_SIMULATE_CHAOS:-true}
       MOCK_CARRIER_FAIL_RATE: ${MOCK_CARRIER_FAIL_RATE:-0.20}
       MOCK_CARRIER_HANG_RATE: ${MOCK_CARRIER_HANG_RATE:-0.05}
     ports:
@@ -114,7 +114,7 @@ services:
       DB_NAME: ${MYSQL_DATABASE:-dockslot_db}
       # Shared Redis for rate limiting / session revocation (service above).
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: ${JWT_SECRET:-dockslot-local-jwt-secret-change-me}
+      JWT_SECRET: ${JWT_SECRET:-ZNW0qhZb8_MH4ixAW4GlhZaCN1K9slUC3UUsSaco4qw}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
       JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
       APP_URL: http://localhost:${BACKEND_HOST_PORT:-5000}

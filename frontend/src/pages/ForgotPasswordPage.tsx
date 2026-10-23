@@ -12,7 +12,8 @@ import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { authApi } from '../api/auth.api';
+import { forgotPasswordPageService } from '../services/forgotPasswordPage.service';
+import { getApiErrorMessage } from '../services/errors';
 
 export interface ForgotPasswordPageProps {
   onBackToSignIn?: () => void;
@@ -33,32 +34,28 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
     e.preventDefault();
     setErrorMessage(null);
 
-    const trimmedEmail = email.trim().toLowerCase();
-    if (!trimmedEmail) {
-      setErrorMessage('Please enter your email address.');
-      return;
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(trimmedEmail)) {
-      setErrorMessage('Please enter a valid email address.');
+    const trimmedEmail = forgotPasswordPageService.normalizeEmail(email);
+    const validationError = forgotPasswordPageService.validateEmail(trimmedEmail);
+    if (validationError) {
+      setErrorMessage(validationError);
       return;
     }
 
     try {
       setIsLoading(true);
-      await authApi.forgotPassword(trimmedEmail);
+      await forgotPasswordPageService.requestPasswordReset(trimmedEmail);
       setSubmittedEmail(trimmedEmail);
       setIsSubmitted(true);
       if (onSuccess) {
         onSuccess(trimmedEmail);
       }
-    } catch (err: any) {
-      const serverMessage =
-        err.response?.data?.message ||
-        err.message ||
-        'An error occurred while sending password reset link.';
-      setErrorMessage(serverMessage);
+    } catch (err: unknown) {
+      setErrorMessage(
+        getApiErrorMessage(
+          err,
+          'An error occurred while sending password reset link.'
+        )
+      );
     } finally {
       setIsLoading(false);
     }

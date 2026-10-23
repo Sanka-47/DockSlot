@@ -31,8 +31,19 @@ import {
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { warehouseApi } from "../api/warehouse.api";
-import { bookingApi } from "../api/booking.api";
+import {
+  dispatcherDashboardService,
+  filterBookings,
+  formatDateInTimezone,
+  formatSlotWindow,
+  getBookingWarehouseTimezone,
+  getMaxAdvanceDateString,
+  getTodayDateString,
+  isInsideLockWindow,
+  removeSlotFromGroups,
+  validateBookingInput,
+} from "../services/dispatcherDashboard.service";
+import { getApiErrorMessage, isSlotConflictError } from "../services/errors";
 import { BookingAuditLogModal } from "../components/BookingAuditLogModal";
 import type {
   Warehouse,
@@ -79,106 +90,8 @@ export const DispatcherDashboard: React.FC = () => {
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
 
   // ---------------------------------------------------------------------------
-  // Slot Search & Filter Form State (Timezone-Safe Helpers)
+  // Slot Search & Filter State
   // ---------------------------------------------------------------------------
-  const formatDateInTimezone = useCallback(
-    (dateInput: Date | string | number, timeZone?: string): string => {
-      const dateObj =
-        dateInput instanceof Date ? dateInput : new Date(dateInput);
-      if (timeZone) {
-        try {
-          return new Intl.DateTimeFormat("en-CA", {
-            timeZone,
-            year: "numeric",
-            month: "2-digit",
-            day: "2-digit",
-          }).format(dateObj);
-        } catch {
-          // Fallback to browser local date if timezone identifier is invalid
-        }
-      }
-      const local = new Date(
-        dateObj.getTime() - dateObj.getTimezoneOffset() * 60000,
-      );
-      return local.toISOString().slice(0, 10);
-    },
-    [],
-  );
-
-  const getTodayDateString = useCallback(
-    (timeZone?: string): string => {
-      return formatDateInTimezone(new Date(), timeZone);
-    },
-    [formatDateInTimezone],
-  );
-
-  const getMaxAdvanceDateString = useCallback(
-    (days: number = 14, timeZone?: string): string => {
-      const futureInstant = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-      return formatDateInTimezone(futureInstant, timeZone);
-    },
-    [formatDateInTimezone],
-  );
-
-  // Checks that a slot's UTC start instant is strictly in the future relative to current UTC epoch
-  const isFutureSlot = useCallback((slot: AvailableSlot): boolean => {
-    if (!slot?.slotStartTime) return false;
-    const slotStartMs = new Date(slot.slotStartTime).getTime();
-    if (isNaN(slotStartMs)) return false;
-    return slotStartMs > Date.now();
-  }, []);
-
-  // Renders a warehouse-local "HH:mm" boundary as a 12-hour clock label.
-  // Overnight windows roll past midnight ("25:30"), so the value is wrapped
-  // back into the same day before formatting.
-  const formatSlotClock = useCallback((timeStr?: string): string | null => {
-    if (!timeStr) return null;
-    const [hoursStr, minutesStr = "0"] = timeStr.split(":");
-    const hours = Number(hoursStr);
-    const minutes = Number(minutesStr);
-    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
-
-    const totalMinutes = (((hours * 60 + minutes) % 1440) + 1440) % 1440;
-    const normalizedHours = Math.floor(totalMinutes / 60);
-    const normalizedMinutes = totalMinutes % 60;
-    const period = normalizedHours >= 12 ? "PM" : "AM";
-    const twelveHour = normalizedHours % 12 === 0 ? 12 : normalizedHours % 12;
-
-    return `${twelveHour}:${String(normalizedMinutes).padStart(2, "0")} ${period}`;
-  }, []);
-
-  // Slots are generated in the warehouse's own time zone. Prefer the local
-  // start/end returned by the API so a dispatcher abroad sees the dock's clock
-  // (the browser's clock is only a fallback for older API responses).
-  const formatSlotWindow = useCallback(
-    (slot: {
-      slotStartTime: string;
-      slotEndTime: string;
-      localStartTime?: string;
-      localEndTime?: string;
-    }): string => {
-      const localStart = formatSlotClock(slot.localStartTime);
-      const localEnd = formatSlotClock(slot.localEndTime);
-      if (localStart && localEnd) {
-        return `${localStart} - ${localEnd}`;
-      }
-      return `${formatDateTime(
-        slot.slotStartTime,
-        "h:mm a",
-      )} - ${formatDateTime(slot.slotEndTime, "h:mm a")}`;
-    },
-    [formatSlotClock],
-  );
-
-  const isInsideLockWindow = (booking: Booking | null): boolean => {
-    if (!booking || !booking.slotStartTime) return false;
-    const slotTime = new Date(booking.slotStartTime).getTime();
-    const hoursUntil = (slotTime - Date.now()) / (1000 * 60 * 60);
-    const lockHours =
-      booking.dock?.warehouse?.policy?.bookingLockWindowHours ?? 24;
-    return hoursUntil >= 0 && hoursUntil < lockHours;
-  };
-
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>("");
   const [targetDate, setTargetDate] = useState<string>(() =>
     getTodayDateString(),
@@ -276,14 +189,11 @@ export const DispatcherDashboard: React.FC = () => {
   const fetchBookings = useCallback(async () => {
     setIsLoadingBookings(true);
     try {
-      const res = await bookingApi.getAll();
-      setBookings(res?.data || []);
-    } catch (err: any) {
-      const msg =
-        err.response?.data?.message ||
-        err.message ||
-        "Failed to fetch carrier bookings.";
-      setErrorMessage(msg);
+      setBookings(await dispatcherDashboardService.fetchBookings());
+    } catch (err: unknown) {
+      setErrorMessage(
+        getApiErrorMessage(err, "Failed to fetch carrier bookings.")
+      );
     } finally {
       setIsLoadingBookings(false);
     }
@@ -293,66 +203,16 @@ export const DispatcherDashboard: React.FC = () => {
     setIsLoadingInitial(true);
     setErrorMessage(null);
     try {
-      const [warehousesResult, bookingsResult] = await Promise.allSettled([
-        warehouseApi.getAll(),
-        bookingApi.getAll(),
-      ]);
+      const data = await dispatcherDashboardService.loadDashboardData();
+      setBookings(data.bookings);
+      setWarehouses(data.warehouses);
 
-      let fetchedBookings: Booking[] = [];
-      if (bookingsResult.status === "fulfilled") {
-        fetchedBookings = bookingsResult.value?.data || [];
-        setBookings(fetchedBookings);
-      } else {
-        const msg =
-          bookingsResult.reason?.response?.data?.message ||
-          bookingsResult.reason?.message ||
-          "Failed to load bookings.";
-        setErrorMessage(msg);
+      if (data.warehouses.length > 0) {
+        setSelectedWarehouseId(String(data.warehouses[0].id));
       }
 
-      if (warehousesResult.status === "fulfilled") {
-        const fetchedWarehouses = warehousesResult.value?.data || [];
-        setWarehouses(fetchedWarehouses);
-        if (fetchedWarehouses.length > 0) {
-          setSelectedWarehouseId(String(fetchedWarehouses[0].id));
-        }
-      } else {
-        // Fallback: extract warehouses from existing bookings if any
-        const fallbackWarehousesMap: Record<number, Warehouse> = {};
-        fetchedBookings.forEach((b) => {
-          if (b.dock?.warehouse) {
-            const wh = b.dock.warehouse;
-            if (!fallbackWarehousesMap[wh.id]) {
-              fallbackWarehousesMap[wh.id] = {
-                id: wh.id,
-                organizationId: 0,
-                name: wh.name,
-                address: wh.address || "",
-                timezone: wh.timezone || "UTC",
-                slotLengthMinutes: 30,
-                docks: [
-                  {
-                    id: b.dock.id,
-                    warehouseId: wh.id,
-                    name: b.dock.name,
-                    status: b.dock.status,
-                  },
-                ],
-              };
-            }
-          }
-        });
-        const fallbackWarehouses = Object.values(fallbackWarehousesMap);
-        if (fallbackWarehouses.length > 0) {
-          setWarehouses(fallbackWarehouses);
-          setSelectedWarehouseId(String(fallbackWarehouses[0].id));
-        } else {
-          const msg =
-            warehousesResult.reason?.response?.data?.message ||
-            warehousesResult.reason?.message ||
-            "Failed to load warehouses.";
-          setErrorMessage(msg);
-        }
+      if (data.errorMessage) {
+        setErrorMessage(data.errorMessage);
       }
     } finally {
       setIsLoadingInitial(false);
@@ -374,7 +234,7 @@ export const DispatcherDashboard: React.FC = () => {
       const whToday = getTodayDateString(selectedWarehouse.timezone);
       setTargetDate((prev) => (prev < whToday ? whToday : prev));
     }
-  }, [selectedWarehouse?.timezone, getTodayDateString]);
+  }, [selectedWarehouse?.timezone]);
 
   // Available docks for currently selected warehouse
   const currentWarehouseDocks = useMemo<Dock[]>(() => {
@@ -415,48 +275,8 @@ export const DispatcherDashboard: React.FC = () => {
   }, []);
 
   // ---------------------------------------------------------------------------
-  // Slot Search & Normalization Helpers
+  // Slot Search Handlers
   // ---------------------------------------------------------------------------
-  const normalizeSlotResponse = useCallback(
-    (rawData: unknown, dockIdFilter?: number): AvailableDockSlots[] => {
-      if (!Array.isArray(rawData) || rawData.length === 0) {
-        return [];
-      }
-
-      if ("slots" in rawData[0]) {
-        return (rawData as AvailableDockSlots[]).map((group) => ({
-          ...group,
-          slots: (dockIdFilter
-            ? group.dockId === dockIdFilter
-              ? group.slots
-              : []
-            : group.slots
-          ).filter(isFutureSlot),
-        }));
-      }
-
-      if ("slotStartTime" in rawData[0]) {
-        const flatList = rawData as unknown as AvailableSlot[];
-        const grouped: Record<number, AvailableDockSlots> = {};
-        flatList.forEach((slot) => {
-          if (!isFutureSlot(slot)) return;
-          const dId = slot.dockId || 0;
-          const dName = slot.dockName || `Dock #${dId}`;
-          if (!grouped[dId]) {
-            grouped[dId] = { dockId: dId, dockName: dName, slots: [] };
-          }
-          if (!dockIdFilter || dId === dockIdFilter) {
-            grouped[dId].slots.push(slot);
-          }
-        });
-        return Object.values(grouped);
-      }
-
-      return [];
-    },
-    [isFutureSlot],
-  );
-
   const handleSearchSlots = async (
     e?: React.FormEvent,
     options?: { preserveError?: boolean },
@@ -483,20 +303,17 @@ export const DispatcherDashboard: React.FC = () => {
       const dockIdFilter =
         selectedDockId !== "ALL" ? Number(selectedDockId) : undefined;
 
-      const res = await warehouseApi.getAvailableSlots(
+      const normalized = await dispatcherDashboardService.searchAvailableSlots(
         warehouseIdNum,
         targetDate,
         dockIdFilter,
       );
-      const normalized = normalizeSlotResponse(res.data, dockIdFilter);
       setSearchedSlots(normalized);
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (!options?.preserveError) {
-        const msg =
-          err.response?.data?.message ||
-          err.message ||
-          "Failed to search available slots.";
-        setErrorMessage(msg);
+        setErrorMessage(
+          getApiErrorMessage(err, "Failed to search available slots.")
+        );
         setSearchedSlots([]);
       }
     } finally {
@@ -542,16 +359,13 @@ export const DispatcherDashboard: React.FC = () => {
 
     const { truckPlate, driverName, driverPhone, cargoNote } = bookingFormData;
 
-    if (!truckPlate.trim()) {
-      setBookingModalError("Truck license plate is required.");
-      return;
-    }
-    if (!driverName.trim()) {
-      setBookingModalError("Driver name is required.");
-      return;
-    }
-    if (!driverPhone.trim()) {
-      setBookingModalError("Driver phone number is required.");
+    const validationError = validateBookingInput({
+      truckPlate,
+      driverName,
+      driverPhone,
+    });
+    if (validationError) {
+      setBookingModalError(validationError);
       return;
     }
 
@@ -568,60 +382,37 @@ export const DispatcherDashboard: React.FC = () => {
         cargoNote: cargoNote.trim() || undefined,
       };
 
-      const res = await bookingApi.create(payload);
-      const createdBooking = res.data;
+      const createdBooking = await dispatcherDashboardService.createBooking(payload);
 
       // Update bookings list
       setBookings((prev) => [createdBooking, ...prev]);
 
       // Remove the booked slot locally from searchedSlots for instant visual feedback
-      setSearchedSlots((prev) => {
-        if (!prev) return prev;
-        return prev.map((dockGroup) => {
-          if (dockGroup.dockId === selectedSlotForBooking.dockId) {
-            return {
-              ...dockGroup,
-              slots: dockGroup.slots.filter(
-                (s) => s.slotStartTime !== selectedSlotForBooking.slotStartTime,
-              ),
-            };
-          }
-          return dockGroup;
-        });
-      });
+      setSearchedSlots((prev) =>
+        removeSlotFromGroups(
+          prev,
+          selectedSlotForBooking.dockId,
+          selectedSlotForBooking.slotStartTime,
+        ),
+      );
 
       setIsBookingModalOpen(false);
       setSuccessBanner(
         `Booking #${createdBooking.id} created successfully for ${selectedSlotForBooking.dockName} (${truckPlate.trim()})!`,
       );
-    } catch (err: any) {
-      const status = err?.response?.status;
-      const rawMsg: string =
-        err?.response?.data?.message || err?.message || "";
-      const isSlotTakenConflict =
-        status === 409 ||
-        /conflict|already booked|already taken|unavailable/i.test(rawMsg);
-
-      if (isSlotTakenConflict) {
+    } catch (err: unknown) {
+      if (isSlotConflictError(err)) {
         const slotWindowLabel = formatSlotWindow(selectedSlotForBooking);
         const clearConflictMessage = `The selected slot (${slotWindowLabel} on ${selectedSlotForBooking.dockName}) was just booked by another carrier while you were viewing it. Available slots have been updated — please select another open slot.`;
 
         // Immediately remove the taken slot from current view
-        setSearchedSlots((prev) => {
-          if (!prev) return prev;
-          return prev.map((dockGroup) => {
-            if (dockGroup.dockId === selectedSlotForBooking.dockId) {
-              return {
-                ...dockGroup,
-                slots: dockGroup.slots.filter(
-                  (s) =>
-                    s.slotStartTime !== selectedSlotForBooking.slotStartTime,
-                ),
-              };
-            }
-            return dockGroup;
-          });
-        });
+        setSearchedSlots((prev) =>
+          removeSlotFromGroups(
+            prev,
+            selectedSlotForBooking.dockId,
+            selectedSlotForBooking.slotStartTime,
+          ),
+        );
 
         setBookingModalError(clearConflictMessage);
         setErrorMessage(clearConflictMessage);
@@ -630,8 +421,9 @@ export const DispatcherDashboard: React.FC = () => {
         // Fetch fresh updated slots from backend while preserving the clear alert message
         await handleSearchSlots(undefined, { preserveError: true });
       } else {
-        const msg = rawMsg || "Failed to create booking.";
-        setBookingModalError(msg);
+        setBookingModalError(
+          getApiErrorMessage(err, "Failed to create booking.")
+        );
       }
     } finally {
       setIsSubmittingBooking(false);
@@ -674,16 +466,19 @@ export const DispatcherDashboard: React.FC = () => {
       setRescheduleError(null);
     }
     try {
-      const res = await warehouseApi.getAvailableSlots(warehouseId, dateStr);
-      const normalized = normalizeSlotResponse(res.data);
+      const normalized = await dispatcherDashboardService.fetchRescheduleSlots(
+        warehouseId,
+        dateStr,
+      );
       setRescheduleSlots(normalized);
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (!options?.preserveError) {
-        const msg =
-          err.response?.data?.message ||
-          err.message ||
-          "Failed to fetch slots for rescheduling.";
-        setRescheduleError(msg);
+        setRescheduleError(
+          getApiErrorMessage(
+            err,
+            "Failed to fetch slots for rescheduling."
+          )
+        );
         setRescheduleSlots([]);
       }
     } finally {
@@ -712,15 +507,11 @@ export const DispatcherDashboard: React.FC = () => {
     setRescheduleError(null);
 
     try {
-      const res = await bookingApi.reschedule(bookingToReschedule.id, {
-        slotStartTime: selectedRescheduleSlot.slotStartTime,
-        slotEndTime: selectedRescheduleSlot.slotEndTime,
-        dockId: selectedRescheduleSlot.dockId,
-        newDockId: selectedRescheduleSlot.dockId,
-        reason: rescheduleReason.trim() || undefined,
-      });
-
-      const updatedBooking = res.data;
+      const updatedBooking = await dispatcherDashboardService.rescheduleBooking(
+        bookingToReschedule.id,
+        selectedRescheduleSlot,
+        rescheduleReason.trim() || undefined,
+      );
 
       // Update bookings list
       setBookings((prev) =>
@@ -739,34 +530,20 @@ export const DispatcherDashboard: React.FC = () => {
       if (hasSearchedSlots && targetDate === rescheduleDate) {
         handleSearchSlots();
       }
-    } catch (err: any) {
-      const status = err?.response?.status;
-      const rawMsg: string =
-        err?.response?.data?.message || err?.message || "";
-      const isSlotTakenConflict =
-        status === 409 ||
-        /conflict|already booked|already taken|unavailable/i.test(rawMsg);
-
-      if (isSlotTakenConflict && selectedRescheduleSlot) {
+    } catch (err: unknown) {
+      if (isSlotConflictError(err) && selectedRescheduleSlot) {
         const takenSlot = selectedRescheduleSlot;
         const slotWindowLabel = formatSlotWindow(takenSlot);
         const clearConflictMessage = `The selected slot (${slotWindowLabel} on ${takenSlot.dockName}) was just booked by another carrier while you were viewing it. Available slots have been updated — please choose another open slot.`;
 
         setSelectedRescheduleSlot(null);
-        setRescheduleSlots((prev) => {
-          if (!prev) return prev;
-          return prev.map((dockGroup) => {
-            if (dockGroup.dockId === takenSlot.dockId) {
-              return {
-                ...dockGroup,
-                slots: dockGroup.slots.filter(
-                  (s) => s.slotStartTime !== takenSlot.slotStartTime,
-                ),
-              };
-            }
-            return dockGroup;
-          });
-        });
+        setRescheduleSlots((prev) =>
+          removeSlotFromGroups(
+            prev,
+            takenSlot.dockId,
+            takenSlot.slotStartTime,
+          ),
+        );
         setRescheduleError(clearConflictMessage);
 
         const warehouseId =
@@ -781,8 +558,9 @@ export const DispatcherDashboard: React.FC = () => {
           await handleSearchSlots(undefined, { preserveError: true });
         }
       } else {
-        const msg = rawMsg || "Failed to reschedule booking.";
-        setRescheduleError(msg);
+        setRescheduleError(
+          getApiErrorMessage(err, "Failed to reschedule booking.")
+        );
       }
     } finally {
       setIsSubmittingReschedule(false);
@@ -807,11 +585,10 @@ export const DispatcherDashboard: React.FC = () => {
     setCancelError(null);
 
     try {
-      const res = await bookingApi.cancel(
+      const updatedBooking = await dispatcherDashboardService.cancelBooking(
         bookingToCancel.id,
         cancelReason.trim() || undefined,
       );
-      const updatedBooking = res.data;
 
       // Update state locally
       setBookings((prev) =>
@@ -829,75 +606,23 @@ export const DispatcherDashboard: React.FC = () => {
       if (hasSearchedSlots) {
         handleSearchSlots();
       }
-    } catch (err: any) {
-      const msg =
-        err.response?.data?.message ||
-        err.message ||
-        "Failed to cancel booking.";
-      setCancelError(msg);
+    } catch (err: unknown) {
+      setCancelError(getApiErrorMessage(err, "Failed to cancel booking."));
     } finally {
       setIsSubmittingCancel(false);
     }
   };
 
-  // Helper to resolve warehouse timezone for any booking
-  const getBookingWarehouseTimezone = useCallback(
-    (booking: Booking): string => {
-      if (booking.dock?.warehouse?.timezone) {
-        return booking.dock.warehouse.timezone;
-      }
-      const whId = booking.dock?.warehouseId || booking.dock?.warehouse?.id;
-      if (whId) {
-        const matched = warehouses.find((w) => w.id === whId);
-        if (matched?.timezone) return matched.timezone;
-      }
-      return "UTC";
-    },
-    [warehouses],
-  );
-
   // ---------------------------------------------------------------------------
   // Filtered Bookings for Table
   // ---------------------------------------------------------------------------
   const filteredBookings = useMemo(() => {
-    return bookings.filter((b) => {
-      // Status filter
-      if (bookingStatusFilter !== "ALL" && b.status !== bookingStatusFilter) {
-        return false;
-      }
-
-      // Text search
-      if (bookingSearchQuery.trim()) {
-        const query = bookingSearchQuery.toLowerCase().trim();
-        const bId = String(b.id);
-        const plate = (b.truckPlate || "").toLowerCase();
-        const driver = (b.driverName || "").toLowerCase();
-        const phone = (b.driverPhone || "").toLowerCase();
-        const dockName = (b.dock?.name || "").toLowerCase();
-        const whName = (b.dock?.warehouse?.name || "").toLowerCase();
-        const whTz = getBookingWarehouseTimezone(b).toLowerCase();
-        const note = (b.cargoNote || "").toLowerCase();
-
-        return (
-          bId.includes(query) ||
-          plate.includes(query) ||
-          driver.includes(query) ||
-          phone.includes(query) ||
-          dockName.includes(query) ||
-          whName.includes(query) ||
-          whTz.includes(query) ||
-          note.includes(query)
-        );
-      }
-
-      return true;
-    });
-  }, [
-    bookings,
-    bookingStatusFilter,
-    bookingSearchQuery,
-    getBookingWarehouseTimezone,
-  ]);
+    return filterBookings(
+      bookings,
+      { status: bookingStatusFilter, searchQuery: bookingSearchQuery },
+      warehouses,
+    );
+  }, [bookings, bookingStatusFilter, bookingSearchQuery, warehouses]);
 
   // Helper for status badge rendering
   const renderStatusBadge = (status: BookingStatus) => {
@@ -1380,7 +1105,7 @@ export const DispatcherDashboard: React.FC = () => {
                 {filteredBookings.map((b) => {
                   const isActionable = b.status === "BOOKED";
                   const insideLock = isActionable ? isInsideLockWindow(b) : false;
-                  const bookingWarehouseTz = getBookingWarehouseTimezone(b);
+                  const bookingWarehouseTz = getBookingWarehouseTimezone(b, warehouses);
 
                   return (
                     <div
@@ -1563,7 +1288,7 @@ export const DispatcherDashboard: React.FC = () => {
                   <tbody className="bg-white divide-y divide-gray-200">
                     {filteredBookings.map((b) => {
                       const isActionable = b.status === "BOOKED";
-                      const bookingWarehouseTz = getBookingWarehouseTimezone(b);
+                      const bookingWarehouseTz = getBookingWarehouseTimezone(b, warehouses);
 
                       return (
                         <tr
