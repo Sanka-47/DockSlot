@@ -22,8 +22,17 @@ import {
   Check,
   SlidersHorizontal,
 } from 'lucide-react';
-import { warehouseApi } from '../api/warehouse.api';
-import { userApi } from '../api/user.api';
+import {
+  warehouseAdminDashboardService,
+  cloneDefaultSchedule,
+  adjustScheduleTime,
+  getScheduleSlotEstimate,
+} from '../services/warehouseAdminDashboard.service';
+import type {
+  ScheduleDay,
+  PolicyForm,
+} from '../services/warehouseAdminDashboard.service';
+import { getApiErrorMessage } from '../services/errors';
 import type {
   Warehouse,
   Dock,
@@ -31,83 +40,12 @@ import type {
   CreateWarehouseRequest,
   UpdateWarehouseRequest,
   CreateDockRequest,
-  OperatingHour,
 } from '../types/warehouse.types';
 import type { User } from '../types/user.types';
 import { useAuth } from '../hooks/useAuth';
 import { getTimezoneOptions } from '../utils/timezones';
 import { useConfirm } from '../hooks/useConfirm';
 import toast from 'react-hot-toast';
-
-interface ScheduleDay {
-  day: string;
-  dayOfWeek: number;
-  isOpen: boolean;
-  openTime: string;
-  closeTime: string;
-  is24h: boolean;
-}
-
-const DEFAULT_WEEKLY_SCHEDULE: ScheduleDay[] = [
-  { day: 'Monday', dayOfWeek: 1, isOpen: true, openTime: '08:00', closeTime: '18:00', is24h: false },
-  { day: 'Tuesday', dayOfWeek: 2, isOpen: true, openTime: '08:00', closeTime: '18:00', is24h: false },
-  { day: 'Wednesday', dayOfWeek: 3, isOpen: true, openTime: '08:00', closeTime: '18:00', is24h: false },
-  { day: 'Thursday', dayOfWeek: 4, isOpen: true, openTime: '08:00', closeTime: '18:00', is24h: false },
-  { day: 'Friday', dayOfWeek: 5, isOpen: true, openTime: '08:00', closeTime: '18:00', is24h: false },
-  { day: 'Saturday', dayOfWeek: 6, isOpen: true, openTime: '08:00', closeTime: '14:00', is24h: false },
-  { day: 'Sunday', dayOfWeek: 7, isOpen: false, openTime: '08:00', closeTime: '18:00', is24h: false },
-];
-
-const cloneDefaultSchedule = (): ScheduleDay[] =>
-  DEFAULT_WEEKLY_SCHEDULE.map((day) => ({ ...day }));
-
-const timeToMinutes = (value: string): number => {
-  const [hours, minutes] = value.split(':').map(Number);
-  return (hours || 0) * 60 + (minutes || 0);
-};
-
-const minutesToTime = (totalMinutes: number): string => {
-  const normalized = ((totalMinutes % 1440) + 1440) % 1440;
-  const hours = Math.floor(normalized / 60);
-  const minutes = normalized % 60;
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-};
-
-// A close time at or before the open time means the window ends on the next day,
-// mirroring `resolveOperatingWindowMinutes` on the backend.
-const resolveScheduleWindow = (openTime: string, closeTime: string): { openMin: number; closeMin: number } => {
-  const openMin = timeToMinutes(openTime);
-  let closeMin = timeToMinutes(closeTime);
-  if (closeMin <= openMin) {
-    closeMin += 1440;
-  }
-  return { openMin, closeMin };
-};
-
-// <input type="time"> cannot represent 24:00; 00:00 resolves to the same end of day.
-const toScheduleInputTime = (time: string): string => (time === '24:00' ? '00:00' : time);
-
-const mergeScheduleWithHours = (hours: OperatingHour[]): ScheduleDay[] =>
-  DEFAULT_WEEKLY_SCHEDULE.map((day) => {
-    const stored = hours.find(
-      (hour) =>
-        hour.dayOfWeek === day.dayOfWeek || (day.dayOfWeek === 7 && hour.dayOfWeek === 0)
-    );
-
-    if (!stored) {
-      return { ...day, isOpen: false };
-    }
-
-    return {
-      ...day,
-      isOpen: true,
-      openTime: toScheduleInputTime(stored.openTime),
-      closeTime: toScheduleInputTime(stored.closeTime),
-      is24h:
-        stored.openTime === '00:00' &&
-        (stored.closeTime === '24:00' || stored.closeTime === '00:00'),
-    };
-  });
 
 export const WarehouseAdminDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -163,11 +101,7 @@ export const WarehouseAdminDashboard: React.FC = () => {
   const [scheduleSavedToast, setScheduleSavedToast] = useState<boolean>(false);
 
   // Tab 3: Policies
-  const [policyForm, setPolicyForm] = useState<{
-    maxConcurrentBookings: number;
-    maxAdvanceDays: number;
-    bookingLockWindowHours: number;
-  }>({
+  const [policyForm, setPolicyForm] = useState<PolicyForm>({
     maxConcurrentBookings: 3,
     maxAdvanceDays: 14,
     bookingLockWindowHours: 24,
@@ -201,16 +135,15 @@ export const WarehouseAdminDashboard: React.FC = () => {
   const fetchWarehouses = useCallback(async () => {
     setIsLoadingWarehouses(true);
     try {
-      const res = await warehouseApi.getAll();
-      const list = res.data || [];
+      const list = await warehouseAdminDashboardService.fetchWarehouses();
       setWarehouses(list);
       if (list.length > 0) {
         setSelectedWarehouseId((prev) => (prev && list.some((w) => w.id === prev) ? prev : list[0].id));
       } else {
         setSelectedWarehouseId(null);
       }
-    } catch (err: any) {
-      setErrorBanner(err.response?.data?.message || 'Failed to load warehouses.');
+    } catch (err: unknown) {
+      setErrorBanner(getApiErrorMessage(err, 'Failed to load warehouses.'));
     } finally {
       setIsLoadingWarehouses(false);
     }
@@ -220,33 +153,24 @@ export const WarehouseAdminDashboard: React.FC = () => {
   const fetchDocks = useCallback(async (warehouseId: number) => {
     setIsLoadingDocks(true);
     try {
-      const res = await warehouseApi.getDocks(warehouseId);
-      setDocks(res.data || []);
-    } catch (err: any) {
-      setErrorBanner(err.response?.data?.message || 'Failed to load docks for the selected warehouse.');
+      setDocks(await warehouseAdminDashboardService.fetchDocks(warehouseId));
+    } catch (err: unknown) {
+      setErrorBanner(
+        getApiErrorMessage(
+          err,
+          'Failed to load docks for the selected warehouse.'
+        )
+      );
     } finally {
       setIsLoadingDocks(false);
     }
   }, []);
 
   // 3. Fetch Policy for selected warehouse
-  const fetchPolicy = useCallback(async (warehouseId: number) => {    setIsLoadingPolicy(true);
+  const fetchPolicy = useCallback(async (warehouseId: number) => {
+    setIsLoadingPolicy(true);
     try {
-      const res = await warehouseApi.getPolicy(warehouseId);
-      if (res?.data) {
-        setPolicyForm({
-          maxConcurrentBookings: res.data.maxConcurrentBookings ?? 3,
-          maxAdvanceDays: res.data.maxAdvanceDays ?? 14,
-          bookingLockWindowHours: res.data.bookingLockWindowHours ?? 24,
-        });
-      }
-    } catch {
-      // Use defaults if policy is unconfigured
-      setPolicyForm({
-        maxConcurrentBookings: 3,
-        maxAdvanceDays: 14,
-        bookingLockWindowHours: 24,
-      });
+      setPolicyForm(await warehouseAdminDashboardService.fetchPolicy(warehouseId));
     } finally {
       setIsLoadingPolicy(false);
     }
@@ -256,14 +180,17 @@ export const WarehouseAdminDashboard: React.FC = () => {
   const fetchScheduleHours = useCallback(async (warehouseId: number) => {
     setIsLoadingSchedule(true);
     try {
-      const res = await warehouseApi.getHours(warehouseId);
-      setWeeklySchedule(mergeScheduleWithHours(res.data?.operatingHours || []));
-      if (res.data?.slotLengthMinutes) {
-        setScheduleSlotLength(res.data.slotLengthMinutes);
+      const result = await warehouseAdminDashboardService.fetchScheduleHours(warehouseId);
+      setWeeklySchedule(result.schedule);
+      if (result.slotLengthMinutes) {
+        setScheduleSlotLength(result.slotLengthMinutes);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setErrorBanner(
-        err.response?.data?.message || 'Failed to load the weekly operational schedule template.'
+        getApiErrorMessage(
+          err,
+          'Failed to load the weekly operational schedule template.'
+        )
       );
     } finally {
       setIsLoadingSchedule(false);
@@ -274,10 +201,11 @@ export const WarehouseAdminDashboard: React.FC = () => {
   const fetchUsers = useCallback(async () => {
     setIsLoadingUsers(true);
     try {
-      const res = await userApi.getUsers();
-      setOrganizationUsers(res.data || []);
-    } catch (err: any) {
-      setErrorBanner(err.response?.data?.message || 'Failed to load organization members.');
+      setOrganizationUsers(await warehouseAdminDashboardService.fetchUsers());
+    } catch (err: unknown) {
+      setErrorBanner(
+        getApiErrorMessage(err, 'Failed to load organization members.')
+      );
     } finally {
       setIsLoadingUsers(false);
     }
@@ -317,8 +245,8 @@ export const WarehouseAdminDashboard: React.FC = () => {
     setIsSubmittingWarehouse(true);
     setErrorBanner(null);
     try {
-      const res = await warehouseApi.create(newWarehouseForm);
-      triggerSuccess(`Warehouse facility '${res.data.name}' created successfully.`);
+      const created = await warehouseAdminDashboardService.createWarehouse(newWarehouseForm);
+      triggerSuccess(`Warehouse facility '${created.name}' created successfully.`);
       setIsCreateWarehouseModalOpen(false);
       setNewWarehouseForm({
         name: '',
@@ -327,11 +255,11 @@ export const WarehouseAdminDashboard: React.FC = () => {
         slotLengthMinutes: 60,
       });
       await fetchWarehouses();
-      if (res.data.id) {
-        setSelectedWarehouseId(res.data.id);
+      if (created.id) {
+        setSelectedWarehouseId(created.id);
       }
-    } catch (err: any) {
-      setErrorBanner(err.response?.data?.message || 'Failed to create warehouse.');
+    } catch (err: unknown) {
+      setErrorBanner(getApiErrorMessage(err, 'Failed to create warehouse.'));
     } finally {
       setIsSubmittingWarehouse(false);
     }
@@ -344,11 +272,14 @@ export const WarehouseAdminDashboard: React.FC = () => {
     setIsSavingWarehouse(true);
     setErrorBanner(null);
     try {
-      const res = await warehouseApi.update(selectedWarehouseId, editingWarehouseForm);
-      triggerSuccess(`Warehouse '${res.data.name}' details updated successfully.`);
+      const updated = await warehouseAdminDashboardService.updateWarehouse(
+        selectedWarehouseId,
+        editingWarehouseForm
+      );
+      triggerSuccess(`Warehouse '${updated.name}' details updated successfully.`);
       await fetchWarehouses();
-    } catch (err: any) {
-      setErrorBanner(err.response?.data?.message || 'Failed to update warehouse details.');
+    } catch (err: unknown) {
+      setErrorBanner(getApiErrorMessage(err, 'Failed to update warehouse details.'));
     } finally {
       setIsSavingWarehouse(false);
     }
@@ -362,13 +293,16 @@ export const WarehouseAdminDashboard: React.FC = () => {
     setIsSubmittingDock(true);
     setErrorBanner(null);
     try {
-      const res = await warehouseApi.createDock(selectedWarehouseId, newDockForm);
-      triggerSuccess(`Loading dock '${res.data.name}' added to warehouse.`);
+      const created = await warehouseAdminDashboardService.createDock(
+        selectedWarehouseId,
+        newDockForm
+      );
+      triggerSuccess(`Loading dock '${created.name}' added to warehouse.`);
       setIsCreateDockModalOpen(false);
       setNewDockForm({ name: '', status: 'ACTIVE' });
       await fetchDocks(selectedWarehouseId);
-    } catch (err: any) {
-      setErrorBanner(err.response?.data?.message || 'Failed to create loading dock.');
+    } catch (err: unknown) {
+      setErrorBanner(getApiErrorMessage(err, 'Failed to create loading dock.'));
     } finally {
       setIsSubmittingDock(false);
     }
@@ -385,20 +319,22 @@ export const WarehouseAdminDashboard: React.FC = () => {
     setIsSavingDock(true);
     setErrorBanner(null);
     try {
-      const res = await warehouseApi.updateDock(
+      const updated = await warehouseAdminDashboardService.updateDock(
         editingDock.id,
         { name: editingDockName.trim() },
         selectedWarehouseId || undefined
       );
-      triggerSuccess(`Dock renamed to '${res.data.name}'.`);
+      triggerSuccess(`Dock renamed to '${updated.name}'.`);
       setEditingDock(null);
       if (selectedWarehouseId) {
         await fetchDocks(selectedWarehouseId);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setErrorBanner(
-        err.response?.data?.message ||
+        getApiErrorMessage(
+          err,
           'Failed to rename dock. Note: Dock name cannot be changed if active bookings with status BOOKED exist.'
+        )
       );
     } finally {
       setIsSavingDock(false);
@@ -409,13 +345,13 @@ export const WarehouseAdminDashboard: React.FC = () => {
     const nextStatus: DockStatus = dock.status === 'ACTIVE' ? 'MAINTENANCE' : 'ACTIVE';
     setErrorBanner(null);
     try {
-      await warehouseApi.updateDockStatus(dock.id, nextStatus);
+      await warehouseAdminDashboardService.updateDockStatus(dock.id, nextStatus);
       triggerSuccess(`Dock '${dock.name}' status set to ${nextStatus}.`);
       if (selectedWarehouseId) {
         await fetchDocks(selectedWarehouseId);
       }
-    } catch (err: any) {
-      setErrorBanner(err.response?.data?.message || 'Failed to update dock status.');
+    } catch (err: unknown) {
+      setErrorBanner(getApiErrorMessage(err, 'Failed to update dock status.'));
     }
   };
 
@@ -426,12 +362,12 @@ export const WarehouseAdminDashboard: React.FC = () => {
     setIsSavingSlotLength(true);
     setErrorBanner(null);
     try {
-      await warehouseApi.update(selectedWarehouseId, { slotLengthMinutes: newLength });
+      await warehouseAdminDashboardService.updateSlotLength(selectedWarehouseId, newLength);
       setScheduleSlotLength(newLength);
       triggerSuccess(`Slot interval updated to ${newLength} minutes. Existing bookings retain their times.`);
       await fetchWarehouses();
-    } catch (err: any) {
-      setErrorBanner(err.response?.data?.message || 'Failed to update slot interval.');
+    } catch (err: unknown) {
+      setErrorBanner(getApiErrorMessage(err, 'Failed to update slot interval.'));
     } finally {
       setIsSavingSlotLength(false);
     }
@@ -445,38 +381,16 @@ export const WarehouseAdminDashboard: React.FC = () => {
     const stepMinutes = scheduleSlotLength > 0 ? scheduleSlotLength : 60;
 
     setWeeklySchedule((current) =>
-      current.map((item, itemIndex) => {
-        if (itemIndex !== index) return item;
-
-        const { openMin, closeMin } = resolveScheduleWindow(item.openTime, item.closeTime);
-
-        if (field === 'openTime') {
-          const maxOpenMin = Math.min(1439, Math.max(0, closeMin - stepMinutes));
-          const nextOpenMin = Math.min(
-            Math.max(0, openMin + direction * stepMinutes),
-            maxOpenMin
-          );
-          return { ...item, openTime: minutesToTime(nextOpenMin) };
-        }
-
-        // Keep overnight windows intact by allowing the extended minute space to
-        // grow past 24:00 when the existing close already rolled over.
-        const maxCloseMin = closeMin > 1440 ? 2880 : 1440;
-        const nextCloseMin = Math.min(
-          Math.max(openMin + stepMinutes, closeMin + direction * stepMinutes),
-          maxCloseMin
-        );
-        return { ...item, closeTime: minutesToTime(nextCloseMin), is24h: false };
-      })
+      current.map((item, itemIndex) =>
+        itemIndex === index
+          ? adjustScheduleTime(item, field, direction, stepMinutes)
+          : item
+      )
     );
   };
 
-  const getScheduleSlotEstimate = (item: ScheduleDay): number => {
-    if (!item.isOpen) return 0;
-    const { openMin, closeMin } = resolveScheduleWindow(item.openTime, item.closeTime);
-    const stepMinutes = scheduleSlotLength > 0 ? scheduleSlotLength : 60;
-    return Math.max(0, Math.floor((closeMin - openMin) / stepMinutes));
-  };
+  const getScheduleEstimate = (item: ScheduleDay): number =>
+    getScheduleSlotEstimate(item, scheduleSlotLength);
 
   const handleSaveScheduleDesign = async () => {
     if (!selectedWarehouseId) return;
@@ -485,27 +399,24 @@ export const WarehouseAdminDashboard: React.FC = () => {
     setErrorBanner(null);
     setScheduleSavedToast(false);
     try {
-      const res = await warehouseApi.updateHours(selectedWarehouseId, {
-        hours: weeklySchedule.map((item) => ({
-          dayOfWeek: item.dayOfWeek,
-          isOpen: item.isOpen,
-          ...(item.isOpen
-            ? { openTime: item.openTime, closeTime: item.closeTime }
-            : {}),
-          slotLengthMinutes: scheduleSlotLength,
-        })),
-      });
+      const result = await warehouseAdminDashboardService.saveSchedule(
+        selectedWarehouseId,
+        weeklySchedule,
+        scheduleSlotLength
+      );
 
-      setWeeklySchedule(mergeScheduleWithHours(res.data?.operatingHours || []));
+      setWeeklySchedule(result.schedule);
       setScheduleSavedToast(true);
       setTimeout(() => setScheduleSavedToast(false), 4000);
       await fetchWarehouses();
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Surface the backend's booking-collision message verbatim, e.g.
       // "Cannot update starting/end time: bookings available in related time."
       setErrorBanner(
-        err.response?.data?.message ||
+        getApiErrorMessage(
+          err,
           'Failed to update the weekly operational schedule template.'
+        )
       );
     } finally {
       setIsSavingSchedule(false);
@@ -520,15 +431,14 @@ export const WarehouseAdminDashboard: React.FC = () => {
     setIsSavingPolicy(true);
     setErrorBanner(null);
     try {
-      const res = await warehouseApi.updatePolicy(selectedWarehouseId, policyForm);
+      const savedPolicy = await warehouseAdminDashboardService.savePolicy(
+        selectedWarehouseId,
+        policyForm
+      );
       triggerSuccess(`Booking policy updated for '${selectedWarehouse?.name || 'warehouse'}'.`);
-      setPolicyForm({
-        maxConcurrentBookings: res.data.maxConcurrentBookings,
-        maxAdvanceDays: res.data.maxAdvanceDays,
-        bookingLockWindowHours: res.data.bookingLockWindowHours,
-      });
-    } catch (err: any) {
-      setErrorBanner(err.response?.data?.message || 'Failed to update warehouse policy.');
+      setPolicyForm(savedPolicy);
+    } catch (err: unknown) {
+      setErrorBanner(getApiErrorMessage(err, 'Failed to update warehouse policy.'));
     } finally {
       setIsSavingPolicy(false);
     }
@@ -542,13 +452,13 @@ export const WarehouseAdminDashboard: React.FC = () => {
     setIsSendingInvite(true);
     setErrorBanner(null);
     try {
-      const res = await userApi.inviteUser({ email: inviteEmail.trim() });
-      triggerSuccess(res.message || `Invitation successfully sent to ${inviteEmail}.`);
+      const result = await warehouseAdminDashboardService.inviteUser(inviteEmail);
+      triggerSuccess(result.message);
       setInviteEmail('');
       setIsInviteModalOpen(false);
       await fetchUsers();
-    } catch (err: any) {
-      setErrorBanner(err.response?.data?.message || 'Failed to send invitation.');
+    } catch (err: unknown) {
+      setErrorBanner(getApiErrorMessage(err, 'Failed to send invitation.'));
     } finally {
       setIsSendingInvite(false);
     }
@@ -572,14 +482,14 @@ export const WarehouseAdminDashboard: React.FC = () => {
     try {
       // A toast tracks the whole lifecycle: loading -> success/error.
       await toast.promise(
-        userApi.deactivateUser(targetUser.id).then(async (res) => {
+        warehouseAdminDashboardService.deactivateUser(targetUser.id).then(async (res) => {
           await fetchUsers();
           return res;
         }),
         {
           loading: `Deactivating ${targetUser.email}...`,
           success: (res) => res?.message || `User ${targetUser.email} has been deactivated.`,
-          error: (err: any) => err?.response?.data?.message || 'Failed to deactivate user.',
+          error: (err: unknown) => getApiErrorMessage(err, 'Failed to deactivate user.'),
         }
       );
     } catch {
@@ -607,14 +517,14 @@ export const WarehouseAdminDashboard: React.FC = () => {
     setReactivatingUserId(targetUser.id);
     try {
       await toast.promise(
-        userApi.reactivateUser(targetUser.id).then(async (res) => {
+        warehouseAdminDashboardService.reactivateUser(targetUser.id).then(async (res) => {
           await fetchUsers();
           return res;
         }),
         {
           loading: `Reactivating ${targetUser.email}...`,
           success: (res) => res?.message || `User ${targetUser.email} has been reactivated.`,
-          error: (err: any) => err?.response?.data?.message || 'Failed to reactivate user.',
+          error: (err: unknown) => getApiErrorMessage(err, 'Failed to reactivate user.'),
         }
       );
     } catch {
@@ -1209,7 +1119,7 @@ export const WarehouseAdminDashboard: React.FC = () => {
 
                     <div className="text-[11px] text-gray-500 font-medium">
                       {item.isOpen
-                        ? `${getScheduleSlotEstimate(item)} slots/dock`
+                        ? `${getScheduleEstimate(item)} slots/dock`
                         : '0 slots'}
                     </div>
                   </div>

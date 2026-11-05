@@ -17,12 +17,18 @@ describe('Booking Idempotency & Mobile Retry Safety Tests', () => {
 
   const testIdempotencyKey = `mobile-retry-test-${Date.now()}`;
 
-  // Time slots in UTC (within 24/7 Colombo timezone)
-  const slot1Start = '2026-11-01T04:00:00.000Z';
-  const slot1End = '2026-11-01T04:30:00.000Z';
+  // Time slots in UTC (within 24/7 Colombo timezone). Derived from the current
+  // time so the fixture cannot drift into the past: 2 days ahead on the
+  // 30-minute grid, with slot2 one hour after slot1.
+  const SLOT_LENGTH_MS = 30 * 60 * 1000;
+  const slotBaseMs =
+    Math.ceil((Date.now() + 2 * 24 * 60 * 60 * 1000) / SLOT_LENGTH_MS) * SLOT_LENGTH_MS;
 
-  const slot2Start = '2026-11-01T05:00:00.000Z';
-  const slot2End = '2026-11-01T05:30:00.000Z';
+  const slot1Start = new Date(slotBaseMs).toISOString();
+  const slot1End = new Date(slotBaseMs + SLOT_LENGTH_MS).toISOString();
+
+  const slot2Start = new Date(slotBaseMs + 60 * 60 * 1000).toISOString();
+  const slot2End = new Date(slotBaseMs + 90 * 60 * 1000).toISOString();
 
   beforeAll(async () => {
     // 1. Create Warehouse Operator Organization

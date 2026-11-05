@@ -12,7 +12,8 @@ import {
   QrCode,
   Lock,
 } from 'lucide-react';
-import { authApi } from '../api/auth.api';
+import { twoFactorSettingsService } from '../services/twoFactorSettings.service';
+import { getApiErrorMessage } from '../services/errors';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -62,10 +63,10 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
   const fetchStatus = useCallback(async () => {
     setIsLoadingStatus(true);
     try {
-      const res = await authApi.get2FAStatus();
-      setStatus(res?.data ?? null);
-    } catch (err: any) {
-      setErrorMessage(err.response?.data?.message || 'Failed to load 2FA status.');
+      const nextStatus = await twoFactorSettingsService.fetchStatus();
+      setStatus(nextStatus);
+    } catch (err: unknown) {
+      setErrorMessage(getApiErrorMessage(err, 'Failed to load 2FA status.'));
     } finally {
       setIsLoadingStatus(false);
     }
@@ -96,23 +97,17 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
     clearMessages();
     setIsSubmitting(true);
     try {
-      const res = await authApi.setup2FA();
-      const payload = res?.data;
-      const nextSecret = payload?.secret || res?.secret || '';
-      const nextQr = payload?.qrCode || res?.qrCode || '';
-      const nextUrl = payload?.otpauthUrl || res?.otpauthUrl || '';
+      const payload = await twoFactorSettingsService.startSetup();
 
-      if (!nextSecret || !nextQr) {
-        throw new Error('The server did not return a usable 2FA secret.');
-      }
-
-      setSecret(nextSecret);
-      setQrCode(nextQr);
-      setOtpauthUrl(nextUrl);
+      setSecret(payload.secret);
+      setQrCode(payload.qrCode);
+      setOtpauthUrl(payload.otpauthUrl);
       setVerifyCode('');
       setSetupStep('scan');
-    } catch (err: any) {
-      setErrorMessage(err.response?.data?.message || err.message || 'Failed to start 2FA setup.');
+    } catch (err: unknown) {
+      setErrorMessage(
+        getApiErrorMessage(err, 'Failed to start 2FA setup.')
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -122,23 +117,23 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
     e.preventDefault();
     clearMessages();
 
-    if (!/^\d{6}$/.test(verifyCode.trim())) {
-      setErrorMessage('Enter the 6-digit code shown in your authenticator app.');
+    const validationError =
+      twoFactorSettingsService.validateVerificationCode(verifyCode);
+    if (validationError) {
+      setErrorMessage(validationError);
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const res = await authApi.verifyAndEnable2FA({ token: verifyCode.trim() });
-      setSuccessMessage(
-        res.message || 'Two-factor authentication is now enabled for your account.'
-      );
+      const result = await twoFactorSettingsService.verifyAndEnable(verifyCode);
+      setSuccessMessage(result.message);
       onStatusChange?.(true);
       resetFlow();
       await fetchStatus();
-    } catch (err: any) {
+    } catch (err: unknown) {
       setErrorMessage(
-        err.response?.data?.message || err.message || 'That code was not accepted. Please try again.'
+        getApiErrorMessage(err, 'That code was not accepted. Please try again.')
       );
     } finally {
       setIsSubmitting(false);
@@ -149,24 +144,28 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
     e.preventDefault();
     clearMessages();
 
-    if (!disablePassword && !disableCode.trim()) {
-      setErrorMessage('Provide your account password or a current 6-digit code to disable 2FA.');
+    const validationError = twoFactorSettingsService.validateDisableInput(
+      disablePassword,
+      disableCode
+    );
+    if (validationError) {
+      setErrorMessage(validationError);
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const res = await authApi.disable2FA({
-        password: disablePassword || undefined,
-        token: disableCode.trim() || undefined,
+      const result = await twoFactorSettingsService.disable({
+        password: disablePassword,
+        token: disableCode,
       });
-      setSuccessMessage(res.message || 'Two-factor authentication has been disabled.');
+      setSuccessMessage(result.message);
       onStatusChange?.(false);
       resetFlow();
       await fetchStatus();
-    } catch (err: any) {
+    } catch (err: unknown) {
       setErrorMessage(
-        err.response?.data?.message || err.message || 'Failed to disable 2FA. Please try again.'
+        getApiErrorMessage(err, 'Failed to disable 2FA. Please try again.')
       );
     } finally {
       setIsSubmitting(false);

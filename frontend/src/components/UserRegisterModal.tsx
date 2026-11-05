@@ -13,7 +13,8 @@ import {
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { authApi } from '../api/auth.api';
+import { userRegisterModalService } from '../services/userRegisterModal.service';
+import { getApiErrorMessage } from '../services/errors';
 
 export interface UserRegisterModalProps {
   isOpen: boolean;
@@ -49,30 +50,25 @@ export const UserRegisterModal: React.FC<UserRegisterModalProps> = ({
 
   // Sync token from URL or props
   useEffect(() => {
-    let activeToken = propToken || '';
-    if (!activeToken && typeof window !== 'undefined') {
-      const searchParams = new URLSearchParams(window.location.search);
-      activeToken = searchParams.get('token') || '';
-    }
+    const activeToken = propToken || userRegisterModalService.getTokenFromUrl();
     setToken(activeToken);
 
     if (isOpen && activeToken) {
       // Fetch invitation details to present context to user
       setIsVerifyingToken(true);
       setErrorMessage(null);
-      authApi
+      userRegisterModalService
         .getInvitationDetails(activeToken)
-        .then((res) => {
-          if (res?.data) {
-            setInvitationInfo(res.data);
-          }
+        .then((details) => {
+          setInvitationInfo(details);
         })
-        .catch((err) => {
-          const msg =
-            err.response?.data?.message ||
-            err.message ||
-            'The invitation token is invalid or has expired.';
-          setErrorMessage(msg);
+        .catch((err: unknown) => {
+          setErrorMessage(
+            getApiErrorMessage(
+              err,
+              'The invitation token is invalid or has expired.'
+            )
+          );
         })
         .finally(() => {
           setIsVerifyingToken(false);
@@ -95,54 +91,41 @@ export const UserRegisterModal: React.FC<UserRegisterModalProps> = ({
     setErrorMessage(null);
 
     const activeToken =
-      token.trim() ||
-      (typeof window !== 'undefined'
-        ? new URLSearchParams(window.location.search).get('token') || ''
-        : '');
+      token.trim() || userRegisterModalService.getTokenFromUrl();
 
-    if (!activeToken) {
-      setErrorMessage(
-        'Missing invitation token. Please ensure you clicked the full link from your invitation email.'
-      );
-      return;
-    }
-
-    if (!password) {
-      setErrorMessage('Please enter a password.');
-      return;
-    }
-
-    if (password.length < 6) {
-      setErrorMessage('Password must be at least 6 characters long.');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setErrorMessage('Passwords do not match. Please verify both fields.');
+    const validationError = userRegisterModalService.validateRegistration(
+      activeToken,
+      password,
+      confirmPassword
+    );
+    if (validationError) {
+      setErrorMessage(validationError);
       return;
     }
 
     try {
       setIsLoading(true);
-      const res = await authApi.acceptInvite(activeToken, password);
+      const result = await userRegisterModalService.acceptInvitation(
+        activeToken,
+        password
+      );
 
-      const msg =
-        res.message || 'Account registered successfully! Redirecting to sign in...';
-      setSuccessMessage(msg);
+      setSuccessMessage(result.message);
 
       // Brief delay to display the success confirmation, then redirect
       setTimeout(() => {
         onSuccess(
-          invitationInfo?.email || res.user?.email,
+          invitationInfo?.email || result.email,
           'Account created successfully! Please sign in with your password.'
         );
       }, 700);
-    } catch (err: any) {
-      const serverMessage =
-        err.response?.data?.message ||
-        err.message ||
-        'Failed to complete registration. The invitation link may be invalid or expired.';
-      setErrorMessage(serverMessage);
+    } catch (err: unknown) {
+      setErrorMessage(
+        getApiErrorMessage(
+          err,
+          'Failed to complete registration. The invitation link may be invalid or expired.'
+        )
+      );
     } finally {
       setIsLoading(false);
     }

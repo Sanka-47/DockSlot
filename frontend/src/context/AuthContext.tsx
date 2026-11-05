@@ -1,7 +1,7 @@
 import React, { createContext, useState, useEffect, type ReactNode } from 'react';
 import type { User } from '../types/user.types';
 import { storage } from '../utils/storage';
-import { authApi } from '../api/auth.api';
+import { authContextService } from '../services/authContext.service';
 import {
   AUTH_SESSION_EXPIRED_EVENT,
   AUTH_TOKEN_REFRESHED_EVENT,
@@ -32,9 +32,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (savedToken) {
         setToken(savedToken);
         try {
-          const res = await authApi.getMe();
-          if (res?.data) {
-            setUser(res.data);
+          const currentUser = await authContextService.getCurrentUser();
+          if (currentUser) {
+            setUser(currentUser);
           }
         } catch {
           // Token expired or invalid
@@ -83,7 +83,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const logout = () => {
     // Best-effort: clear the server-side HttpOnly refresh cookie.
-    authApi.logout().catch(() => {});
+    void authContextService.logout();
     storage.removeToken();
     setToken(null);
     setUser(null);
@@ -91,7 +91,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const logoutAll = async () => {
     try {
-      await authApi.logoutAll();
+      await authContextService.logoutAll();
     } catch {
       // Continue client cleanup even if network fails
     } finally {
@@ -105,9 +105,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const savedToken = storage.getToken();
     if (!savedToken) return;
     try {
-      const res = await authApi.getMe();
-      if (res?.data) {
-        setUser(res.data);
+      const currentUser = await authContextService.getCurrentUser();
+      if (currentUser) {
+        setUser(currentUser);
       }
     } catch {
       // Leave existing state untouched; an expired session is handled by the 401 interceptor.

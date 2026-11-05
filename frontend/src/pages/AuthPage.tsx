@@ -20,8 +20,8 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Tabs } from '../components/ui/tabs';
-import { authApi } from '../api/auth.api';
-import { storage } from '../utils/storage';
+import { authPageService } from '../services/authPage.service';
+import { getApiErrorMessage } from '../services/errors';
 import { useAuth } from '../hooks/useAuth';
 import { ForgotPasswordPage } from './ForgotPasswordPage';
 import { ResetPasswordPage } from './ResetPasswordPage';
@@ -29,8 +29,6 @@ import { UserRegisterModal } from '../components/UserRegisterModal';
 import type {
   OrganizationType,
   User,
-  LoginRequest,
-  RegisterRequest,
 } from '../types/user.types';
 
 export type AuthTab = 'signin' | 'register' | 'forgot' | 'reset';
@@ -164,7 +162,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
    */
   const completeSignIn = (token: string, user: User, successText: string) => {
     // Store the access token; the refresh token lives in an HttpOnly cookie.
-    storage.setToken(token);
+    authPageService.persistSession(token);
 
     // Update global context
     setAuthContextUser(token, user);
@@ -198,17 +196,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({
    * Route user to their respective dashboard based on role and organization type.
    */
   const handleDashboardRedirect = (user: User) => {
-    const isCarrier =
-      user.role === 'CARRIER_ADMIN' ||
-      user.role === 'DISPATCHER' ||
-      user.organization?.type === 'CARRIER';
-
-    const targetRoute = isCarrier ? 'carrier' : 'warehouse';
+    const targetRoute = authPageService.getDashboardRoute(user);
 
     if (onNavigate) {
       onNavigate(targetRoute);
     } else if (typeof window !== 'undefined') {
-      window.location.href = isCarrier ? '/carrier' : '/warehouse';
+      window.location.href = targetRoute === 'carrier' ? '/carrier' : '/warehouse';
     }
   };
 
@@ -224,47 +217,40 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     setErrorMessage(null);
     setSuccessMessage(null);
 
-    if (!signInEmail.trim() || !signInPassword) {
-      setErrorMessage('Please provide both email address and password.');
+    const validationError = authPageService.validateSignIn(
+      signInEmail,
+      signInPassword
+    );
+    if (validationError) {
+      setErrorMessage(validationError);
       return;
     }
 
     try {
       setIsLoading(true);
-      const payload: LoginRequest = {
-        email: signInEmail.trim().toLowerCase(),
-        password: signInPassword,
-      };
-
-      const response = await authApi.login(payload);
+      const result = await authPageService.signIn(signInEmail, signInPassword);
 
       // Backend responded with a 2FA challenge instead of a session token
-      if (response.requires2FA || response.data?.requires2FA) {
-        const tempToken = response.tempToken || response.data?.tempToken;
-
-        if (!tempToken) {
-          throw new Error('Two-factor authentication is required but the challenge token is missing.');
-        }
-
-        setPendingTempToken(tempToken);
-        setPendingEmail(signInEmail.trim().toLowerCase());
+      if (result.requiresTwoFactor) {
+        setPendingTempToken(result.tempToken);
+        setPendingEmail(result.email);
         setTotpCode('');
         setSuccessMessage(null);
         return;
       }
 
-      const token = response.token || response.data?.token;
-      const user = response.user || response.data?.user;
-
-      if (!token || !user) {
-        throw new Error('Authentication succeeded but received an incomplete server response.');
-      }
-
-      completeSignIn(token, user, 'Login successful! Redirecting to dashboard...');
-    } catch (err: any) {
-      const serverMessage =
-        err.response?.data?.message || err.message || 'Login failed. Please check your credentials.';
-      setErrorMessage(serverMessage);
+      completeSignIn(
+        result.token,
+        result.user,
+        'Login successful! Redirecting to dashboard...'
+      );
+    } catch (err: unknown) {
+      setErrorMessage(
+        getApiErrorMessage(
+          err,
+          'Login failed. Please check your credentials.'
+        )
+      );
     } finally {
       setIsLoading(false);
     }
@@ -284,41 +270,39 @@ export const AuthPage: React.FC<AuthPageProps> = ({
       return;
     }
 
-    if (!/^\d{6}$/.test(totpCode.trim())) {
-      setErrorMessage('Please enter the 6-digit code from your authenticator app.');
+    const validationError = authPageService.validateTwoFactorCode(totpCode);
+    if (validationError) {
+      setErrorMessage(validationError);
       return;
     }
 
     try {
       setIsLoading(true);
-      const response = await authApi.verify2FALogin({
-        tempToken: pendingTempToken,
-        token: totpCode.trim(),
-      });
-
-      const token = response.token || response.data?.token;
-      const user = response.user || response.data?.user;
-
-      if (!token || !user) {
-        throw new Error('Verification succeeded but received an incomplete server response.');
-      }
+      const session = await authPageService.verifyTwoFactor(
+        pendingTempToken,
+        totpCode
+      );
 
       setPendingTempToken(null);
       setTotpCode('');
-      completeSignIn(token, user, 'Two-factor verification successful! Redirecting to dashboard...');
-    } catch (err: any) {
-      const serverMessage =
-        err.response?.data?.message ||
-        err.message ||
-        'That verification code was not accepted. Please try again.';
-
+      completeSignIn(
+        session.token,
+        session.user,
+        'Two-factor verification successful! Redirecting to dashboard...'
+      );
+    } catch (err: unknown) {
       // An expired temp token cannot be retried — send the user back to the password step.
-      if (err.response?.status === 401 && /temp|session|expired/i.test(String(serverMessage))) {
+      if (authPageService.isTwoFactorSessionExpired(err)) {
         setPendingTempToken(null);
         setTotpCode('');
         setErrorMessage('Your 2FA session expired. Please sign in again.');
       } else {
-        setErrorMessage(serverMessage);
+        setErrorMessage(
+          getApiErrorMessage(
+            err,
+            'That verification code was not accepted. Please try again.'
+          )
+        );
       }
     } finally {
       setIsLoading(false);
@@ -342,61 +326,47 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     setSuccessMessage(null);
 
     // Validation
-    if (!registerOrgName.trim()) {
-      setErrorMessage('Organization Name is required.');
-      return;
-    }
-    if (!registerEmail.trim()) {
-      setErrorMessage('Email Address is required.');
-      return;
-    }
-    if (!registerPassword || registerPassword.length < 6) {
-      setErrorMessage('Password must be at least 6 characters long.');
+    const validationError = authPageService.validateRegistration({
+      organizationName: registerOrgName,
+      email: registerEmail,
+      password: registerPassword,
+    });
+    if (validationError) {
+      setErrorMessage(validationError);
       return;
     }
 
     try {
       setIsLoading(true);
-      const payload: RegisterRequest = {
-        organizationName: registerOrgName.trim(),
-        orgName: registerOrgName.trim(),
+      const session = await authPageService.registerOrganization({
+        organizationName: registerOrgName,
         organizationType: registerOrgType,
-        orgType: registerOrgType,
-        email: registerEmail.trim().toLowerCase(),
+        email: registerEmail,
         password: registerPassword,
-      };
+      });
 
-      const response = await authApi.register(payload);
-
-      const token = response.token || response.data?.token;
-      const user = response.user || response.data?.user;
-
-      if (!token || !user) {
-        throw new Error('Registration completed but received an incomplete server response.');
-      }
-
-      // Store the access token; the refresh token lives in an HttpOnly cookie.
-      storage.setToken(token);
+      authPageService.persistSession(session.token);
 
       // Update global context
-      setAuthContextUser(token, user);
+      setAuthContextUser(session.token, session.user);
 
       setSuccessMessage('Organization registered successfully! Setting up your workspace...');
 
       if (onSuccess) {
-        onSuccess(user, token);
+        onSuccess(session.user, session.token);
       }
 
       // Smooth redirection
       setTimeout(() => {
-        handleDashboardRedirect(user);
+        handleDashboardRedirect(session.user);
       }, 600);
-    } catch (err: any) {
-      const serverMessage =
-        err.response?.data?.message ||
-        err.message ||
-        'Registration failed. Please check your details.';
-      setErrorMessage(serverMessage);
+    } catch (err: unknown) {
+      setErrorMessage(
+        getApiErrorMessage(
+          err,
+          'Registration failed. Please check your details.'
+        )
+      );
     } finally {
       setIsLoading(false);
     }

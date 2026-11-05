@@ -12,7 +12,12 @@ import {
   Building2,
   Search,
 } from 'lucide-react';
-import { userApi } from '../api/user.api';
+import { carrierAdminDashboardService } from '../services/carrierAdminDashboard.service';
+import type {
+  UserRoleFilter,
+  UserStatusFilter,
+} from '../services/carrierAdminDashboard.service';
+import { getApiErrorMessage } from '../services/errors';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirm } from '../hooks/useConfirm';
 import type { User } from '../types/user.types';
@@ -38,8 +43,8 @@ export const CarrierAdminDashboard: React.FC = () => {
 
   // Filter & Search State
   const [searchTerm, setSearchTerm] = useState<string>('');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'DEACTIVATED'>('ALL');
-  const [roleFilter, setRoleFilter] = useState<'ALL' | 'CARRIER_ADMIN' | 'DISPATCHER'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<UserStatusFilter>('ALL');
+  const [roleFilter, setRoleFilter] = useState<UserRoleFilter>('ALL');
 
   // Notifications / Banners
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
@@ -57,13 +62,10 @@ export const CarrierAdminDashboard: React.FC = () => {
     setIsLoadingUsers(true);
     setErrorBanner(null);
     try {
-      const res = await userApi.getUsers();
-      if (res?.data) {
-        setOrganizationUsers(res.data);
-      }
-    } catch (err: any) {
+      setOrganizationUsers(await carrierAdminDashboardService.fetchUsers());
+    } catch (err: unknown) {
       setErrorBanner(
-        err.response?.data?.message || 'Failed to load organization team members.'
+        getApiErrorMessage(err, 'Failed to load organization team members.')
       );
     } finally {
       setIsLoadingUsers(false);
@@ -82,13 +84,13 @@ export const CarrierAdminDashboard: React.FC = () => {
     setIsSendingInvite(true);
     setErrorBanner(null);
     try {
-      const res = await userApi.inviteUser({ email: inviteEmail.trim() });
-      triggerSuccess(res.message || `Invitation successfully sent to ${inviteEmail}.`);
+      const result = await carrierAdminDashboardService.inviteUser(inviteEmail);
+      triggerSuccess(result.message);
       setInviteEmail('');
       setIsInviteModalOpen(false);
       await fetchUsers();
-    } catch (err: any) {
-      setErrorBanner(err.response?.data?.message || 'Failed to send invitation.');
+    } catch (err: unknown) {
+      setErrorBanner(getApiErrorMessage(err, 'Failed to send invitation.'));
     } finally {
       setIsSendingInvite(false);
     }
@@ -113,14 +115,14 @@ export const CarrierAdminDashboard: React.FC = () => {
     try {
       // A toast tracks the whole lifecycle: loading -> success/error.
       await toast.promise(
-        userApi.deactivateUser(targetUser.id).then(async (res) => {
+        carrierAdminDashboardService.deactivateUser(targetUser.id).then(async (res) => {
           await fetchUsers();
           return res;
         }),
         {
           loading: `Deactivating ${targetUser.email}...`,
           success: (res) => res?.message || `User ${targetUser.email} has been deactivated.`,
-          error: (err: any) => err?.response?.data?.message || 'Failed to deactivate user.',
+          error: (err: unknown) => getApiErrorMessage(err, 'Failed to deactivate user.'),
         }
       );
     } catch {
@@ -149,14 +151,14 @@ export const CarrierAdminDashboard: React.FC = () => {
     setReactivatingUserId(targetUser.id);
     try {
       await toast.promise(
-        userApi.reactivateUser(targetUser.id).then(async (res) => {
+        carrierAdminDashboardService.reactivateUser(targetUser.id).then(async (res) => {
           await fetchUsers();
           return res;
         }),
         {
           loading: `Reactivating ${targetUser.email}...`,
           success: (res) => res?.message || `User ${targetUser.email} has been reactivated.`,
-          error: (err: any) => err?.response?.data?.message || 'Failed to reactivate user.',
+          error: (err: unknown) => getApiErrorMessage(err, 'Failed to reactivate user.'),
         }
       );
     } catch {
@@ -169,37 +171,16 @@ export const CarrierAdminDashboard: React.FC = () => {
 
   // Filtered Users List
   const filteredUsers = useMemo(() => {
-    return organizationUsers.filter((u) => {
-      // Search
-      const matchesSearch =
-        u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        u.role.toLowerCase().includes(searchTerm.toLowerCase());
-
-      // Status Filter
-      const isDeactivated = u.isActive === false;
-      const matchesStatus =
-        statusFilter === 'ALL'
-          ? true
-          : statusFilter === 'ACTIVE'
-          ? !isDeactivated
-          : isDeactivated;
-
-      // Role Filter
-      const matchesRole =
-        roleFilter === 'ALL' ? true : u.role === roleFilter;
-
-      return matchesSearch && matchesStatus && matchesRole;
+    return carrierAdminDashboardService.filterUsers(organizationUsers, {
+      searchTerm,
+      statusFilter,
+      roleFilter,
     });
   }, [organizationUsers, searchTerm, statusFilter, roleFilter]);
 
   // Statistics Cards
   const stats = useMemo(() => {
-    const total = organizationUsers.length;
-    const active = organizationUsers.filter((u) => u.isActive !== false).length;
-    const deactivated = organizationUsers.filter((u) => u.isActive === false).length;
-    const dispatchers = organizationUsers.filter((u) => u.role === 'DISPATCHER').length;
-    const admins = organizationUsers.filter((u) => u.role === 'CARRIER_ADMIN').length;
-    return { total, active, deactivated, dispatchers, admins };
+    return carrierAdminDashboardService.computeStats(organizationUsers);
   }, [organizationUsers]);
 
   return (

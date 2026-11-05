@@ -244,3 +244,20 @@ if (process.env.NODE_ENV !== 'test') {
     console.log(`[MockCarrier] Logs endpoint:    GET  http://localhost:${PORT}/api/carrier/logs`);
   });
 }
+
+
+/*
+
+'{"enabled":true}' | curl.exe -s -X POST `
+  "http://localhost:4001/api/carrier/control" `
+  -H "Content-Type: application/json" `
+  --data-binary '@-'
+
+To disable the mock carrier:
+
+'{"enabled":false}' | curl.exe -s -X POST `
+  "http://localhost:4001/api/carrier/control" `
+  -H "Content-Type: application/json" `
+  --data-binary '@-'
+
+*/

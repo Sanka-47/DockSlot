@@ -13,10 +13,15 @@ describe('Booking Concurrency & Double-Booking Prevention Integration Tests', ()
   let testDockId: number;
   const dispatchers: Array<{ id: number; token: string }> = [];
 
-  // A future slot time strictly within operating hours (Asia/Colombo UTC+5:30)
-  // Local time: 2026-10-25 10:00:00 to 10:30:00 (30 min) -> UTC: 04:30:00 to 05:00:00
-  const slotStartTime = '2026-10-25T04:30:00.000Z';
-  const slotEndTime = '2026-10-25T05:00:00.000Z';
+  // A future slot time strictly within operating hours. The warehouse runs 24/7,
+  // so any 30-minute boundary works; derive it from the current time (2 days
+  // ahead, aligned to the slot grid) instead of hard-coding a date that expires.
+  const SLOT_LENGTH_MS = 30 * 60 * 1000;
+  const slotStartMs =
+    Math.ceil((Date.now() + 2 * 24 * 60 * 60 * 1000) / SLOT_LENGTH_MS) * SLOT_LENGTH_MS;
+
+  const slotStartTime = new Date(slotStartMs).toISOString();
+  const slotEndTime = new Date(slotStartMs + SLOT_LENGTH_MS).toISOString();
 
   beforeAll(async () => {
     // 1. Create a test Warehouse Operator Organization
