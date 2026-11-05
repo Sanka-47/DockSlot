@@ -204,9 +204,14 @@ describe('Slot Taken Between Viewing and Booking Requirement (DispatcherDashboar
       '../../frontend/src/pages/DispatcherDashboard.tsx'
     );
     const source = fs.readFileSync(dashboardPath, 'utf-8');
+    const errorsPath = path.resolve(__dirname, '../../frontend/src/services/errors.ts');
+    const errorsSource = fs.readFileSync(errorsPath, 'utf-8');
 
-    // 1. Verify 409 conflict detection in handleCreateBookingSubmit
-    expect(source).toContain('status === 409');
+    // 1. Verify 409 conflict detection in handleCreateBookingSubmit. The status
+    // comparison lives in the shared error helper, which the component uses.
+    expect(source).toContain('isSlotConflictError(err)');
+    expect(errorsSource).toContain('export function isSlotConflictError');
+    expect(errorsSource).toContain('status === 409');
     expect(source).toContain(
       'was just booked by another carrier while you were viewing it. Available slots have been updated — please select another open slot.'
     );
@@ -363,16 +368,24 @@ describe('Slot Taken Between Viewing and Booking Requirement (DispatcherDashboar
       }
       expect(nySlots.length).toBeLessThan(48);
 
-      // 3. Verify frontend DispatcherDashboard.tsx filters out past slots and resolves dates in warehouse timezone
+      // 3. Verify frontend slot helpers filter out past slots and resolve dates in warehouse timezone.
+      // The past-slot guard lives in the extracted slot service, which the dashboard calls
+      // via dispatcherDashboardService.searchAvailableSlots().
       const dashboardPath = path.resolve(
         __dirname,
         '../../frontend/src/pages/DispatcherDashboard.tsx'
       );
       const source = fs.readFileSync(dashboardPath, 'utf-8');
+      const servicePath = path.resolve(
+        __dirname,
+        '../../frontend/src/services/dispatcherDashboard.service.ts'
+      );
+      const serviceSource = fs.readFileSync(servicePath, 'utf-8');
 
-      expect(source).toContain('const isFutureSlot = useCallback');
-      expect(source).toContain('return slotStartMs > Date.now()');
-      expect(source).toContain('filter(isFutureSlot)');
+      expect(serviceSource).toContain('export function isFutureSlot');
+      expect(serviceSource).toContain('return slotStartMs > Date.now()');
+      expect(serviceSource).toContain('.filter(isFutureSlot)');
+      expect(source).toContain('dispatcherDashboardService.searchAvailableSlots');
       expect(source).toMatch(/getTodayDateString\(\s*selectedWarehouse\?\.timezone\s*\)/);
     } finally {
       await prisma.dock.deleteMany({ where: { warehouseId: nyWarehouse.id } });
