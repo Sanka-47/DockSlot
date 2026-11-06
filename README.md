@@ -1,4 +1,4 @@
-<img width="1911" height="993" alt="image" src="https://github.com/user-attachments/assets/5b1b8787-c36c-4056-bbfe-5301a9b0b24f" /># DockSlot
+
 
 Multi-tenant dock slot booking platform for warehouse operators and carriers.
 
