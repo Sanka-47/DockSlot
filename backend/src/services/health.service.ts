@@ -1,6 +1,6 @@
-import { prisma } from '../config/db.config';
 import { childLogger } from '../utils/logger';
 import { getRequestId } from '../utils/requestContext';
+import { healthRepository } from '../repositories/health.repository';
 
 /**
  * HealthService
@@ -56,7 +56,7 @@ export class HealthService {
     const timestamp = new Date().toISOString();
 
     try {
-      await this.withTimeout(prisma.$queryRaw`SELECT 1`, this.timeoutMs);
+      await this.withTimeout(healthRepository.ping(), this.timeoutMs);
 
       return {
         status: 'UP',

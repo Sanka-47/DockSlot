@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { prisma } from '../config/db.config';
+import { idempotencyRepository } from '../repositories/idempotency.repository';
 
 // 24 hours TTL for short-term mobile network retries
 export const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
@@ -13,13 +13,7 @@ export interface IdempotencyCustomRequest extends Request {
  */
 export async function cleanupExpiredIdempotencyRecords(olderThanHours: number = 24): Promise<number> {
   const cutoffDate = new Date(Date.now() - olderThanHours * 60 * 60 * 1000);
-  const result = await prisma.idempotencyRecord.deleteMany({
-    where: {
-      createdAt: {
-        lt: cutoffDate,
-      },
-    },
-  });
+  const result = await idempotencyRepository.deleteOlderThan(cutoffDate);
   return result.count;
 }
 
@@ -45,16 +39,10 @@ export const idempotencyMiddleware = async (
   try {
     // Opportunistically prune older records in the background without blocking request
     const cutoffDate = new Date(Date.now() - IDEMPOTENCY_TTL_MS);
-    prisma.idempotencyRecord
-      .deleteMany({
-        where: { createdAt: { lt: cutoffDate } },
-      })
-      .catch(() => {});
+    idempotencyRepository.deleteOlderThan(cutoffDate).catch(() => {});
 
     // Query IdempotencyRecord table for this key
-    const existing = await prisma.idempotencyRecord.findUnique({
-      where: { key: idempotencyKey },
-    });
+    const existing = await idempotencyRepository.findByKey(idempotencyKey);
 
     if (existing) {
       const recordAge = Date.now() - existing.createdAt.getTime();
@@ -66,9 +54,7 @@ export const idempotencyMiddleware = async (
       }
 
       // Record is older than 24 hours, delete expired record and allow fresh request
-      await prisma.idempotencyRecord.delete({
-        where: { key: idempotencyKey },
-      });
+      await idempotencyRepository.deleteByKey(idempotencyKey);
     }
 
     // Attach key to request for controller or service awareness
@@ -80,20 +66,8 @@ export const idempotencyMiddleware = async (
       // Cache successful responses (2xx)
       if (res.statusCode >= 200 && res.statusCode < 300) {
         const serializableBody = JSON.parse(JSON.stringify(body));
-        prisma.idempotencyRecord
-          .upsert({
-            where: { key: idempotencyKey },
-            create: {
-              key: idempotencyKey,
-              responseCode: res.statusCode,
-              responseBody: serializableBody,
-            },
-            update: {
-              responseCode: res.statusCode,
-              responseBody: serializableBody,
-              createdAt: new Date(),
-            },
-          })
+        idempotencyRepository
+          .upsertResponse(idempotencyKey, res.statusCode, serializableBody)
           .then(() => {
             originalJson(body);
           })

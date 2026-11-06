@@ -1,5 +1,5 @@
-import { BookingStatus, DockStatus, OrganizationType } from '@prisma/client';
-import { prisma } from '../config/db.config';
+import { BookingStatus, DockStatus } from '@prisma/client';
+import { bookingRepository } from '../repositories/booking.repository';
 import {
   formatInTimeZone,
   getDayOfWeekInTimeZone,
@@ -133,23 +133,7 @@ export class BookingService {
 
     // a. Validate that target dock exists and evaluate real-time dynamic effectiveStatus against now() and active closures
     const now = new Date();
-    const dock = await prisma.dock.findUnique({
-      where: { id: data.dockId },
-      include: {
-        warehouse: {
-          include: {
-            operatingHours: true,
-            policy: true,
-          },
-        },
-        closures: {
-          where: {
-            startTime: { lte: now },
-            endTime: { gte: now },
-          },
-        },
-      },
-    });
+    const dock = await bookingRepository.findDockWithWarehouseAndActiveClosures(data.dockId, now);
 
     if (!dock) {
       throw { status: 404, message: 'Dock not found.' };
@@ -186,15 +170,11 @@ export class BookingService {
       }
 
       // Anti-Hogging Check: Count active carrier bookings (BOOKED, ARRIVED) at this warehouse
-      const activeBookingsCount = await prisma.booking.count({
-        where: {
-          carrierOrgId: dispatcherOrgId,
-          status: { in: [BookingStatus.BOOKED, BookingStatus.ARRIVED] },
-          dock: {
-            warehouseId: dock.warehouseId,
-          },
-        },
-      });
+      const activeBookingsCount = await bookingRepository.countActiveCarrierBookingsAtWarehouse(
+        dispatcherOrgId,
+        dock.warehouseId,
+        [BookingStatus.BOOKED, BookingStatus.ARRIVED]
+      );
 
       if (activeBookingsCount >= policy.maxConcurrentBookings) {
         throw {
@@ -205,13 +185,11 @@ export class BookingService {
     }
 
     // Verify requested slot is not under scheduled dock maintenance closure
-    const overlappingClosure = await prisma.dockClosure.findFirst({
-      where: {
-        dockId: data.dockId,
-        startTime: { lt: slotEnd },
-        endTime: { gt: slotStart },
-      },
-    });
+    const overlappingClosure = await bookingRepository.findOverlappingClosure(
+      data.dockId,
+      slotStart,
+      slotEnd
+    );
     if (overlappingClosure) {
       throw {
         status: 400,
@@ -221,23 +199,23 @@ export class BookingService {
 
     // c. Execute the booking inside a Prisma transaction guaranteeing atomicity
     try {
-      const result = await prisma.$transaction(async (tx) => {
+      const result = await bookingRepository.transaction(async (tx) => {
         // Pre-check active booking for concurrency
-        const existing = await tx.booking.findFirst({
-          where: {
-            dockId: data.dockId,
-            slotStartTime: slotStart,
-            status: { in: [BookingStatus.BOOKED, BookingStatus.ARRIVED] },
-          },
-        });
+        const existing = await bookingRepository.findActiveBookingAtDockSlot(
+          data.dockId,
+          slotStart,
+          [BookingStatus.BOOKED, BookingStatus.ARRIVED],
+          undefined,
+          tx
+        );
 
         if (existing) {
           throw { status: 409, message: 'Conflict. The requested dock slot is already booked.' };
         }
 
         // Insert new Booking record
-        const booking = await tx.booking.create({
-          data: {
+        const booking = await bookingRepository.createBooking(
+          {
             dockId: data.dockId,
             carrierOrgId: dispatcherOrgId,
             slotStartTime: slotStart,
@@ -249,15 +227,8 @@ export class BookingService {
             status: BookingStatus.BOOKED,
             activeLock: 'ACTIVE',
           },
-          include: {
-            dock: {
-              include: {
-                warehouse: true,
-              },
-            },
-            carrierOrg: true,
-          },
-        });
+          tx
+        );
 
         // If userId is provided, create initial AuditLog
         if (userId) {
@@ -328,22 +299,7 @@ export class BookingService {
       throw { status: 400, message: 'slotStartTime and slotEndTime are required.' };
     }
 
-    const booking = await prisma.booking.findUnique({
-      where: { id: bookingId },
-      include: {
-        dock: {
-          include: {
-            warehouse: {
-              include: {
-                operatingHours: true,
-                policy: true,
-              },
-            },
-          },
-        },
-        carrierOrg: true,
-      },
-    });
+    const booking = await bookingRepository.findManagedBookingById(bookingId);
 
     if (!booking) {
       throw { status: 404, message: 'Booking not found.' };
@@ -366,23 +322,7 @@ export class BookingService {
 
     const now = new Date();
     if (targetDockId !== booking.dockId) {
-      const foundDock = await prisma.dock.findUnique({
-        where: { id: targetDockId },
-        include: {
-          warehouse: {
-            include: {
-              operatingHours: true,
-              policy: true,
-            },
-          },
-          closures: {
-            where: {
-              startTime: { lte: now },
-              endTime: { gte: now },
-            },
-          },
-        },
-      });
+      const foundDock = await bookingRepository.findDockWithWarehouseAndActiveClosures(targetDockId, now);
 
       if (!foundDock) {
         throw { status: 404, message: 'Target dock not found.' };
@@ -399,13 +339,7 @@ export class BookingService {
 
       targetDock = foundDock;
     } else {
-      const activeClosure = await prisma.dockClosure.findFirst({
-        where: {
-          dockId: booking.dockId,
-          startTime: { lte: now },
-          endTime: { gte: now },
-        },
-      });
+      const activeClosure = await bookingRepository.findActiveClosureAtDock(booking.dockId, now);
 
       if (booking.dock.status !== DockStatus.ACTIVE || activeClosure) {
         throw { status: 400, message: 'Dock is currently under maintenance and cannot be booked.' };
@@ -445,13 +379,11 @@ export class BookingService {
     }
 
     // Verify target slot is not under scheduled dock maintenance closure
-    const overlappingClosure = await prisma.dockClosure.findFirst({
-      where: {
-        dockId: targetDockId,
-        startTime: { lt: slotEnd },
-        endTime: { gt: slotStart },
-      },
-    });
+    const overlappingClosure = await bookingRepository.findOverlappingClosure(
+      targetDockId,
+      slotStart,
+      slotEnd
+    );
     if (overlappingClosure) {
       throw {
         status: 400,
@@ -460,39 +392,31 @@ export class BookingService {
     }
 
     try {
-      const result = await prisma.$transaction(async (tx) => {
+      const result = await bookingRepository.transaction(async (tx) => {
         // Pre-check if target dock slot is already booked by another active booking
-        const existing = await tx.booking.findFirst({
-          where: {
-            dockId: targetDockId,
-            slotStartTime: slotStart,
-            status: { in: [BookingStatus.BOOKED, BookingStatus.ARRIVED] },
-            id: { not: bookingId },
-          },
-        });
+        const existing = await bookingRepository.findActiveBookingAtDockSlot(
+          targetDockId,
+          slotStart,
+          [BookingStatus.BOOKED, BookingStatus.ARRIVED],
+          bookingId,
+          tx
+        );
 
         if (existing) {
           throw { status: 409, message: 'Conflict. The requested dock slot is already booked.' };
         }
 
         // Update the booking record to the new dock and time slot
-        const updatedBooking = await tx.booking.update({
-          where: { id: bookingId },
-          data: {
+        const updatedBooking = await bookingRepository.updateBookingReschedule(
+          bookingId,
+          {
             dockId: targetDockId,
             slotStartTime: slotStart,
             slotEndTime: slotEnd,
             activeLock: 'ACTIVE',
           },
-          include: {
-            dock: {
-              include: {
-                warehouse: true,
-              },
-            },
-            carrierOrg: true,
-          },
-        });
+          tx
+        );
 
         // Insert AuditLog with action RESCHEDULED
         await auditLogService.recordLog({
@@ -571,21 +495,7 @@ export class BookingService {
       throw { status: 400, message: 'Invalid booking ID.' };
     }
 
-    const booking = await prisma.booking.findUnique({
-      where: { id: bookingId },
-      include: {
-        dock: {
-          include: {
-            warehouse: {
-              include: {
-                policy: true,
-              },
-            },
-          },
-        },
-        carrierOrg: true,
-      },
-    });
+    const booking = await bookingRepository.findManagedBookingById(bookingId);
 
     if (!booking) {
       throw { status: 404, message: 'Booking not found.' };
@@ -615,23 +525,9 @@ export class BookingService {
       }
     }
 
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await bookingRepository.transaction(async (tx) => {
       // Update booking to CANCELLED and clear activeLock to release slot in unique index
-      const updatedBooking = await tx.booking.update({
-        where: { id: bookingId },
-        data: {
-          status: BookingStatus.CANCELLED,
-          activeLock: null,
-        },
-        include: {
-          dock: {
-            include: {
-              warehouse: true,
-            },
-          },
-          carrierOrg: true,
-        },
-      });
+      const updatedBooking = await bookingRepository.cancelBooking(bookingId, tx);
 
       // Record AuditLog
       await auditLogService.recordLog({
@@ -693,17 +589,7 @@ export class BookingService {
       throw { status: 400, message: 'Organization context required.' };
     }
 
-    const booking = await prisma.booking.findUnique({
-      where: { id: bookingId },
-      include: {
-        dock: {
-          include: {
-            warehouse: true,
-          },
-        },
-        carrierOrg: true,
-      },
-    });
+    const booking = await bookingRepository.findBookingWithDockWarehouseAndCarrier(bookingId);
 
     if (!booking) {
       throw { status: 404, message: 'Booking not found.' };
@@ -719,27 +605,7 @@ export class BookingService {
       };
     }
 
-    const logs = await prisma.auditLog.findMany({
-      where: { bookingId },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            role: true,
-            organizationId: true,
-            organization: {
-              select: {
-                id: true,
-                name: true,
-                type: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: { createdAt: 'asc' },
-    });
+    const logs = await bookingRepository.findAuditLogs(bookingId);
 
     return logs.map((log) => auditLogService.formatLogEntry(log));
   }
@@ -753,38 +619,11 @@ export class BookingService {
     }
 
     if (role === 'CARRIER_ADMIN' || role === 'DISPATCHER') {
-      return prisma.booking.findMany({
-        where: { carrierOrgId: organizationId },
-        include: {
-          dock: {
-            include: {
-              warehouse: true,
-            },
-          },
-        },
-        orderBy: { slotStartTime: 'desc' },
-      });
+      return bookingRepository.findBookingsByCarrierOrg(organizationId);
     }
 
     // Warehouse Operator
-    return prisma.booking.findMany({
-      where: {
-        dock: {
-          warehouse: {
-            organizationId,
-          },
-        },
-      },
-      include: {
-        dock: {
-          include: {
-            warehouse: true,
-          },
-        },
-        carrierOrg: true,
-      },
-      orderBy: { slotStartTime: 'desc' },
-    });
+    return bookingRepository.findBookingsByWarehouseOrg(organizationId);
   }
 
   /**
@@ -810,17 +649,7 @@ export class BookingService {
       };
     }
 
-    const booking = await prisma.booking.findUnique({
-      where: { id: bookingId },
-      include: {
-        dock: {
-          include: {
-            warehouse: true,
-          },
-        },
-        carrierOrg: true,
-      },
-    });
+    const booking = await bookingRepository.findBookingWithDockWarehouseAndCarrier(bookingId);
 
     if (!booking) {
       throw { status: 404, message: 'Booking not found.' };
@@ -849,21 +678,12 @@ export class BookingService {
       };
     }
 
-    const result = await prisma.$transaction(async (tx) => {
-      const updatedBooking = await tx.booking.update({
-        where: { id: bookingId },
-        data: {
-          status: status as BookingStatus,
-        },
-        include: {
-          dock: {
-            include: {
-              warehouse: true,
-            },
-          },
-          carrierOrg: true,
-        },
-      });
+    const result = await bookingRepository.transaction(async (tx) => {
+      const updatedBooking = await bookingRepository.updateBookingStatus(
+        bookingId,
+        status as BookingStatus,
+        tx
+      );
 
       // Record AuditLog entry tracking the status change
       await auditLogService.recordLog({
@@ -923,17 +743,7 @@ export class BookingService {
       throw { status: 400, message: 'Invalid booking ID.' };
     }
 
-    const booking = await prisma.booking.findUnique({
-      where: { id: bookingId },
-      include: {
-        dock: {
-          include: {
-            warehouse: true,
-          },
-        },
-        carrierOrg: true,
-      },
-    });
+    const booking = await bookingRepository.findBookingWithDockWarehouseAndCarrier(bookingId);
 
     if (!booking) {
       throw { status: 404, message: 'Booking not found.' };
@@ -961,24 +771,17 @@ export class BookingService {
       changes.cargoNote = { old: booking.cargoNote, new: data.cargoNote.trim() };
     }
 
-    const result = await prisma.$transaction(async (tx) => {
-      const updatedBooking = await tx.booking.update({
-        where: { id: bookingId },
-        data: {
+    const result = await bookingRepository.transaction(async (tx) => {
+      const updatedBooking = await bookingRepository.updateBookingDetails(
+        bookingId,
+        {
           ...(data.truckPlate !== undefined ? { truckPlate: data.truckPlate.trim() } : {}),
           ...(data.driverName !== undefined ? { driverName: data.driverName.trim() } : {}),
           ...(data.driverPhone !== undefined ? { driverPhone: data.driverPhone.trim() } : {}),
           ...(data.cargoNote !== undefined ? { cargoNote: data.cargoNote.trim() } : {}),
         },
-        include: {
-          dock: {
-            include: {
-              warehouse: true,
-            },
-          },
-          carrierOrg: true,
-        },
-      });
+        tx
+      );
 
       const changeKeys = Object.keys(changes);
       const summary =

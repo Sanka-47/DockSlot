@@ -1,4 +1,5 @@
-import { prisma } from '../config/db.config';
+import { DbClient } from '../repositories/base.repository';
+import { auditRepository } from '../repositories/audit.repository';
 
 export interface RecordAuditLogInput {
   bookingId: number;
@@ -6,7 +7,7 @@ export interface RecordAuditLogInput {
   action: 'CREATED' | 'UPDATED' | 'RESCHEDULED' | 'CANCELLED' | 'STATUS_CHANGED' | string;
   details?: Record<string, any>;
   summary?: string;
-  tx?: any;
+  tx?: DbClient;
 }
 
 export class AuditLogService {
@@ -66,7 +67,7 @@ export class AuditLogService {
    * Records an audit log entry for a booking with actor metadata and change summary.
    */
   async recordLog(input: RecordAuditLogInput) {
-    const client = input.tx || prisma;
+    const client = input.tx;
     const { bookingId, userId, action, details = {}, summary } = input;
 
     let actorEmail = details.actor?.email;
@@ -75,15 +76,7 @@ export class AuditLogService {
 
     if (!actorEmail || !actorRole) {
       try {
-        const user = await client.user.findUnique({
-          where: { id: userId },
-          select: {
-            id: true,
-            email: true,
-            role: true,
-            organizationId: true,
-          },
-        });
+        const user = await auditRepository.findActorById(userId, client);
 
         if (user) {
           actorEmail = user.email;
@@ -108,14 +101,15 @@ export class AuditLogService {
       },
     };
 
-    return client.auditLog.create({
-      data: {
+    return auditRepository.createLog(
+      {
         bookingId,
         userId,
         action,
         details: fullDetails,
       },
-    });
+      client
+    );
   }
 
   /**

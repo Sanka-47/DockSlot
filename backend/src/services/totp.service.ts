@@ -1,7 +1,7 @@
 import speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
 import bcrypt from 'bcrypt';
-import { prisma } from '../config/db.config';
+import { totpRepository } from '../repositories/totp.repository';
 import { authService, AuthResponse } from './auth.service';
 import { verifyTemp2faToken } from '../utils/jwt.utils';
 
@@ -36,10 +36,7 @@ export class TotpService {
   public async getStatus(
     userId: number
   ): Promise<{ isTwoFactorEnabled: boolean; isSetupPending: boolean }> {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { isTwoFactorEnabled: true, totpSecret: true },
-    });
+    const user = await totpRepository.findStatusById(userId);
 
     if (!user) {
       throw { status: 404, message: 'User not found.' };
@@ -55,9 +52,7 @@ export class TotpService {
    * Generates a new TOTP secret for the authenticated user and returns QR code data URL and secret string.
    */
   public async setup(userId: number): Promise<Setup2FAResponse> {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
+    const user = await totpRepository.findById(userId);
 
     if (!user) {
       throw { status: 404, message: 'User not found.' };
@@ -80,11 +75,8 @@ export class TotpService {
     const qrCode = await QRCode.toDataURL(otpauthUrl);
 
     // Persist secret on the user record; 2FA remains disabled until verifyAndEnable is completed
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        totpSecret: secret.base32,
-      },
+    await totpRepository.updateUser(userId, {
+      totpSecret: secret.base32,
     });
 
     return {
@@ -109,9 +101,7 @@ export class TotpService {
       throw { status: 400, message: 'Verification code must be exactly 6 numeric digits.' };
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
+    const user = await totpRepository.findById(userId);
 
     if (!user) {
       throw { status: 404, message: 'User not found.' };
@@ -132,11 +122,8 @@ export class TotpService {
       throw { status: 400, message: 'Invalid verification code. Please check your authenticator app and try again.' };
     }
 
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        isTwoFactorEnabled: true,
-      },
+    await totpRepository.updateUser(userId, {
+      isTwoFactorEnabled: true,
     });
 
     return {
@@ -151,9 +138,7 @@ export class TotpService {
   public async disable(input: Disable2FAInput): Promise<{ message: string; isTwoFactorEnabled: boolean }> {
     const { userId, password, token } = input;
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
+    const user = await totpRepository.findById(userId);
 
     if (!user) {
       throw { status: 404, message: 'User not found.' };
@@ -199,12 +184,9 @@ export class TotpService {
       };
     }
 
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        isTwoFactorEnabled: false,
-        totpSecret: null,
-      },
+    await totpRepository.updateUser(userId, {
+      isTwoFactorEnabled: false,
+      totpSecret: null,
     });
 
     return {
@@ -232,32 +214,10 @@ export class TotpService {
 
     if (tempToken) {
       const payload = verifyTemp2faToken(tempToken);
-      user = await prisma.user.findUnique({
-        where: { id: payload.userId },
-        include: {
-          organization: {
-            select: {
-              id: true,
-              name: true,
-              type: true,
-            },
-          },
-        },
-      });
+      user = await totpRepository.findByIdWithOrganization(payload.userId);
     } else if (email && password) {
       const normalizedEmail = email.toLowerCase().trim();
-      const foundUser = await prisma.user.findUnique({
-        where: { email: normalizedEmail },
-        include: {
-          organization: {
-            select: {
-              id: true,
-              name: true,
-              type: true,
-            },
-          },
-        },
-      });
+      const foundUser = await totpRepository.findByEmailWithOrganization(normalizedEmail);
 
       if (!foundUser) {
         throw { status: 401, message: 'Invalid credentials.' };
@@ -298,12 +258,9 @@ export class TotpService {
 
     // Reset failed login attempts on successful TOTP verification
     if (user.failedLoginAttempts > 0 || user.lockUntil !== null) {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          failedLoginAttempts: 0,
-          lockUntil: null,
-        },
+      await totpRepository.updateUser(user.id, {
+        failedLoginAttempts: 0,
+        lockUntil: null,
       });
     }
 

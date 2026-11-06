@@ -1,6 +1,6 @@
 import type { Server } from 'http';
 import app from './app';
-import { prisma } from './config/db.config';
+import { disconnect } from './repositories/base.repository';
 import { outboxWorker } from './workers/outbox.worker';
 
 const PORT = process.env.PORT || 5000;
@@ -42,7 +42,7 @@ if (process.env.NODE_ENV !== 'test') {
       await new Promise<void>((resolve) => server.close(() => resolve()));
 
       // 3. Release database connections.
-      await prisma.$disconnect();
+      await disconnect();
 
       clearTimeout(forceExit);
       console.log('[Server] Shutdown complete.');

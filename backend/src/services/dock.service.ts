@@ -1,6 +1,12 @@
-import { prisma } from '../config/db.config';
-import { DockStatus } from '@prisma/client';
-import { DockWithEffectiveStatus } from '../models/dock.model';
+import { Dock, DockClosure, DockStatus } from '@prisma/client';
+import { dockRepository } from '../repositories/dock.repository';
+
+export type EffectiveDockStatus = 'ACTIVE' | 'MAINTENANCE';
+
+export interface DockWithEffectiveStatus extends Dock {
+  closures?: DockClosure[];
+  effectiveStatus: EffectiveDockStatus;
+}
 
 export class DockService {
   /**
@@ -18,9 +24,7 @@ export class DockService {
     }
 
     if (organizationId) {
-      const warehouse = await prisma.warehouse.findUnique({
-        where: { id: warehouseId },
-      });
+      const warehouse = await dockRepository.findWarehouseById(warehouseId);
 
       if (!warehouse) {
         throw { status: 404, message: 'Warehouse not found.' };
@@ -35,18 +39,7 @@ export class DockService {
     }
 
     const now = new Date();
-    const docks = await prisma.dock.findMany({
-      where: { warehouseId },
-      include: {
-        closures: {
-          where: {
-            startTime: { lte: now },
-            endTime: { gte: now },
-          },
-        },
-      },
-      orderBy: { id: 'asc' },
-    });
+    const docks = await dockRepository.findManyByWarehouseWithActiveClosures(warehouseId, now);
 
     return docks.map((dock) => {
       const isUnderClosure = dock.closures && dock.closures.length > 0;
@@ -77,18 +70,7 @@ export class DockService {
       throw { status: 400, message: 'Invalid dock ID.' };
     }
 
-    const dock = await prisma.dock.findUnique({
-      where: { id: dockId },
-      include: {
-        warehouse: true,
-        closures: {
-          where: {
-            startTime: { lte: atTime },
-            endTime: { gte: atTime },
-          },
-        },
-      },
-    });
+    const dock = await dockRepository.findByIdWithWarehouseAndActiveClosures(dockId, atTime);
 
     if (!dock) {
       throw { status: 404, message: 'Dock not found.' };

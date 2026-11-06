@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyJwtToken } from '../utils/jwt.utils';
-import { prisma } from '../config/db.config';
+import { userRepository } from '../repositories/user.repository';
 import redis from '../config/redis';
 
 export interface AuthPayload {
@@ -83,10 +83,7 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     }
 
     if (cachedActive === null) {
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { isActive: true },
-      });
+      const user = await userRepository.findActiveStatusById(userId);
 
       if (!user || user.isActive === false) {
         await redis.set(`user:${userId}:isActive`, '0');
