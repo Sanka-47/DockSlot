@@ -1,4 +1,4 @@
-# DockSlot
+<img width="1911" height="993" alt="image" src="https://github.com/user-attachments/assets/5b1b8787-c36c-4056-bbfe-5301a9b0b24f" /># DockSlot
 
 Multi-tenant dock slot booking platform for warehouse operators and carriers.
 
@@ -10,6 +10,7 @@ Screenshots of each implemented dashboard. See
 ui-iterations/UI-flow.png
 
 ### Auth
+<img width="1911" height="993" alt="image" src="https://github.com/user-attachments/assets/e3f8e210-b92d-4726-96e6-be38a1c8bcc1" />
 
 ![Auth design](ui-iterations/FirstAIDesing.png)
 ![Auth screen](ui-iterations/Screenshot%202026-10-14%20070434.png)
