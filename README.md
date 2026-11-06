@@ -1,16 +1,40 @@
 # DockSlot
 
-## Prioritization & Scope Execution Flow
-
-1. **Phase 1 (P0 Baseline):** I built and verified all mandatory P0 requirements (`A1-A4, A6, W1-W2, B1-B4, N1-N2, Q1-Q2, Q4-Q6, U1-U5`) to ensure a fully functional multi-tenant scheduling core with strict RBAC, localized time handling, and atomic booking constraints.
-2. **Phase 2 (Selected P1 Enhancements):** We then implemented high-impact P1 features that solve real-world logistical bottlenecks:
-   - **Idempotency (`B6` / `U6`):** Prevents duplicate bookings from mobile retry loops.
-   - **Transactional Outbox (`N3`):** Guarantees reliable asynchronous delivery despite slow or failing carrier notification webhooks.
-   - **Lock Window (`W4`):** Protects warehouse labor schedules by enforcing a 24-hour modification cutoff.
-   - **Rescheduling (`B5`):** Allows flexible adjustments for delayed transport.
-3. **Phase 3 (Deferred Architecture Notes):** Remaining P1 and P2 items (such as 2FA `A9`, audit logs `B7`, and maintenance closures `W3`) have comprehensive architectural design briefs documented in `DECISIONS.md`.
-
 Multi-tenant dock slot booking platform for warehouse operators and carriers.
+
+## UI
+
+Screenshots of each implemented dashboard. See
+[`ui-iterations/README.md`](ui-iterations/README.md) for the iteration log.
+
+![UI flow](ui-iterations/UI-flow.png)
+
+### Auth
+
+![Auth design](ui-iterations/FirstAIDesing.png)
+![Auth screen](ui-iterations/Screenshot%202026-10-14%20070434.png)
+
+### Dock Manager Dashboard
+
+![Dock Manager dashboard](ui-iterations/image.png)
+![Dock Manager bookings](ui-iterations/Screenshot%202026-10-18%20123527.png)
+
+### Dispatcher Dashboard
+
+![Dispatcher dashboard](ui-iterations/image-1.png)
+![Dispatcher bookings](ui-iterations/Screenshot%202026-10-18%20120621.png)
+
+### Warehouse Admin Dashboard
+
+![Warehouse Admin dashboard](ui-iterations/image-2.png)
+![Warehouse Admin console](ui-iterations/Screenshot%202026-10-18%20123103.png)
+
+### Carrier Admin Dashboard
+
+![Carrier Admin dashboard](ui-iterations/image-3.png)
+![Carrier Admin console](ui-iterations/Screenshot%202026-10-18%20123347.png)
+
+## Running the project
 
 Start the full local stack with:
 
@@ -24,7 +48,7 @@ and host port overrides.
 
 ## Seeded demo accounts
 
-All seeded accounts are pre-verified and share the same password:12345678
+All seeded accounts are pre-verified and share the same password: `12345678`
 
 | Email | Password | Role | Organization |
 | --- | --- | --- | --- |
@@ -76,22 +100,7 @@ uses (see `backend/.env`). The tests are stateful, so point `DATABASE_URL` at a
 dedicated test database for deterministic results; the bundled stack's database
 can be reset with `docker compose down -v`.
 
-Top 3 risks if this went to production next week
-
-What happens: In production, the in-memory fallback for Redis is disabled, meaning any Redis outage causes every /api route to throw a 500 error. The Redis client stops attempting to reconnect after just two tries, and the /health endpoint only pings MySQL.
-
-The impact: If Redis goes down, the entire API breaks, but because MySQL remains healthy, the /health endpoint continues to report 200 UP. Orchestrators (like Docker or Kubernetes) will not restart the container, resulting in a silent, permanent outage requiring manual intervention.
-
-The fix: Implement High Availability for Redis, fix the client retry strategy to keep backing off, and expand the /health probe to actively check Redis connectivity.
-
-What is not done - all the main requirements are full filled
-i did not messure time exactly, i think i reached the 24 h mark in the proxy configuration area.
-
-Issue i faced - 
-
-In the final day i attempted to export the session after the run because i hit the limit on my model, but when I list sessions with space factory session list the session no longer appeared. I retried the export and many other thing but the CLI returned no file. but all the ai sessions upto that point are available 
-
-
-
 ## Final System Architecture diagram
-<img width="2274" height="1989" alt="1" src="https://github.com/user-attachments/assets/bfdda9cd-7ce8-4c55-9536-5d753c237780" />
+
+<img width="2274" height="1989" alt="System architecture" src="https://github.com/user-attachments/assets/bfdda9cd-7ce8-4c55-9536-5d753c237780" />
+

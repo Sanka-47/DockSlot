@@ -1,1 +1,0 @@
-While I didn't track my time precisely, I estimate I spent roughly 3 to 4 hours each day strictly on project development, seperatly another 2 hours daily researching and learning new concepts I encountered along the way, such as Redis.
