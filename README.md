@@ -4,35 +4,32 @@ Multi-tenant dock slot booking platform for warehouse operators and carriers.
 
 ## UI
 
-Screenshots of each implemented dashboard. See
+Screenshots captured from the running app with the seeded demo data. See
 [`ui-iterations/README.md`](ui-iterations/README.md) for the iteration log.
 
 ![UI flow](ui-iterations/UI-flow.png)
 
 ### Auth
 
-![Auth design](ui-iterations/FirstAIDesing.png)
-![Auth screen](ui-iterations/Screenshot%202026-10-14%20070434.png)
-
-### Dock Manager Dashboard
-
-![Dock Manager dashboard](ui-iterations/image.png)
-![Dock Manager bookings](ui-iterations/Screenshot%202026-10-18%20123527.png)
-
-### Dispatcher Dashboard
-
-![Dispatcher dashboard](ui-iterations/image-1.png)
-![Dispatcher bookings](ui-iterations/Screenshot%202026-10-18%20120621.png)
+![Sign in](ui-iterations/screenshots/auth-signin.png)
 
 ### Warehouse Admin Dashboard
 
-![Warehouse Admin dashboard](ui-iterations/image-2.png)
-![Warehouse Admin console](ui-iterations/Screenshot%202026-10-18%20123103.png)
+![Warehouse Admin console](ui-iterations/screenshots/warehouse-admin-console.png)
+![Warehouse Admin operations](ui-iterations/screenshots/warehouse-admin-operations.png)
+
+### Dock Manager Dashboard
+
+![Dock Manager dashboard](ui-iterations/screenshots/dock-manager-dashboard.png)
+
+### Dispatcher Dashboard
+
+![Dispatcher dashboard](ui-iterations/screenshots/dispatcher-dashboard.png)
 
 ### Carrier Admin Dashboard
 
-![Carrier Admin dashboard](ui-iterations/image-3.png)
-![Carrier Admin console](ui-iterations/Screenshot%202026-10-18%20123347.png)
+![Carrier Admin console](ui-iterations/screenshots/carrier-admin-console.png)
+![Carrier Admin dispatch and bookings](ui-iterations/screenshots/carrier-admin-dispatch.png)
 
 ## Running the project
 

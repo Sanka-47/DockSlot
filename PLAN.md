@@ -7,7 +7,7 @@ DockSlot is a multi-tenant B2B platform connecting two distinct organization typ
 
 The core technical challenges involve:
 - **Strict Concurrency Control:** Preventing double-booking under high contention when multiple dispatchers attempt to book the exact same slot simultaneously.
-- **Time Zone Handling:** Generating accurate slot schedules based on each warehouse's local time zone (e.g., Asia/Colombo, Europe/Amsterdam) regardless of server or user browser time zones.
+- **Time Zone Handling:*  * Generating accurate slot schedules based on each warehouse's local time zone (e.g., Asia/Colombo, Europe/Amsterdam) regardless of server or user browser time zones.
 - **Asynchronous Resilience:** Communicating booking events to an unstable third-party webhook (Carrier Notify API) with random delays, failures, and hangs without degrading user-facing booking performance.
 
 ---
