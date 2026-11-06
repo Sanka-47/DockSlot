@@ -1,8 +1,8 @@
 import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
-import { prisma } from '../config/db.config';
 import { formatInTimeZone } from '../utils/time.utils';
 import { getRequestId } from '../utils/requestContext';
+import { outboxRepository } from '../repositories/outbox.repository';
 
 /**
  * OutboxService
@@ -218,19 +218,16 @@ export class OutboxService {
       eventId
     );
 
-    return tx.outboxEvent.create({
-      data: {
+    return outboxRepository.createEvent(
+      {
         eventId,
         aggregateType: input.aggregateType,
         aggregateId: input.aggregateId,
-        payload: payload as unknown as Prisma.InputJsonValue,
-        status: OUTBOX_STATUS.PENDING,
-        retryCount: 0,
+        payload: payload as unknown as Record<string, unknown>,
         maxRetries: input.maxRetries ?? this.defaultMaxRetries,
-        nextRetryAt: new Date(),
       },
-      select: { id: true, eventId: true, status: true, nextRetryAt: true },
-    });
+      tx
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -251,53 +248,9 @@ export class OutboxService {
     const size = Math.max(1, Math.floor(batchSize));
     const now = new Date();
 
-    const claimed = await prisma.$transaction(
-      async (tx) => {
-        // LIMIT cannot be bound as a prepared-statement parameter; `size` is
-        // coerced to a validated integer above so this is injection-safe.
-        const due = await tx.$queryRaw<Array<{ id: number }>>(Prisma.sql`
-          SELECT id
-            FROM outbox_events
-           WHERE status = ${OUTBOX_STATUS.PENDING}
-             AND nextRetryAt <= ${now}
-           ORDER BY nextRetryAt ASC, id ASC
-           LIMIT ${Prisma.raw(String(size))}
-           FOR UPDATE
-        `);
+    const claimed = await outboxRepository.claimDueEvents(size, now);
 
-        if (due.length === 0) return [];
-
-        const ids = due.map((row) => row.id);
-
-        await tx.outboxEvent.updateMany({
-          where: { id: { in: ids }, status: OUTBOX_STATUS.PENDING },
-          data: { status: OUTBOX_STATUS.PROCESSING },
-        });
-
-        const rows = await tx.outboxEvent.findMany({
-          where: { id: { in: ids }, status: OUTBOX_STATUS.PROCESSING },
-          select: {
-            id: true,
-            eventId: true,
-            aggregateType: true,
-            aggregateId: true,
-            payload: true,
-            retryCount: true,
-            maxRetries: true,
-          },
-          orderBy: { id: 'asc' },
-        });
-
-        // The column is opaque JSON; the shape is guaranteed by `enqueue`.
-        return rows.map((row) => ({
-          ...row,
-          payload: row.payload as unknown as OutboxPayload,
-        }));
-      },
-      { timeout: 15000, maxWait: 10000 }
-    );
-
-    return claimed;
+    return claimed as ClaimedOutboxEvent[];
   }
 
   /**
@@ -309,18 +262,18 @@ export class OutboxService {
   public async recoverStaleProcessing(leaseMs: number): Promise<number> {
     const cutoff = new Date(Date.now() - leaseMs);
 
-    const result = await prisma.outboxEvent.updateMany({
-      where: {
+    const result = await outboxRepository.updateMany(
+      {
         status: OUTBOX_STATUS.PROCESSING,
         updatedAt: { lt: cutoff },
       },
-      data: {
+      {
         status: OUTBOX_STATUS.PENDING,
         nextRetryAt: new Date(),
         retryCount: { increment: 1 },
         lastError: 'Requeued after worker lease expired without a delivery outcome.',
-      },
-    });
+      }
+    );
 
     return result.count;
   }
@@ -331,14 +284,14 @@ export class OutboxService {
 
   /** Marks a claimed event as successfully delivered. */
   public async markCompleted(event: ClaimedOutboxEvent): Promise<void> {
-    await prisma.outboxEvent.updateMany({
-      where: { id: event.id, status: OUTBOX_STATUS.PROCESSING },
-      data: {
+    await outboxRepository.updateMany(
+      { id: event.id, status: OUTBOX_STATUS.PROCESSING },
+      {
         status: OUTBOX_STATUS.COMPLETED,
         lastError: null,
         nextRetryAt: new Date(),
-      },
-    });
+      }
+    );
   }
 
   /**
@@ -358,14 +311,14 @@ export class OutboxService {
     const nextRetryCount = event.retryCount + 1;
 
     if (nextRetryCount > event.maxRetries) {
-      await prisma.outboxEvent.updateMany({
-        where: { id: event.id, status: OUTBOX_STATUS.PROCESSING },
-        data: {
+      await outboxRepository.updateMany(
+        { id: event.id, status: OUTBOX_STATUS.PROCESSING },
+        {
           status: OUTBOX_STATUS.FAILED,
           retryCount: nextRetryCount,
           lastError: `Exhausted ${event.maxRetries} retries. Last error: ${errorDetail}`.slice(0, 4000),
-        },
-      });
+        }
+      );
 
       return { status: OUTBOX_STATUS.FAILED, retryCount: nextRetryCount };
     }
@@ -376,15 +329,15 @@ export class OutboxService {
     const delayMs = capped + jitter;
     const nextRetryAt = new Date(Date.now() + delayMs);
 
-    await prisma.outboxEvent.updateMany({
-      where: { id: event.id, status: OUTBOX_STATUS.PROCESSING },
-      data: {
+    await outboxRepository.updateMany(
+      { id: event.id, status: OUTBOX_STATUS.PROCESSING },
+      {
         status: OUTBOX_STATUS.PENDING,
         retryCount: nextRetryCount,
         nextRetryAt,
         lastError: errorDetail.slice(0, 4000),
-      },
-    });
+      }
+    );
 
     return {
       status: OUTBOX_STATUS.PENDING,
@@ -399,21 +352,18 @@ export class OutboxService {
    * provably permanent (non-retryable 4xx from the receiver).
    */
   public async markFailed(event: ClaimedOutboxEvent, errorDetail: string): Promise<void> {
-    await prisma.outboxEvent.updateMany({
-      where: { id: event.id, status: OUTBOX_STATUS.PROCESSING },
-      data: {
+    await outboxRepository.updateMany(
+      { id: event.id, status: OUTBOX_STATUS.PROCESSING },
+      {
         status: OUTBOX_STATUS.FAILED,
         lastError: errorDetail.slice(0, 4000),
-      },
-    });
+      }
+    );
   }
 
   /** Event counts per status, for operational inspection. */
   public async getStats(): Promise<OutboxStats> {
-    const grouped = await prisma.outboxEvent.groupBy({
-      by: ['status'],
-      _count: { _all: true },
-    });
+    const grouped = await outboxRepository.groupByStatus();
 
     const stats: OutboxStats = {
       PENDING: 0,

@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { prisma } from '../config/db.config';
+import { userRepository } from '../repositories/user.repository';
 
 /**
  * Middleware guard that enforces that the authenticated user has verified their email address.
@@ -19,10 +19,7 @@ export const requireVerifiedEmail = async (
   }
 
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.userId },
-      select: { isEmailVerified: true },
-    });
+    const user = await userRepository.findEmailVerificationStatusById(req.user.userId);
 
     if (!user) {
       res.status(401).json({

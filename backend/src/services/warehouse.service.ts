@@ -1,5 +1,5 @@
-import { DockStatus, BookingStatus } from '@prisma/client';
-import { prisma } from '../config/db.config';
+import { DockStatus } from '@prisma/client';
+import { warehouseRepository } from '../repositories/warehouse.repository';
 import { dockService } from './dock.service';
 import {
   isValidIanaTimeZone,
@@ -155,32 +155,24 @@ export class WarehouseService {
     }
 
     // Verify organization exists
-    const organization = await prisma.organization.findUnique({
-      where: { id: organizationId },
-    });
+    const organization = await warehouseRepository.findOrganizationById(organizationId);
 
     if (!organization) {
       throw { status: 404, message: 'Organization not found.' };
     }
 
-    const warehouse = await prisma.warehouse.create({
-      data: {
-        organizationId,
-        name: data.name.trim(),
-        address: data.address.trim(),
-        timezone: trimmedTimezone,
-        slotLengthMinutes: data.slotLengthMinutes || 30,
-        policy: {
-          create: {
-            maxConcurrentBookings: 3,
-            maxAdvanceDays: 14,
-            bookingLockWindowHours: 24,
-          },
+    const warehouse = await warehouseRepository.createWarehouse({
+      organizationId,
+      name: data.name.trim(),
+      address: data.address.trim(),
+      timezone: trimmedTimezone,
+      slotLengthMinutes: data.slotLengthMinutes || 30,
+      policy: {
+        create: {
+          maxConcurrentBookings: 3,
+          maxAdvanceDays: 14,
+          bookingLockWindowHours: 24,
         },
-      },
-      include: {
-        docks: true,
-        policy: true,
       },
     });
 
@@ -198,25 +190,7 @@ export class WarehouseService {
     const whereClause = isCarrier ? {} : { organizationId };
     const now = new Date();
 
-    const warehouses = await prisma.warehouse.findMany({
-      where: whereClause,
-      include: {
-        docks: {
-          include: {
-            closures: {
-              where: {
-                startTime: { lte: now },
-                endTime: { gte: now },
-              },
-            },
-          },
-          orderBy: { id: 'asc' },
-        },
-        operatingHours: true,
-        policy: true,
-      },
-      orderBy: { id: 'asc' },
-    });
+    const warehouses = await warehouseRepository.findManyForListing(whereClause, now);
 
     return warehouses.map((wh) => ({
       ...wh,
@@ -242,24 +216,7 @@ export class WarehouseService {
     }
 
     const now = new Date();
-    const warehouse = await prisma.warehouse.findUnique({
-      where: { id: warehouseId },
-      include: {
-        docks: {
-          include: {
-            closures: {
-              where: {
-                startTime: { lte: now },
-                endTime: { gte: now },
-              },
-            },
-          },
-          orderBy: { id: 'asc' },
-        },
-        operatingHours: true,
-        policy: true,
-      },
-    });
+    const warehouse = await warehouseRepository.findByIdWithDocksAndClosures(warehouseId, now);
 
     if (!warehouse) {
       throw { status: 404, message: 'Warehouse not found.' };
@@ -299,13 +256,7 @@ export class WarehouseService {
       throw { status: 400, message: 'Invalid warehouse ID.' };
     }
 
-    const warehouse = await prisma.warehouse.findUnique({
-      where: { id: warehouseId },
-      include: {
-        operatingHours: true,
-        docks: true,
-      },
-    });
+    const warehouse = await warehouseRepository.findByIdWithHoursAndDocks(warehouseId);
 
     if (!warehouse) {
       throw { status: 404, message: 'Warehouse not found.' };
@@ -348,14 +299,7 @@ export class WarehouseService {
     const isCoreInfoChanging = isNameChanging || isAddressChanging || isTimezoneChanging;
 
     if (isCoreInfoChanging) {
-      const activeBookedCount = await prisma.booking.count({
-        where: {
-          dock: {
-            warehouseId,
-          },
-          status: BookingStatus.BOOKED,
-        },
-      });
+      const activeBookedCount = await warehouseRepository.countBookedAtWarehouse(warehouseId);
 
       if (activeBookedCount > 0) {
         throw {
@@ -365,28 +309,24 @@ export class WarehouseService {
       }
     }
 
-    const result = await prisma.$transaction(async (tx) => {
-      const updated = await tx.warehouse.update({
-        where: { id: warehouseId },
-        data: {
+    const result = await warehouseRepository.transaction(async (tx) => {
+      const updated = await warehouseRepository.updateWarehouseSettings(
+        warehouseId,
+        {
           ...(data.name && { name: data.name.trim() }),
           ...(data.address && { address: data.address.trim() }),
           ...(data.timezone && { timezone: data.timezone.trim() }),
           ...(data.slotLengthMinutes !== undefined && { slotLengthMinutes: data.slotLengthMinutes }),
         },
-        include: {
-          docks: true,
-          operatingHours: true,
-        },
-      });
+        tx
+      );
 
       if (data.slotLengthMinutes !== undefined) {
-        await tx.operatingHour.updateMany({
-          where: { warehouseId },
-          data: {
-            slotLengthMinutes: data.slotLengthMinutes,
-          },
-        });
+        await warehouseRepository.updateOperatingHoursSlotLength(
+          warehouseId,
+          data.slotLengthMinutes,
+          tx
+        );
       }
 
       return updated;
@@ -407,9 +347,7 @@ export class WarehouseService {
       throw { status: 400, message: 'Invalid warehouse ID.' };
     }
 
-    const existing = await prisma.warehouse.findUnique({
-      where: { id: warehouseId },
-    });
+    const existing = await warehouseRepository.findById(warehouseId);
 
     if (!existing) {
       throw { status: 404, message: 'Warehouse not found.' };
@@ -433,14 +371,7 @@ export class WarehouseService {
     const isCoreInfoChanging = isNameChanging || isAddressChanging || isTimezoneChanging;
 
     if (isCoreInfoChanging) {
-      const activeBookedCount = await prisma.booking.count({
-        where: {
-          dock: {
-            warehouseId,
-          },
-          status: BookingStatus.BOOKED,
-        },
-      });
+      const activeBookedCount = await warehouseRepository.countBookedAtWarehouse(warehouseId);
 
       if (activeBookedCount > 0) {
         throw {
@@ -450,16 +381,10 @@ export class WarehouseService {
       }
     }
 
-    const updated = await prisma.warehouse.update({
-      where: { id: warehouseId },
-      data: {
-        ...(data.name && { name: data.name.trim() }),
-        ...(data.address && { address: data.address.trim() }),
-        ...(data.timezone && { timezone: data.timezone.trim() }),
-      },
-      include: {
-        docks: true,
-      },
+    const updated = await warehouseRepository.updateWarehouseBasic(warehouseId, {
+      ...(data.name && { name: data.name.trim() }),
+      ...(data.address && { address: data.address.trim() }),
+      ...(data.timezone && { timezone: data.timezone.trim() }),
     });
 
     return updated;
@@ -473,18 +398,7 @@ export class WarehouseService {
       throw { status: 400, message: 'Invalid warehouse ID.' };
     }
 
-    const warehouse = await prisma.warehouse.findUnique({
-      where: { id: warehouseId },
-      select: {
-        id: true,
-        organizationId: true,
-        timezone: true,
-        slotLengthMinutes: true,
-        operatingHours: {
-          orderBy: { dayOfWeek: 'asc' },
-        },
-      },
-    });
+    const warehouse = await warehouseRepository.findHoursProjection(warehouseId);
 
     if (!warehouse) {
       throw { status: 404, message: 'Warehouse not found.' };
@@ -530,10 +444,7 @@ export class WarehouseService {
       };
     }
 
-    const warehouse = await prisma.warehouse.findUnique({
-      where: { id: warehouseId },
-      include: { operatingHours: true },
-    });
+    const warehouse = await warehouseRepository.findByIdWithHours(warehouseId);
 
     if (!warehouse) {
       throw { status: 404, message: 'Warehouse not found.' };
@@ -689,18 +600,7 @@ export class WarehouseService {
     });
 
     if (pruningDays.length > 0) {
-      const activeBookings = await prisma.booking.findMany({
-        where: {
-          dock: { warehouseId },
-          status: { in: [BookingStatus.BOOKED, BookingStatus.ARRIVED] },
-          slotEndTime: { gt: new Date() },
-        },
-        select: {
-          id: true,
-          slotStartTime: true,
-          slotEndTime: true,
-        },
-      });
+      const activeBookings = await warehouseRepository.findActiveBookingsForPruning(warehouseId, new Date());
 
       for (const entry of pruningDays) {
         const oldWindow = oldWindows.get(entry.dayOfWeek) as OperatingWindowMinutes;
@@ -752,34 +652,36 @@ export class WarehouseService {
       }
     }
 
-    await prisma.$transaction(async (tx) => {
+    await warehouseRepository.transaction(async (tx) => {
       for (const entry of normalized) {
         if (!entry.isOpen) {
           if (entry.existingId) {
-            await tx.operatingHour.delete({ where: { id: entry.existingId } });
+            await warehouseRepository.deleteOperatingHour(entry.existingId, tx);
           }
           continue;
         }
 
         if (entry.existingId) {
-          await tx.operatingHour.update({
-            where: { id: entry.existingId },
-            data: {
+          await warehouseRepository.updateOperatingHour(
+            entry.existingId,
+            {
               openTime: entry.openTime as string,
               closeTime: entry.closeTime as string,
               slotLengthMinutes: entry.slotLengthMinutes,
             },
-          });
+            tx
+          );
         } else {
-          await tx.operatingHour.create({
-            data: {
+          await warehouseRepository.createOperatingHour(
+            {
               warehouseId,
               dayOfWeek: entry.dayOfWeek,
               openTime: entry.openTime as string,
               closeTime: entry.closeTime as string,
               slotLengthMinutes: entry.slotLengthMinutes,
             },
-          });
+            tx
+          );
         }
       }
     });
@@ -804,9 +706,7 @@ export class WarehouseService {
     }
 
     // Verify warehouse exists and belongs to the caller's organization
-    const warehouse = await prisma.warehouse.findUnique({
-      where: { id: warehouseId },
-    });
+    const warehouse = await warehouseRepository.findById(warehouseId);
 
     if (!warehouse) {
       throw { status: 404, message: 'Warehouse not found.' };
@@ -816,12 +716,10 @@ export class WarehouseService {
       throw { status: 403, message: 'Forbidden. You do not have permission to manage this warehouse.' };
     }
 
-    const dock = await prisma.dock.create({
-      data: {
-        warehouseId,
-        name: data.name.trim(),
-        status: data.status || DockStatus.ACTIVE,
-      },
+    const dock = await warehouseRepository.createDock({
+      warehouseId,
+      name: data.name.trim(),
+      status: data.status || DockStatus.ACTIVE,
     });
 
     return {
@@ -851,10 +749,7 @@ export class WarehouseService {
       throw { status: 400, message: `Invalid dock status: '${status}'. Must be ACTIVE or MAINTENANCE.` };
     }
 
-    const dock = await prisma.dock.findUnique({
-      where: { id: dockId },
-      include: { warehouse: true },
-    });
+    const dock = await warehouseRepository.findDockWithWarehouse(dockId);
 
     if (!dock) {
       throw { status: 404, message: 'Dock not found.' };
@@ -865,18 +760,7 @@ export class WarehouseService {
     }
 
     const now = new Date();
-    const updatedDock = await prisma.dock.update({
-      where: { id: dockId },
-      data: { status },
-      include: {
-        closures: {
-          where: {
-            startTime: { lte: now },
-            endTime: { gte: now },
-          },
-        },
-      },
-    });
+    const updatedDock = await warehouseRepository.updateDockStatus(dockId, status, now);
 
     const isUnderClosure = updatedDock.closures && updatedDock.closures.length > 0;
     const effectiveStatus: 'ACTIVE' | 'MAINTENANCE' = isUnderClosure
@@ -907,10 +791,7 @@ export class WarehouseService {
       throw { status: 400, message: `Invalid dock status: '${data.status}'. Must be ACTIVE or MAINTENANCE.` };
     }
 
-    const dock = await prisma.dock.findUnique({
-      where: { id: dockId },
-      include: { warehouse: true },
-    });
+    const dock = await warehouseRepository.findDockWithWarehouse(dockId);
 
     if (!dock) {
       throw { status: 404, message: 'Dock not found.' };
@@ -927,12 +808,7 @@ export class WarehouseService {
     const isNameChanging = data.name !== undefined && data.name.trim() !== dock.name;
 
     if (isNameChanging) {
-      const activeBookedCount = await prisma.booking.count({
-        where: {
-          dockId,
-          status: BookingStatus.BOOKED,
-        },
-      });
+      const activeBookedCount = await warehouseRepository.countBookedAtDock(dockId);
 
       if (activeBookedCount > 0) {
         throw {
@@ -943,22 +819,14 @@ export class WarehouseService {
     }
 
     const now = new Date();
-    const updatedDock = await prisma.dock.update({
-      where: { id: dockId },
-      data: {
+    const updatedDock = await warehouseRepository.updateDock(
+      dockId,
+      {
         ...(data.name !== undefined && { name: data.name.trim() }),
         ...(data.status !== undefined && { status: data.status }),
       },
-      include: {
-        warehouse: true,
-        closures: {
-          where: {
-            startTime: { lte: now },
-            endTime: { gte: now },
-          },
-        },
-      },
-    });
+      now
+    );
 
     const isUnderClosure = updatedDock.closures && updatedDock.closures.length > 0;
     const effectiveStatus: 'ACTIVE' | 'MAINTENANCE' = isUnderClosure
@@ -1004,10 +872,7 @@ export class WarehouseService {
     }
 
     // Verify dock exists and belongs to the caller's warehouse operator organization
-    const dock = await prisma.dock.findUnique({
-      where: { id: dockId },
-      include: { warehouse: true },
-    });
+    const dock = await warehouseRepository.findDockWithWarehouse(dockId);
 
     if (!dock) {
       throw { status: 404, message: 'Dock not found.' };
@@ -1029,14 +894,11 @@ export class WarehouseService {
     const { startOfDayUtc } = getZonedDayBounds(startDateStr, timeZone);
     const { endOfDayUtc } = getZonedDayBounds(endDateStr, timeZone);
 
-    const bookingOnDay = await prisma.booking.findFirst({
-      where: {
-        dockId,
-        status: { in: [BookingStatus.BOOKED, BookingStatus.ARRIVED] },
-        slotStartTime: { lt: endOfDayUtc },
-        slotEndTime: { gt: startOfDayUtc },
-      },
-    });
+    const bookingOnDay = await warehouseRepository.findBookingOnDockDay(
+      dockId,
+      startOfDayUtc,
+      endOfDayUtc
+    );
 
     if (bookingOnDay) {
       throw {
@@ -1045,16 +907,11 @@ export class WarehouseService {
       };
     }
 
-    const closure = await prisma.dockClosure.create({
-      data: {
-        dockId,
-        startTime: closureStart,
-        endTime: closureEnd,
-        reason: data.reason ? data.reason.trim() : null,
-      },
-      include: {
-        dock: true,
-      },
+    const closure = await warehouseRepository.createDockClosure({
+      dockId,
+      startTime: closureStart,
+      endTime: closureEnd,
+      reason: data.reason ? data.reason.trim() : null,
     });
 
     return closure;
@@ -1068,10 +925,7 @@ export class WarehouseService {
       throw { status: 400, message: 'Invalid dock ID.' };
     }
 
-    const dock = await prisma.dock.findUnique({
-      where: { id: dockId },
-      include: { warehouse: true },
-    });
+    const dock = await warehouseRepository.findDockWithWarehouse(dockId);
 
     if (!dock) {
       throw { status: 404, message: 'Dock not found.' };
@@ -1084,10 +938,7 @@ export class WarehouseService {
       };
     }
 
-    const closures = await prisma.dockClosure.findMany({
-      where: { dockId },
-      orderBy: { startTime: 'asc' },
-    });
+    const closures = await warehouseRepository.findClosuresByDock(dockId);
 
     return closures;
   }
@@ -1116,15 +967,7 @@ export class WarehouseService {
     }
 
     // a. Fetch the warehouse record to obtain its timezone and context
-    const warehouse = await prisma.warehouse.findUnique({
-      where: { id: warehouseId },
-      select: {
-        id: true,
-        name: true,
-        timezone: true,
-        organizationId: true,
-      },
-    });
+    const warehouse = await warehouseRepository.findSlotContext(warehouseId);
 
     if (!warehouse) {
       throw { status: 404, message: 'Warehouse not found.' };
@@ -1132,21 +975,7 @@ export class WarehouseService {
 
     // b. Fetch docks for this warehouse with active closures at now() to dynamically evaluate effectiveStatus
     const now = new Date();
-    const docks = await prisma.dock.findMany({
-      where: {
-        warehouseId,
-        ...(dockId !== undefined ? { id: dockId } : {}),
-      },
-      include: {
-        closures: {
-          where: {
-            startTime: { lte: now },
-            endTime: { gte: now },
-          },
-        },
-      },
-      orderBy: { id: 'asc' },
-    });
+    const docks = await warehouseRepository.findDocksForSlots(warehouseId, dockId, now);
 
     // Exclude docks currently undergoing maintenance or whose base status is MAINTENANCE
     const activeDocks = docks.filter((dock) => {
@@ -1165,15 +994,7 @@ export class WarehouseService {
     const dayOfWeek = getDayOfWeekInTimeZone(trimmedDate, warehouse.timezone);
 
     // Query operating_hours for this day of week (supporting 1-7 and fallback to 0 for Sunday)
-    const operatingHour = await prisma.operatingHour.findFirst({
-      where: {
-        warehouseId,
-        OR: [
-          { dayOfWeek },
-          ...(dayOfWeek === 7 ? [{ dayOfWeek: 0 }] : []),
-        ],
-      },
-    });
+    const operatingHour = await warehouseRepository.findOperatingHourForDay(warehouseId, dayOfWeek);
 
     // If closed or no operating hours exist, return an empty array
     if (!operatingHour) {
@@ -1202,38 +1023,18 @@ export class WarehouseService {
     );
     const lookupEndUtc = lastIntervalEndUtc > endOfDayUtc ? lastIntervalEndUtc : endOfDayUtc;
 
-    const bookings = await prisma.booking.findMany({
-      where: {
-        dockId: { in: activeDocks.map((d) => d.id) },
-        status: { in: [BookingStatus.BOOKED, BookingStatus.ARRIVED] },
-        slotStartTime: {
-          gte: startOfDayUtc,
-          lt: lookupEndUtc,
-        },
-      },
-      select: {
-        id: true,
-        dockId: true,
-        slotStartTime: true,
-        slotEndTime: true,
-        status: true,
-      },
-    });
+    const bookings = await warehouseRepository.findBookingsForSlotGeneration(
+      activeDocks.map((d) => d.id),
+      startOfDayUtc,
+      lookupEndUtc
+    );
 
     // Query scheduled maintenance closures overlapping target date
-    const closures = await prisma.dockClosure.findMany({
-      where: {
-        dockId: { in: activeDocks.map((d) => d.id) },
-        startTime: { lt: lookupEndUtc },
-        endTime: { gt: startOfDayUtc },
-      },
-      select: {
-        id: true,
-        dockId: true,
-        startTime: true,
-        endTime: true,
-      },
-    });
+    const closures = await warehouseRepository.findClosuresForSlotGeneration(
+      activeDocks.map((d) => d.id),
+      startOfDayUtc,
+      lookupEndUtc
+    );
 
     // f. Filter out any slots in the past, already booked, or under scheduled maintenance closure
     // Note: slotStartTime is converted from warehouse's IANA timezone to UTC via zonedDateAndTimeToUtc,
@@ -1297,10 +1098,7 @@ export class WarehouseService {
       throw { status: 400, message: 'Invalid warehouse ID.' };
     }
 
-    const warehouse = await prisma.warehouse.findUnique({
-      where: { id: warehouseId },
-      include: { policy: true },
-    });
+    const warehouse = await warehouseRepository.findByIdWithPolicy(warehouseId);
 
     if (!warehouse) {
       throw { status: 404, message: 'Warehouse not found.' };
@@ -1311,14 +1109,7 @@ export class WarehouseService {
     }
 
     if (!warehouse.policy) {
-      const policy = await prisma.warehousePolicy.create({
-        data: {
-          warehouseId,
-          maxConcurrentBookings: 3,
-          maxAdvanceDays: 14,
-          bookingLockWindowHours: 24,
-        },
-      });
+      const policy = await warehouseRepository.createPolicy(warehouseId);
       return policy;
     }
 
@@ -1338,10 +1129,7 @@ export class WarehouseService {
       throw { status: 400, message: 'Invalid warehouse ID.' };
     }
 
-    const warehouse = await prisma.warehouse.findUnique({
-      where: { id: warehouseId },
-      include: { policy: true },
-    });
+    const warehouse = await warehouseRepository.findByIdWithPolicy(warehouseId);
 
     if (!warehouse) {
       throw { status: 404, message: 'Warehouse not found.' };
@@ -1392,26 +1180,7 @@ export class WarehouseService {
       }
     }
 
-    const updatedPolicy = await prisma.warehousePolicy.upsert({
-      where: { warehouseId },
-      create: {
-        warehouseId,
-        maxConcurrentBookings: data.maxConcurrentBookings ?? 3,
-        maxAdvanceDays: data.maxAdvanceDays ?? 14,
-        bookingLockWindowHours: data.bookingLockWindowHours ?? 24,
-      },
-      update: {
-        ...(data.maxConcurrentBookings !== undefined && {
-          maxConcurrentBookings: data.maxConcurrentBookings,
-        }),
-        ...(data.maxAdvanceDays !== undefined && {
-          maxAdvanceDays: data.maxAdvanceDays,
-        }),
-        ...(data.bookingLockWindowHours !== undefined && {
-          bookingLockWindowHours: data.bookingLockWindowHours,
-        }),
-      },
-    });
+    const updatedPolicy = await warehouseRepository.upsertPolicy(warehouseId, data);
 
     return updatedPolicy;
   }

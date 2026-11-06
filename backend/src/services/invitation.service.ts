@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import bcrypt from 'bcrypt';
 import { UserRole } from '@prisma/client';
-import { prisma } from '../config/db.config';
+import { invitationRepository } from '../repositories/invitation.repository';
 import { securityConfig } from '../config/security.config';
 import { signAccessToken, signRefreshToken } from '../utils/jwt.utils';
 import { emailService } from './email.service';
@@ -124,18 +124,14 @@ export class InvitationService {
     }
 
     // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
-    });
+    const existingUser = await invitationRepository.findUserByEmail(normalizedEmail);
 
     if (existingUser) {
       throw { status: 409, message: 'A user with this email already exists.' };
     }
 
     // Verify requester organization exists
-    const organization = await prisma.organization.findUnique({
-      where: { id: requester.organizationId },
-    });
+    const organization = await invitationRepository.findOrganizationById(requester.organizationId);
 
     if (!organization) {
       throw { status: 404, message: 'Requester organization not found.' };
@@ -146,23 +142,11 @@ export class InvitationService {
     const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours
 
     // Upsert invitation record (handles fresh invites and resends)
-    const invitation = await prisma.invitation.upsert({
-      where: { email: normalizedEmail },
-      create: {
-        email: normalizedEmail,
-        organizationId: requester.organizationId,
-        role: targetRole,
-        token,
-        expiresAt,
-        status: 'PENDING',
-      },
-      update: {
-        organizationId: requester.organizationId,
-        role: targetRole,
-        token,
-        expiresAt,
-        status: 'PENDING',
-      },
+    const invitation = await invitationRepository.upsertInvitation(normalizedEmail, {
+      organizationId: requester.organizationId,
+      role: targetRole,
+      token,
+      expiresAt,
     });
 
     // Send invitation email asynchronously
@@ -192,10 +176,7 @@ export class InvitationService {
       throw { status: 400, message: 'Password must be at least 6 characters long.' };
     }
 
-    const invitation = await prisma.invitation.findUnique({
-      where: { token },
-      include: { organization: true },
-    });
+    const invitation = await invitationRepository.findByToken(token);
 
     if (!invitation) {
       throw { status: 404, message: 'Invalid or non-existent invitation token.' };
@@ -206,17 +187,12 @@ export class InvitationService {
     }
 
     if (new Date(invitation.expiresAt) <= new Date()) {
-      await prisma.invitation.update({
-        where: { id: invitation.id },
-        data: { status: 'EXPIRED' },
-      }).catch(() => {});
+      await invitationRepository.updateStatus(invitation.id, 'EXPIRED').catch(() => {});
       throw { status: 400, message: 'Invitation token has expired.' };
     }
 
     // Check if user with this email already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email: invitation.email },
-    });
+    const existingUser = await invitationRepository.findUserByEmail(invitation.email);
 
     if (existingUser) {
       throw { status: 409, message: 'A user with this email already exists.' };
@@ -224,9 +200,9 @@ export class InvitationService {
 
     const passwordHash = await bcrypt.hash(password, securityConfig.saltRounds);
 
-    const { user, organization } = await prisma.$transaction(async (tx) => {
-      const newUser = await tx.user.create({
-        data: {
+    const { user, organization } = await invitationRepository.transaction(async (tx) => {
+      const newUser = await invitationRepository.createUser(
+        {
           email: invitation.email,
           passwordHash,
           role: invitation.role as UserRole,
@@ -234,12 +210,10 @@ export class InvitationService {
           isActive: true,
           isEmailVerified: true,
         },
-      });
+        tx
+      );
 
-      await tx.invitation.update({
-        where: { id: invitation.id },
-        data: { status: 'ACCEPTED' },
-      });
+      await invitationRepository.updateStatus(invitation.id, 'ACCEPTED', tx);
 
       return { user: newUser, organization: invitation.organization };
     });
@@ -273,10 +247,7 @@ export class InvitationService {
       throw { status: 400, message: 'Invitation token is required.' };
     }
 
-    const invitation = await prisma.invitation.findUnique({
-      where: { token },
-      include: { organization: true },
-    });
+    const invitation = await invitationRepository.findByToken(token);
 
     if (!invitation) {
       throw { status: 404, message: 'Invalid or non-existent invitation token.' };
@@ -290,10 +261,7 @@ export class InvitationService {
     }
 
     if (new Date(invitation.expiresAt) <= new Date()) {
-      await prisma.invitation.update({
-        where: { id: invitation.id },
-        data: { status: 'EXPIRED' },
-      }).catch(() => {});
+      await invitationRepository.updateStatus(invitation.id, 'EXPIRED').catch(() => {});
       throw { status: 400, message: 'Invitation token has expired.' };
     }
 

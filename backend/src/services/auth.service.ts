@@ -2,7 +2,7 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { UserRole, OrganizationType } from '@prisma/client';
-import { prisma } from '../config/db.config';
+import { authRepository } from '../repositories/auth.repository';
 import { securityConfig } from '../config/security.config';
 import { signAccessToken, signRefreshToken, verifyJwtToken, signTemp2faToken } from '../utils/jwt.utils';
 import { emailService } from './email.service';
@@ -133,18 +133,7 @@ export class AuthService {
       throw { status: 401, message: 'Invalid refresh token.' };
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.userId },
-      include: {
-        organization: {
-          select: {
-            id: true,
-            name: true,
-            type: true,
-          },
-        },
-      },
-    });
+    const user = await authRepository.findUserWithOrganizationById(decoded.userId);
 
     if (!user) {
       throw { status: 401, message: 'Invalid refresh token.' };
@@ -239,9 +228,7 @@ export class AuthService {
     const normalizedEmail = email.toLowerCase().trim();
 
     // Check if email already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
-    });
+    const existingUser = await authRepository.findUserByEmail(normalizedEmail);
 
     if (existingUser) {
       throw { status: 409, message: 'A user with this email already exists.' };
@@ -268,16 +255,17 @@ export class AuthService {
         `${normalizedEmail.split('@')[0]} ${orgType === OrganizationType.WAREHOUSE_OPERATOR ? 'Warehouse' : 'Fleet'}`;
 
       // Execute atomically in a transaction
-      const { user, organization } = await prisma.$transaction(async (tx) => {
-        const newOrg = await tx.organization.create({
-          data: {
+      const { user, organization } = await authRepository.transaction(async (tx) => {
+        const newOrg = await authRepository.createOrganization(
+          {
             name: orgName,
             type: orgType,
           },
-        });
+          tx
+        );
 
-        const newUser = await tx.user.create({
-          data: {
+        const newUser = await authRepository.createUser(
+          {
             email: normalizedEmail,
             passwordHash,
             role: adminRole,
@@ -286,7 +274,8 @@ export class AuthService {
             isEmailVerified: false,
             verificationToken,
           },
-        });
+          tx
+        );
 
         return { user: newUser, organization: newOrg };
       });
@@ -320,9 +309,7 @@ export class AuthService {
     }
 
     // Scenario B: Joining an existing Organization (e.g., invited employee/dispatcher)
-    const existingOrg = await prisma.organization.findUnique({
-      where: { id: organizationId },
-    });
+    const existingOrg = await authRepository.findOrganizationById(organizationId);
 
     if (!existingOrg) {
       throw { status: 404, message: `Organization with ID ${organizationId} not found.` };
@@ -334,16 +321,14 @@ export class AuthService {
         ? UserRole.DOCK_MANAGER
         : UserRole.DISPATCHER);
 
-    const user = await prisma.user.create({
-      data: {
-        email: normalizedEmail,
-        passwordHash,
-        role: assignedRole,
-        organizationId: existingOrg.id,
-        isActive: true,
-        isEmailVerified: false,
-        verificationToken,
-      },
+    const user = await authRepository.createUser({
+      email: normalizedEmail,
+      passwordHash,
+      role: assignedRole,
+      organizationId: existingOrg.id,
+      isActive: true,
+      isEmailVerified: false,
+      verificationToken,
     });
 
     // Send verification email asynchronously
@@ -382,21 +367,13 @@ export class AuthService {
       throw { status: 400, message: 'Verification token is required.' };
     }
 
-    const user = await prisma.user.findUnique({
-      where: { verificationToken: token.trim() },
-    });
+    const user = await authRepository.findUserByVerificationToken(token.trim());
 
     if (!user) {
       throw { status: 400, message: 'Invalid or expired verification token.' };
     }
 
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        isEmailVerified: true,
-        verificationToken: null,
-      },
-    });
+    await authRepository.markEmailVerified(user.id);
 
     return {
       message: 'Email verified successfully. Your account is now fully active.',
@@ -412,9 +389,9 @@ export class AuthService {
 
     let user;
     if (userId) {
-      user = await prisma.user.findUnique({ where: { id: userId } });
+      user = await authRepository.findUserById(userId);
     } else if (email) {
-      user = await prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } });
+      user = await authRepository.findUserByEmail(email.toLowerCase().trim());
     } else {
       throw { status: 400, message: 'Either email or authenticated user ID is required.' };
     }
@@ -430,10 +407,7 @@ export class AuthService {
     // Generate a fresh token
     const verificationToken = crypto.randomBytes(32).toString('hex');
 
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { verificationToken },
-    });
+    await authRepository.setVerificationToken(user.id, verificationToken);
 
     // Send verification email
     await emailService.sendVerificationEmail(user.email, verificationToken);
@@ -453,18 +427,7 @@ export class AuthService {
       throw { status: 400, message: 'Email and password are required.' };
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase().trim() },
-      include: {
-        organization: {
-          select: {
-            id: true,
-            name: true,
-            type: true,
-          },
-        },
-      },
-    });
+    const user = await authRepository.findUserWithOrganizationByEmail(email.toLowerCase().trim());
 
     if (!user) {
       throw { status: 401, message: 'Invalid email or password.' };
@@ -499,24 +462,18 @@ export class AuthService {
       if (failedAttempts >= maxAttempts) {
         // Lock account for configured LOGIN_LOCKOUT_DURATION_MINUTES
         const lockUntil = new Date(Date.now() + lockoutDurationMinutes * 60 * 1000);
-        await prisma.user.update({
-          where: { id: user.id },
-          data: {
-            failedLoginAttempts: failedAttempts,
-            lockUntil,
-          },
+        await authRepository.updateUser(user.id, {
+          failedLoginAttempts: failedAttempts,
+          lockUntil,
         });
         throw {
           status: 423,
           message: `Account is temporarily locked due to ${maxAttempts} consecutive failed login attempts. Please try again after ${lockoutDurationMinutes} minutes.`,
         };
       } else {
-        await prisma.user.update({
-          where: { id: user.id },
-          data: {
-            failedLoginAttempts: failedAttempts,
-            lockUntil: null,
-          },
+        await authRepository.updateUser(user.id, {
+          failedLoginAttempts: failedAttempts,
+          lockUntil: null,
         });
         const remaining = maxAttempts - failedAttempts;
         throw {
@@ -528,12 +485,9 @@ export class AuthService {
 
     // 3. Password is valid: reset failed attempts and unlock account if needed
     if (user.failedLoginAttempts > 0 || user.lockUntil !== null) {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          failedLoginAttempts: 0,
-          lockUntil: null,
-        },
+      await authRepository.updateUser(user.id, {
+        failedLoginAttempts: 0,
+        lockUntil: null,
       });
     }
 
@@ -588,9 +542,7 @@ export class AuthService {
     }
 
     const normalizedEmail = email.toLowerCase().trim();
-    const user = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
-    });
+    const user = await authRepository.findUserByEmail(normalizedEmail);
 
     if (!user) {
       return genericSuccess;
@@ -600,13 +552,7 @@ export class AuthService {
     const resetPasswordToken = crypto.randomBytes(32).toString('hex');
     const resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000);
 
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        resetPasswordToken,
-        resetPasswordExpires,
-      },
-    });
+    await authRepository.setPasswordResetToken(user.id, resetPasswordToken, resetPasswordExpires);
 
     // Send reset email via Nodemailer
     emailService.sendPasswordResetEmail(user.email, resetPasswordToken).catch((err) => {
@@ -628,14 +574,7 @@ export class AuthService {
       throw { status: 400, message: 'New password must be at least 6 characters long.' };
     }
 
-    const user = await prisma.user.findFirst({
-      where: {
-        resetPasswordToken: token.trim(),
-        resetPasswordExpires: {
-          gt: new Date(),
-        },
-      },
-    });
+    const user = await authRepository.findUserByResetToken(token.trim());
 
     if (!user) {
       throw { status: 400, message: 'Invalid or expired password reset token.' };
@@ -643,14 +582,7 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(newPassword, securityConfig.saltRounds);
 
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        passwordHash,
-        resetPasswordToken: null,
-        resetPasswordExpires: null,
-      },
-    });
+    await authRepository.clearPasswordResetToken(user.id, passwordHash);
 
     return { message: 'Password has been reset successfully. You can now login with your new password.' };
   }
@@ -669,9 +601,7 @@ export class AuthService {
       throw { status: 400, message: 'New password must be at least 6 characters long.' };
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
+    const user = await authRepository.findUserById(userId);
 
     if (!user) {
       throw { status: 404, message: 'User not found.' };
@@ -684,10 +614,7 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(newPassword, securityConfig.saltRounds);
 
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { passwordHash },
-    });
+    await authRepository.setPasswordHash(user.id, passwordHash);
 
     return { message: 'Password changed successfully.' };
   }
@@ -696,27 +623,7 @@ export class AuthService {
    * Get user profile by ID.
    */
   public async getUserById(userId: number) {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        organizationId: true,
-        isActive: true,
-        isEmailVerified: true,
-        isTwoFactorEnabled: true,
-        createdAt: true,
-        updatedAt: true,
-        organization: {
-          select: {
-            id: true,
-            name: true,
-            type: true,
-          },
-        },
-      },
-    });
+    const user = await authRepository.findProfileById(userId);
 
     if (!user) {
       throw { status: 404, message: 'User not found.' };

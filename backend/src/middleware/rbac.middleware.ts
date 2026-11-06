@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { prisma } from '../config/db.config';
+import { organizationRepository } from '../repositories/organization.repository';
 import { OrganizationType, UserRole } from '@prisma/client';
 
 const ROLE_LABELS: Record<UserRole, string> = {
@@ -60,10 +60,7 @@ export const requireCarrierDispatcher = async (
     return;
   }
 
-  const organization = await prisma.organization.findUnique({
-    where: { id: req.user.organizationId },
-    select: { type: true },
-  });
+  const organization = await organizationRepository.findTypeById(req.user.organizationId);
 
   if (!organization || organization.type !== OrganizationType.CARRIER) {
     res.status(403).json({
@@ -101,10 +98,7 @@ export const requireCarrierRole = async (
     return;
   }
 
-  const organization = await prisma.organization.findUnique({
-    where: { id: req.user.organizationId },
-    select: { type: true },
-  });
+  const organization = await organizationRepository.findTypeById(req.user.organizationId);
 
   if (!organization || organization.type !== OrganizationType.CARRIER) {
     res.status(403).json({
@@ -142,10 +136,7 @@ export const requireDockManager = async (
     return;
   }
 
-  const organization = await prisma.organization.findUnique({
-    where: { id: req.user.organizationId },
-    select: { type: true },
-  });
+  const organization = await organizationRepository.findTypeById(req.user.organizationId);
 
   if (!organization || organization.type !== OrganizationType.WAREHOUSE_OPERATOR) {
     res.status(403).json({
@@ -183,10 +174,7 @@ export const requireWarehouseStaff = async (
     return;
   }
 
-  const organization = await prisma.organization.findUnique({
-    where: { id: req.user.organizationId },
-    select: { type: true },
-  });
+  const organization = await organizationRepository.findTypeById(req.user.organizationId);
 
   if (!organization || organization.type !== OrganizationType.WAREHOUSE_OPERATOR) {
     res.status(403).json({
@@ -227,10 +215,7 @@ export const requireBookingAuditAccess = async (
     return;
   }
 
-  const organization = await prisma.organization.findUnique({
-    where: { id: req.user.organizationId },
-    select: { type: true },
-  });
+  const organization = await organizationRepository.findTypeById(req.user.organizationId);
 
   if (!organization) {
     res.status(403).json({

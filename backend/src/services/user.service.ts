@@ -1,7 +1,7 @@
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { UserRole } from '@prisma/client';
-import { prisma } from '../config/db.config';
+import { userRepository } from '../repositories/user.repository';
 import { securityConfig } from '../config/security.config';
 import { emailService } from './email.service';
 import redis from '../config/redis';
@@ -74,18 +74,14 @@ export class UserService {
     }
 
     // Verify requester organization exists
-    const organization = await prisma.organization.findUnique({
-      where: { id: requester.organizationId },
-    });
+    const organization = await userRepository.findOrganizationById(requester.organizationId);
 
     if (!organization) {
       throw { status: 404, message: 'Requester organization not found.' };
     }
 
     // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
-    });
+    const existingUser = await userRepository.findByEmail(normalizedEmail);
 
     if (existingUser) {
       throw { status: 409, message: 'A user with this email already exists.' };
@@ -99,32 +95,14 @@ export class UserService {
     const verificationToken = crypto.randomBytes(32).toString('hex');
 
     // Create user record linked to requester's organization
-    const newUser = await prisma.user.create({
-      data: {
-        email: normalizedEmail,
-        passwordHash,
-        role: targetRole,
-        organizationId: requester.organizationId,
-        isActive: true,
-        isEmailVerified: false,
-        verificationToken,
-      },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        organizationId: true,
-        isActive: true,
-        isEmailVerified: true,
-        createdAt: true,
-        organization: {
-          select: {
-            id: true,
-            name: true,
-            type: true,
-          },
-        },
-      },
+    const newUser = await userRepository.createInvitedUser({
+      email: normalizedEmail,
+      passwordHash,
+      role: targetRole,
+      organizationId: requester.organizationId,
+      isActive: true,
+      isEmailVerified: false,
+      verificationToken,
     });
 
     // Dispatch invitation email asynchronously
@@ -159,16 +137,7 @@ export class UserService {
       };
     }
 
-    const targetUser = await prisma.user.findUnique({
-      where: { id: targetUserId },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        organizationId: true,
-        isActive: true,
-      },
-    });
+    const targetUser = await userRepository.findSummaryById(targetUserId);
 
     if (!targetUser) {
       throw { status: 404, message: 'User not found.' };
@@ -183,17 +152,7 @@ export class UserService {
     }
 
     // Step 1: Update MySQL to set isActive = false
-    const updatedUser = await prisma.user.update({
-      where: { id: targetUserId },
-      data: { isActive: false },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        organizationId: true,
-        isActive: true,
-      },
-    });
+    const updatedUser = await userRepository.updateSummaryById(targetUserId, { isActive: false });
 
     // Step 2: Sever access immediately via Redis cache & token version increment
     await redis.set(`user:${targetUserId}:isActive`, '0');
@@ -224,16 +183,7 @@ export class UserService {
       };
     }
 
-    const targetUser = await prisma.user.findUnique({
-      where: { id: targetUserId },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        organizationId: true,
-        isActive: true,
-      },
-    });
+    const targetUser = await userRepository.findSummaryById(targetUserId);
 
     if (!targetUser) {
       throw { status: 404, message: 'User not found.' };
@@ -248,20 +198,10 @@ export class UserService {
     }
 
     // Step 1: Update MySQL to set isActive = true and clear failed login locks
-    const updatedUser = await prisma.user.update({
-      where: { id: targetUserId },
-      data: {
-        isActive: true,
-        failedLoginAttempts: 0,
-        lockUntil: null,
-      },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        organizationId: true,
-        isActive: true,
-      },
+    const updatedUser = await userRepository.updateSummaryById(targetUserId, {
+      isActive: true,
+      failedLoginAttempts: 0,
+      lockUntil: null,
     });
 
     // Step 2: Update Redis cache to reflect active status
@@ -285,19 +225,7 @@ export class UserService {
       };
     }
 
-    const users = await prisma.user.findMany({
-      where: { organizationId: requester.organizationId },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        organizationId: true,
-        isActive: true,
-        isEmailVerified: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const users = await userRepository.findOrganizationUsers(requester.organizationId);
 
     return users;
   }
