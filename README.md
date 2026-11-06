@@ -4,8 +4,8 @@ Multi-tenant dock slot booking platform for warehouse operators and carriers.
 
 ## UI
 
-
-[`ui-iterations/README.md`](ui-iterations/README.md).
+Screenshots of each implemented dashboard. See
+[`ui-iterations/README.md`](ui-iterations/README.md) for the iteration log.
 
 ![UI flow](ui-iterations/UI-flow.png)
 
@@ -48,7 +48,7 @@ and host port overrides.
 
 ## Seeded demo accounts
 
-All seeded accounts are pre-verified and share the same password:
+All seeded accounts are pre-verified and share the same password: `12345678`
 
 | Email | Password | Role | Organization |
 | --- | --- | --- | --- |
@@ -99,3 +99,8 @@ Prerequisites: installed dependencies (`npm ci`), a generated Prisma client
 uses (see `backend/.env`). The tests are stateful, so point `DATABASE_URL` at a
 dedicated test database for deterministic results; the bundled stack's database
 can be reset with `docker compose down -v`.
+
+## Final System Architecture diagram
+
+<img width="2274" height="1989" alt="System architecture" src="https://github.com/user-attachments/assets/bfdda9cd-7ce8-4c55-9536-5d753c237780" />
+
