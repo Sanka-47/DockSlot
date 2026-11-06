@@ -7,7 +7,7 @@ Multi-tenant dock slot booking platform for warehouse operators and carriers.
 Screenshots of each implemented dashboard. See
 [`ui-iterations/README.md`](ui-iterations/README.md) for the iteration log.
 
-![UI flow](ui-iterations/UI-flow.png)
+ui-iterations/UI-flow.png
 
 ### Auth
 
