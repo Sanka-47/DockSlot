@@ -187,7 +187,7 @@ describe('OutboxWorker (transactional outbox dispatcher)', () => {
     dispatcherToken = jwt.sign(
       { userId: dispatcher.id, organizationId: carrierOrgId, role: dispatcher.role, email: dispatcher.email },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
   });
 

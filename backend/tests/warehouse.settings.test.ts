@@ -53,7 +53,7 @@ describe('Warehouse Settings Update & Slot Length Safeguarding Integration Tests
         email: warehouseAdminA.email,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
 
     const dockManagerA = await prisma.user.create({
@@ -74,7 +74,7 @@ describe('Warehouse Settings Update & Slot Length Safeguarding Integration Tests
         email: dockManagerA.email,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
 
     // 2. Warehouse Operator Org B & Warehouse Admin B (tenant isolation)
@@ -104,7 +104,7 @@ describe('Warehouse Settings Update & Slot Length Safeguarding Integration Tests
         email: warehouseAdminB.email,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
 
     // 3. Create Warehouse initially configured with 60-minute slots
@@ -159,7 +159,7 @@ describe('Warehouse Settings Update & Slot Length Safeguarding Integration Tests
         email: dispatcher.email,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
   });
 

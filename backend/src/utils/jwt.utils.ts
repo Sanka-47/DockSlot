@@ -1,5 +1,7 @@
-import jwt from 'jsonwebtoken';
+import jwt, { JwtPayload, SignOptions } from 'jsonwebtoken';
 import { securityConfig } from '../config/security.config';
+
+export type JwtTokenType = 'access' | 'refresh' | '2fa_temp';
 
 export interface JwtUserPayload {
   userId: number;
@@ -7,11 +9,30 @@ export interface JwtUserPayload {
   role: string;
   email: string;
   tokenVersion?: number;
-  type?: 'access' | 'refresh';
+  type?: JwtTokenType;
+}
+
+const algorithm = securityConfig.jwtAlgorithm;
+
+function verifyOptions(): jwt.VerifyOptions {
+  return {
+    algorithms: [algorithm],
+    issuer: securityConfig.jwtIssuer,
+    audience: securityConfig.jwtAudience,
+  };
+}
+
+function signOptions(expiresIn: string): SignOptions {
+  return {
+    expiresIn: expiresIn as SignOptions['expiresIn'],
+    algorithm,
+    issuer: securityConfig.jwtIssuer,
+    audience: securityConfig.jwtAudience,
+  };
 }
 
 /**
- * Signs an access JWT using `JWT_EXPIRES_IN` from securityConfig.
+ * Signs an access JWT using `JWT_EXPIRES_IN` and the dedicated access secret.
  */
 export function signAccessToken(payload: JwtUserPayload): string {
   return jwt.sign(
@@ -21,14 +42,16 @@ export function signAccessToken(payload: JwtUserPayload): string {
       role: payload.role,
       email: payload.email,
       tokenVersion: payload.tokenVersion ?? 0,
+      type: 'access',
     },
-    securityConfig.jwtSecret,
-    { expiresIn: securityConfig.jwtExpiresIn as any }
+    securityConfig.jwtAccessSecret,
+    signOptions(securityConfig.jwtExpiresIn)
   );
 }
 
 /**
- * Signs a refresh JWT using `JWT_REFRESH_EXPIRES_IN` from securityConfig.
+ * Signs a refresh JWT using `JWT_REFRESH_EXPIRES_IN` and the dedicated refresh
+ * secret. The `type` claim prevents it from being accepted as an access token.
  */
 export function signRefreshToken(payload: JwtUserPayload): string {
   return jwt.sign(
@@ -40,16 +63,40 @@ export function signRefreshToken(payload: JwtUserPayload): string {
       tokenVersion: payload.tokenVersion ?? 0,
       type: 'refresh',
     },
-    securityConfig.jwtSecret,
-    { expiresIn: securityConfig.jwtRefreshExpiresIn as any }
+    securityConfig.jwtRefreshSecret,
+    signOptions(securityConfig.jwtRefreshExpiresIn)
   );
 }
 
 /**
- * Verifies a JWT signature and expiration against `securityConfig.jwtSecret`.
+ * Verifies an access JWT, including issuer, audience and the pinned algorithm.
+ * Temporary 2FA challenge tokens are explicitly rejected here.
+ */
+export function verifyAccessToken<T = JwtUserPayload>(token: string): T {
+  const decoded = jwt.verify(token, securityConfig.jwtAccessSecret, verifyOptions()) as JwtPayload;
+  if (decoded.type === 'refresh' || decoded.type === '2fa_temp') {
+    throw new jwt.JsonWebTokenError('Invalid token type.');
+  }
+  return decoded as T;
+}
+
+/**
+ * Verifies a refresh JWT using the refresh-only secret and enforces its type.
+ */
+export function verifyRefreshToken<T = JwtUserPayload>(token: string): T {
+  const decoded = jwt.verify(token, securityConfig.jwtRefreshSecret, verifyOptions()) as JwtPayload;
+  if (decoded.type !== 'refresh') {
+    throw new jwt.JsonWebTokenError('Invalid refresh token.');
+  }
+  return decoded as T;
+}
+
+/**
+ * @deprecated Use verifyAccessToken or verifyRefreshToken so the expected token
+ * type is explicit.
  */
 export function verifyJwtToken<T = JwtUserPayload>(token: string): T {
-  return jwt.verify(token, securityConfig.jwtSecret) as T;
+  return verifyAccessToken<T>(token);
 }
 
 /**
@@ -63,8 +110,8 @@ export function signTemp2faToken(userId: number, email: string): string {
       email,
       type: '2fa_temp',
     },
-    securityConfig.jwtSecret,
-    { expiresIn: '5m' }
+    securityConfig.jwtAccessSecret,
+    signOptions('5m')
   );
 }
 
@@ -72,9 +119,9 @@ export function signTemp2faToken(userId: number, email: string): string {
  * Verifies a 2FA temporary token.
  */
 export function verifyTemp2faToken(token: string): { userId: number; email: string; type: string } {
-  const decoded = jwt.verify(token, securityConfig.jwtSecret) as any;
+  const decoded = jwt.verify(token, securityConfig.jwtAccessSecret, verifyOptions()) as JwtPayload;
   if (!decoded || decoded.type !== '2fa_temp') {
-    throw { status: 401, message: 'Invalid or expired 2FA session token.' };
+    throw new jwt.JsonWebTokenError('Invalid or expired 2FA session token.');
   }
-  return decoded;
+  return decoded as { userId: number; email: string; type: string };
 }

@@ -113,18 +113,13 @@ async function runVerificationTests() {
       data: { role: 'DISPATCHER' },
     });
     // Sign token with DISPATCHER role
-    const jwt = (await import('jsonwebtoken')).default;
-    const { securityConfig } = await import('../config/security.config');
-    const dispatcherToken = jwt.sign(
-      {
-        userId,
-        organizationId: dbUserAfter!.organizationId,
-        role: 'DISPATCHER',
-        email: testEmail,
-      },
-      securityConfig.jwtSecret,
-      { expiresIn: '1h' }
-    );
+    const { signAccessToken } = await import('../utils/jwt.utils');
+    const dispatcherToken = signAccessToken({
+      userId,
+      organizationId: dbUserAfter!.organizationId,
+      role: 'DISPATCHER',
+      email: testEmail,
+    });
 
     const activeDock = await prisma.dock.findFirst({
       where: { status: 'ACTIVE' },

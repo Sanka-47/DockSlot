@@ -96,7 +96,7 @@ describe('Slot Taken Between Viewing and Booking Requirement (DispatcherDashboar
         email: userA.email,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
 
     dispatcherBToken = jwt.sign(
@@ -107,7 +107,7 @@ describe('Slot Taken Between Viewing and Booking Requirement (DispatcherDashboar
         email: userB.email,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
   });
 

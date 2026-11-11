@@ -37,7 +37,7 @@ describe('Weekly Operational Schedule Template Integration Tests', () => {
         email: user.email,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
 
   beforeAll(async () => {

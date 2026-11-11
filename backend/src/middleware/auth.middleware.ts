@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { verifyJwtToken } from '../utils/jwt.utils';
+import { verifyAccessToken } from '../utils/jwt.utils';
 import { userRepository } from '../repositories/user.repository';
 import redis from '../config/redis';
 
@@ -41,7 +41,7 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
   let decoded: any;
   try {
     // Step 1: Verify the JWT signature cryptographically (stateless, zero latency)
-    decoded = verifyJwtToken(token);
+    decoded = verifyAccessToken(token);
   } catch (error: any) {
     if (error.name === 'TokenExpiredError') {
       res.status(401).json({
