@@ -53,7 +53,7 @@ describe('Warehouse Admin Dock Name Update & Driver Confusion Prevention Tests',
         tokenVersion: 0,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
 
     // Dock Manager A
@@ -76,7 +76,7 @@ describe('Warehouse Admin Dock Name Update & Driver Confusion Prevention Tests',
         tokenVersion: 0,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
 
     // Warehouse A
@@ -138,7 +138,7 @@ describe('Warehouse Admin Dock Name Update & Driver Confusion Prevention Tests',
         tokenVersion: 0,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
 
     // 3. Carrier Organization & Dispatcher
@@ -169,7 +169,7 @@ describe('Warehouse Admin Dock Name Update & Driver Confusion Prevention Tests',
         tokenVersion: 0,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
   });
 

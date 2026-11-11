@@ -79,7 +79,7 @@ describe('Warehouse Booking & Anti-Hogging Policy Integration Tests', () => {
         email: whAdminA.email,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
 
     // 2. Warehouse Operator Org B (Tenant isolation)
@@ -109,7 +109,7 @@ describe('Warehouse Booking & Anti-Hogging Policy Integration Tests', () => {
         email: whAdminB.email,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
 
     // 3. Create Warehouse with 24/7 operating hours in UTC and 2 docks
@@ -168,7 +168,7 @@ describe('Warehouse Booking & Anti-Hogging Policy Integration Tests', () => {
         email: dispatcherA.email,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
 
     // 5. Carrier Org B & Dispatcher B (for testing per-carrier anti-hogging limits)
@@ -198,7 +198,7 @@ describe('Warehouse Booking & Anti-Hogging Policy Integration Tests', () => {
         email: dispatcherB.email,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
   });
 

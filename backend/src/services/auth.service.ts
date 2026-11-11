@@ -1,10 +1,15 @@
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
-import jwt from 'jsonwebtoken';
 import { UserRole, OrganizationType } from '@prisma/client';
 import { authRepository } from '../repositories/auth.repository';
 import { securityConfig } from '../config/security.config';
-import { signAccessToken, signRefreshToken, verifyJwtToken, signTemp2faToken } from '../utils/jwt.utils';
+import {
+  signAccessToken,
+  signRefreshToken,
+  verifyAccessToken,
+  verifyRefreshToken,
+  signTemp2faToken,
+} from '../utils/jwt.utils';
 import { emailService } from './email.service';
 import redis from '../config/redis';
 
@@ -101,10 +106,10 @@ export class AuthService {
   }
 
   /**
-   * Helper to verify a JWT token using configured JWT_SECRET.
+   * Helper to verify an access JWT using the access-token secret.
    */
   public verifyToken(token: string) {
-    return verifyJwtToken(token);
+    return verifyAccessToken(token);
   }
 
   /**
@@ -122,7 +127,7 @@ export class AuthService {
 
     let decoded: any;
     try {
-      decoded = verifyJwtToken(refreshToken);
+      decoded = verifyRefreshToken(refreshToken);
     } catch {
       throw { status: 401, message: 'Invalid or expired refresh token.' };
     }

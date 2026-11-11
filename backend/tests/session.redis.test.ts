@@ -54,7 +54,7 @@ describe('Redis + JWT Session Control & User Deactivation Tests', () => {
         tokenVersion: 0,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
 
     // 2. Create Warehouse Org & Admin
@@ -86,7 +86,7 @@ describe('Redis + JWT Session Control & User Deactivation Tests', () => {
         tokenVersion: 0,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
 
     // 3. Create Dispatcher under Carrier Org
@@ -109,7 +109,7 @@ describe('Redis + JWT Session Control & User Deactivation Tests', () => {
         tokenVersion: 0,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
 
     // 4. Create Dispatcher under Foreign Org
@@ -139,7 +139,7 @@ describe('Redis + JWT Session Control & User Deactivation Tests', () => {
         tokenVersion: 0,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
   });
 
@@ -205,7 +205,7 @@ describe('Redis + JWT Session Control & User Deactivation Tests', () => {
           tokenVersion: currentVersion,
         },
         securityConfig.jwtSecret,
-        { expiresIn: '1h' }
+        { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
       );
 
       const res = await request(app)
@@ -288,7 +288,7 @@ describe('Redis + JWT Session Control & User Deactivation Tests', () => {
           tokenVersion: currentVersion,
         },
         securityConfig.jwtSecret,
-        { expiresIn: '1h' }
+        { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
       );
 
       const res = await request(app)
@@ -355,7 +355,7 @@ describe('Redis + JWT Session Control & User Deactivation Tests', () => {
           tokenVersion: currentVersion,
         },
         securityConfig.jwtSecret,
-        { expiresIn: '1h' }
+        { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
       );
 
       const res = await request(app)

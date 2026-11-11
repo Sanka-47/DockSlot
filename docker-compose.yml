@@ -21,6 +21,11 @@
 #
 # Host port overrides (useful when something already listens on the defaults):
 #   BACKEND_HOST_PORT=5050 MYSQL_HOST_PORT=3307 docker compose up --build
+#
+# Required JWT secrets (no defaults are committed):
+#   JWT_ACCESS_SECRET=... JWT_REFRESH_SECRET=... docker compose up --build
+# Generate each value independently:
+#   node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 
 name: dockslot
 
@@ -114,9 +119,17 @@ services:
       DB_NAME: ${MYSQL_DATABASE:-dockslot_db}
       # Shared Redis for rate limiting / session revocation (service above).
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: ${JWT_SECRET:-ZNW0qhZb8_MH4ixAW4GlhZaCN1K9slUC3UUsSaco4qw}
+      # Required: generate two independent secrets (see backend/.env.example)
+      # and provide them in the shell or a root .env file before `docker compose up`.
+      # No default secrets are committed to this repository.
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET must be set}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET must be set}
+      JWT_ISSUER: ${JWT_ISSUER:-dockslot-api}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-dockslot-web}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
       JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      # Credentialed CORS allowlist. Required in production; override for your UI.
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
       APP_URL: http://localhost:${BACKEND_HOST_PORT:-5000}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       HEALTH_CHECK_TIMEOUT_MS: "3000"

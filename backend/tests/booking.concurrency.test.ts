@@ -89,7 +89,7 @@ describe('Booking Concurrency & Double-Booking Prevention Integration Tests', ()
           email: dispatcherUser.email,
         },
         securityConfig.jwtSecret,
-        { expiresIn: '1h' }
+        { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
       );
 
       dispatchers.push({ id: dispatcherUser.id, token });
@@ -208,7 +208,7 @@ describe('Booking Concurrency & Double-Booking Prevention Integration Tests', ()
         email: 'admin@carrier.com',
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
 
     const res = await request(app)

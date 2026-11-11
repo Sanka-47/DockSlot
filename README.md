@@ -34,11 +34,22 @@ ui-iterations/UI-flow.png
 
 ## Running the project
 
-Start the full local stack with:
+Docker Compose requires two independent JWT secrets (no defaults are committed).
+Generate them once and export them, or put them in a root `.env` file:
 
 ```sh
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+```
+
+```sh
+export JWT_ACCESS_SECRET="<first generated value>"
+export JWT_REFRESH_SECRET="<second generated value>"
 docker compose up --build
 ```
+
+For a non-Docker backend, copy `backend/.env.example` to `backend/.env` and fill
+in the same values. Production requires both secrets, at least 32 characters
+each, and the values must differ.
 
 The backend container applies the schema and loads the demo data on boot
 (`prisma db push` + `prisma db seed`). See `docker-compose.yml` for the services

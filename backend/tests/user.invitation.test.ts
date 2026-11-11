@@ -49,7 +49,7 @@ describe('Secure Token-Based Invitation & Account Creation Workflow Tests', () =
         email: carrierAdmin.email,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
 
     // 2. Create a Warehouse Admin with Organization
@@ -80,7 +80,7 @@ describe('Secure Token-Based Invitation & Account Creation Workflow Tests', () =
         email: warehouseAdmin.email,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
 
     // 3. Create regular DISPATCHER and DOCK_MANAGER tokens for negative authorization tests
@@ -102,7 +102,7 @@ describe('Secure Token-Based Invitation & Account Creation Workflow Tests', () =
         email: dispatcher.email,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
 
     const dockManager = await prisma.user.create({
@@ -123,7 +123,7 @@ describe('Secure Token-Based Invitation & Account Creation Workflow Tests', () =
         email: dockManager.email,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
   });
 
