@@ -158,13 +158,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({
   const isTwoFactorStep = pendingTempToken !== null;
 
   /**
-   * Stores the final JWT, syncs global auth context, and routes to the right dashboard.
+   * Syncs the final access token/user with the global auth context and routes
+   * to the right dashboard. The token is kept in memory only; the refresh token
+   * lives in the backend's HttpOnly cookie.
    */
   const completeSignIn = (token: string, user: User, successText: string) => {
-    // Store the access token; the refresh token lives in an HttpOnly cookie.
-    authPageService.persistSession(token);
-
-    // Update global context
+    // Update global context (stores the access token in memory)
     setAuthContextUser(token, user);
 
     setSuccessMessage(successText);
@@ -345,9 +344,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
         password: registerPassword,
       });
 
-      authPageService.persistSession(session.token);
-
-      // Update global context
+      // Update global context (stores the access token in memory)
       setAuthContextUser(session.token, session.user);
 
       setSuccessMessage('Organization registered successfully! Setting up your workspace...');

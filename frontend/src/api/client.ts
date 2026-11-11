@@ -1,5 +1,5 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
-import { storage } from '../utils/storage';
+import { authToken, isSessionLoggedOut } from '../utils/authToken';
 
 const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -13,7 +13,7 @@ export const apiClient = axios.create({
 });
 
 apiClient.interceptors.request.use((config) => {
-  const token = storage.getToken();
+  const token = authToken.getToken();
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -37,6 +37,12 @@ let refreshPromise: Promise<string> | null = null;
  * refresh cookie automatically; the response rotates that cookie.
  */
 const refreshAccessToken = async (): Promise<string> => {
+  // Never resurrect a session after an explicit logout, even if an in-flight
+  // request receives a 401 before the UI settles.
+  if (isSessionLoggedOut()) {
+    throw new Error('Session was explicitly logged out.');
+  }
+
   const { data } = await axios.post(
     `${baseURL}/auth/refresh`,
     {},
@@ -48,7 +54,7 @@ const refreshAccessToken = async (): Promise<string> => {
     throw new Error('Refresh response did not include an access token.');
   }
 
-  storage.setToken(token);
+  authToken.setToken(token);
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(AUTH_TOKEN_REFRESHED_EVENT, { detail: { token } }));
   }
@@ -88,7 +94,7 @@ apiClient.interceptors.response.use(
       } catch (refreshError) {
         // Refresh failed (expired/revoked/missing cookie): end the session and
         // make a best-effort attempt to clear the server-side cookie.
-        storage.removeToken();
+        authToken.clear();
         axios.post(`${baseURL}/auth/logout`, {}, { withCredentials: true }).catch(() => {});
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent(AUTH_SESSION_EXPIRED_EVENT));

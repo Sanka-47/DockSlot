@@ -1,5 +1,4 @@
 import { authApi } from '../api/auth.api';
-import { storage } from '../utils/storage';
 import { getApiErrorMessage } from './errors';
 import type {
   AuthResponse,
@@ -111,11 +110,6 @@ export const authPageService = {
       response,
       'Registration completed but received an incomplete server response.'
     );
-  },
-
-  /** Persists the access token; the refresh token stays in its HttpOnly cookie. */
-  persistSession(token: string): void {
-    storage.setToken(token);
   },
 
   /** Role/organization rule used to choose the post-login dashboard. */

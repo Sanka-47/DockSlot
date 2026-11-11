@@ -1,6 +1,10 @@
 import React, { createContext, useState, useEffect, type ReactNode } from 'react';
 import type { User } from '../types/user.types';
-import { storage } from '../utils/storage';
+import {
+  authToken,
+  clearSessionLoggedOut,
+  markSessionLoggedOut,
+} from '../utils/authToken';
 import { authContextService } from '../services/authContext.service';
 import {
   AUTH_SESSION_EXPIRED_EVENT,
@@ -22,31 +26,34 @@ export interface AuthContextType {
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [token, setToken] = useState<string | null>(() => storage.getToken());
+  // Access token lives in memory only (see utils/authToken.ts). On reload it is
+  // restored from the HttpOnly refresh cookie by the effect below.
+  const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
+    let mounted = true;
+
     const initializeAuth = async () => {
-      const savedToken = storage.getToken();
-      if (savedToken) {
-        setToken(savedToken);
-        try {
-          const currentUser = await authContextService.getCurrentUser();
-          if (currentUser) {
-            setUser(currentUser);
-          }
-        } catch {
-          // Token expired or invalid
-          storage.removeToken();
-          setToken(null);
-          setUser(null);
+      try {
+        const session = await authContextService.restoreSession();
+        if (mounted && session) {
+          setToken(session.token);
+          setUser(session.user);
+        }
+      } finally {
+        if (mounted) {
+          setIsLoading(false);
         }
       }
-      setIsLoading(false);
     };
 
-    initializeAuth();
+    void initializeAuth();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   // Keep React state in sync with session changes driven by the axios
@@ -62,7 +69,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     const handleSessionExpired = () => {
-      storage.removeToken();
+      authToken.clear();
       setToken(null);
       setUser(null);
     };
@@ -76,34 +83,40 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   const login = (newToken: string, newUser: User) => {
-    storage.setToken(newToken);
+    clearSessionLoggedOut();
+    authToken.setToken(newToken);
     setToken(newToken);
     setUser(newUser);
   };
 
   const logout = () => {
-    // Best-effort: clear the server-side HttpOnly refresh cookie.
+    // Best-effort: clear the server-side HttpOnly refresh cookie. The marker
+    // ensures a reload does not silently restore the session if this fails.
+    markSessionLoggedOut();
     void authContextService.logout();
-    storage.removeToken();
+    authToken.clear();
     setToken(null);
     setUser(null);
   };
 
   const logoutAll = async () => {
     try {
+      // Keep the access token available while this authenticated request runs,
+      // so an expired token can still be refreshed and the server-side
+      // revocation can complete.
       await authContextService.logoutAll();
     } catch {
       // Continue client cleanup even if network fails
     } finally {
-      storage.removeToken();
+      markSessionLoggedOut();
+      authToken.clear();
       setToken(null);
       setUser(null);
     }
   };
 
   const refreshUser = async () => {
-    const savedToken = storage.getToken();
-    if (!savedToken) return;
+    if (!authToken.getToken()) return;
     try {
       const currentUser = await authContextService.getCurrentUser();
       if (currentUser) {
