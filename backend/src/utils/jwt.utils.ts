@@ -10,6 +10,17 @@ export interface JwtUserPayload {
   email: string;
   tokenVersion?: number;
   type?: JwtTokenType;
+  /** Refresh-token session id. */
+  jti?: string;
+  /** Refresh-token family id, stable across rotations. */
+  familyId?: string;
+}
+
+export interface RefreshTokenOptions {
+  jti?: string;
+  familyId?: string;
+  /** Overrides JWT_REFRESH_EXPIRES_IN, e.g. to cap at the family's absolute expiry. */
+  expiresIn?: string | number;
 }
 
 const algorithm = securityConfig.jwtAlgorithm;
@@ -22,7 +33,7 @@ function verifyOptions(): jwt.VerifyOptions {
   };
 }
 
-function signOptions(expiresIn: string): SignOptions {
+function signOptions(expiresIn: string | number): SignOptions {
   return {
     expiresIn: expiresIn as SignOptions['expiresIn'],
     algorithm,
@@ -53,7 +64,15 @@ export function signAccessToken(payload: JwtUserPayload): string {
  * Signs a refresh JWT using `JWT_REFRESH_EXPIRES_IN` and the dedicated refresh
  * secret. The `type` claim prevents it from being accepted as an access token.
  */
-export function signRefreshToken(payload: JwtUserPayload): string {
+export function signRefreshToken(
+  payload: JwtUserPayload,
+  options: RefreshTokenOptions = {}
+): string {
+  const expiresIn =
+    options.expiresIn === undefined
+      ? securityConfig.jwtRefreshExpiresIn
+      : options.expiresIn;
+
   return jwt.sign(
     {
       userId: payload.userId,
@@ -62,9 +81,11 @@ export function signRefreshToken(payload: JwtUserPayload): string {
       email: payload.email,
       tokenVersion: payload.tokenVersion ?? 0,
       type: 'refresh',
+      ...(options.jti ? { jti: options.jti } : {}),
+      ...(options.familyId ? { familyId: options.familyId } : {}),
     },
     securityConfig.jwtRefreshSecret,
-    signOptions(securityConfig.jwtRefreshExpiresIn)
+    signOptions(expiresIn)
   );
 }
 

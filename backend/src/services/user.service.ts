@@ -4,6 +4,7 @@ import { UserRole } from '@prisma/client';
 import { userRepository } from '../repositories/user.repository';
 import { securityConfig } from '../config/security.config';
 import { emailService } from './email.service';
+import { authService } from './auth.service';
 import redis from '../config/redis';
 
 export interface InviteUserInput {
@@ -154,9 +155,11 @@ export class UserService {
     // Step 1: Update MySQL to set isActive = false
     const updatedUser = await userRepository.updateSummaryById(targetUserId, { isActive: false });
 
-    // Step 2: Sever access immediately via Redis cache & token version increment
+    // Step 2: Sever access immediately. tokenVersion is durable in MySQL and
+    // every refresh session is revoked, so re-enabling the account does not
+    // resurrect previously issued credentials.
     await redis.set(`user:${targetUserId}:isActive`, '0');
-    await redis.incr(`user:${targetUserId}:tokenVersion`);
+    await authService.logoutAll(targetUserId);
 
     return {
       user: updatedUser,

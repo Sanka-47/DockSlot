@@ -16,6 +16,21 @@ export const authRepository = {
     });
   },
 
+  findTokenVersionById(userId: number, client: DbClient = db) {
+    return client.user.findUnique({
+      where: { id: userId },
+      select: { tokenVersion: true },
+    });
+  },
+
+  incrementTokenVersion(userId: number, client: DbClient = db) {
+    return client.user.update({
+      where: { id: userId },
+      data: { tokenVersion: { increment: 1 } },
+      select: { tokenVersion: true },
+    });
+  },
+
   findUserByVerificationToken(token: string) {
     return db.user.findUnique({
       where: { verificationToken: token },

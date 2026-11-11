@@ -86,6 +86,16 @@ export const userRepository = {
     });
   },
 
+  findAuthStateById(userId: number, client: DbClient = db) {
+    return client.user.findUnique({
+      where: { id: userId },
+      select: {
+        isActive: true,
+        tokenVersion: true,
+      },
+    });
+  },
+
   findEmailVerificationStatusById(userId: number) {
     return db.user.findUnique({
       where: { id: userId },

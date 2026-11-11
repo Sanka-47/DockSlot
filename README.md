@@ -81,6 +81,36 @@ All seeded accounts are pre-verified and share the same password: `12345678`
 | Jebel Ali Hub | Lanka Logistics Parks | `Asia/Dubai` | Every day 07:00–19:00 | 30 min | 3 |
 | Rotterdam Port DC | Maas Distribution | `Europe/Amsterdam` | 24/7 | 60 min | 6 |
 
+## Authentication model
+
+- **Access tokens** are short-lived (15 minutes) and returned in the JSON
+  response. The browser client keeps them in memory only; they are never written
+  to `localStorage`, `sessionStorage`, or a JS-readable cookie.
+- **Refresh tokens** are 7-day JWTs delivered in an HttpOnly, SameSite cookie
+  scoped to `/api/auth`. Each token is backed by a row in `refresh_sessions`.
+- **Rotation:** every successful `/auth/refresh` creates a new `jti`, marks the
+  previous session `ROTATED`, and links it with `replacedByJti`. A short grace
+  window lets concurrent tabs retry the same cookie; replay outside that window
+  revokes the entire token family.
+- **Absolute family lifetime:** sliding rotation cannot exceed
+  `REFRESH_SESSION_ABSOLUTE_TTL` (default 30 days) from the original login.
+- **Revocation:** `/auth/logout` revokes only the current refresh session.
+  `/auth/logout-all` and account deactivation increment the durable
+  `users.tokenVersion` and revoke every refresh session, so old credentials stay
+  dead even after a Redis flush or reactivation.
+- **Redis** caches `tokenVersion` for `TOKEN_VERSION_CACHE_TTL_SECONDS` (default
+  60) but MySQL is the source of truth.
+
+Relevant environment variables:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `JWT_EXPIRES_IN` | `15m` | Access-token lifetime |
+| `JWT_REFRESH_EXPIRES_IN` | `7d` | Sliding refresh-token lifetime |
+| `REFRESH_SESSION_ABSOLUTE_TTL` | `30d` | Maximum lifetime of a login family |
+| `REFRESH_REUSE_GRACE_SECONDS` | `30` | Concurrent-tab rotation grace window |
+| `TOKEN_VERSION_CACHE_TTL_SECONDS` | `60` | Redis cache TTL for tokenVersion |
+
 ## Running tests
 
 The suite is integration-level: it boots the real Express app and exercises a

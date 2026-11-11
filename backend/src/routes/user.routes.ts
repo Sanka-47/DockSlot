@@ -115,7 +115,7 @@ router.get(
  *     summary: Deactivate a user and sever active sessions
  *     description: |
  *       Restricted strictly to CARRIER_ADMIN or WAREHOUSE_ADMIN managing users within their organization.
- *       Sets isActive = false in MySQL and increments the user's tokenVersion in Redis to immediately sever access.
+ *       Sets isActive = false in MySQL, increments the durable tokenVersion, revokes every refresh session, and updates the Redis caches to immediately sever access.
  *     tags:
  *       - Users & Invitations
  *     security:

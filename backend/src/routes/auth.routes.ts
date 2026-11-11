@@ -129,8 +129,9 @@ router.post('/login', login);
  *       Redeems the refresh JWT stored in the `refreshToken` HttpOnly cookie for a fresh access
  *       token (JWT_EXPIRES_IN) and a rotated refresh cookie (JWT_REFRESH_EXPIRES_IN). A raw
  *       `refreshToken` may also be supplied in the body for non-browser clients. The token must be
- *       of type `refresh` and will be rejected if the user is deactivated or has logged out of all
- *       devices (token version revoked).
+ *       of type `refresh` and is backed by a server-side session that is revoked on rotation,
+ *       logout, logout-all, account deactivation, or reuse. Replaying a rotated token outside a
+ *       short concurrent-refresh grace window revokes the whole token family.
  *     tags:
  *       - Authentication
  *     requestBody:
@@ -176,7 +177,7 @@ router.post('/refresh', refresh);
  * /auth/logout:
  *   post:
  *     summary: Log out the current browser session
- *     description: Clears the `refreshToken` HttpOnly cookie. Already-issued access tokens remain valid until they expire; use /auth/logout-all to revoke those too.
+ *     description: Revokes the refresh session identified by the `refreshToken` cookie and clears the cookie. Other devices keep their sessions. Already-issued access tokens remain valid until they expire; use /auth/logout-all to revoke those too.
  *     tags:
  *       - Authentication
  *     security: []
@@ -399,7 +400,7 @@ router.post('/change-password', authenticate, changePassword);
  * /auth/logout-all:
  *   post:
  *     summary: Log out of all devices by invalidating all active sessions
- *     description: Increments the user's token version in Redis, instantly invalidating all active JWTs across every device.
+ *     description: Increments the durable token version in MySQL, revokes every refresh session, and updates the Redis token-version cache, instantly invalidating all active JWTs and refresh tokens across every device.
  *     tags:
  *       - Authentication
  *     security:

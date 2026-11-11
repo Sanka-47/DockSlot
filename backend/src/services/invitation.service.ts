@@ -5,7 +5,7 @@ import { invitationRepository } from '../repositories/invitation.repository';
 import { securityConfig } from '../config/security.config';
 import { signAccessToken, signRefreshToken } from '../utils/jwt.utils';
 import { emailService } from './email.service';
-import redis from '../config/redis';
+import { authService } from './auth.service';
 
 export interface CreateInvitationInput {
   email: string;
@@ -218,8 +218,7 @@ export class InvitationService {
       return { user: newUser, organization: invitation.organization };
     });
 
-    const version = await redis.get(`user:${user.id}:tokenVersion`);
-    const tokenVersion = version !== null ? parseInt(version, 10) : 0;
+    const tokenVersion = await authService.getUserTokenVersion(user.id);
     const jwtToken = this.generateToken(user, tokenVersion);
 
     return {

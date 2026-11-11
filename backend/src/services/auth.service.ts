@@ -1,7 +1,9 @@
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
-import { UserRole, OrganizationType } from '@prisma/client';
+import { RefreshSession, UserRole, OrganizationType } from '@prisma/client';
 import { authRepository } from '../repositories/auth.repository';
+import { refreshSessionRepository } from '../repositories/refreshSession.repository';
+import { DbClient, db } from '../repositories/base.repository';
 import { securityConfig } from '../config/security.config';
 import {
   signAccessToken,
@@ -9,11 +11,17 @@ import {
   verifyAccessToken,
   verifyRefreshToken,
   signTemp2faToken,
+  RefreshTokenOptions,
 } from '../utils/jwt.utils';
 import { emailService } from './email.service';
 import redis from '../config/redis';
 
-export interface RegisterInput {
+export interface SessionRequestContext {
+  userAgent?: string;
+  ipAddress?: string;
+}
+
+export interface RegisterInput extends SessionRequestContext {
   email: string;
   password: string;
   organizationName?: string;
@@ -22,7 +30,7 @@ export interface RegisterInput {
   organizationId?: number;
 }
 
-export interface LoginInput {
+export interface LoginInput extends SessionRequestContext {
   email: string;
   password: string;
 }
@@ -72,6 +80,20 @@ export interface AuthResponse {
   };
 }
 
+type AuthUserWithOrganization = {
+  id: number;
+  email: string;
+  role: UserRole;
+  organizationId: number;
+  isEmailVerified: boolean;
+  isTwoFactorEnabled?: boolean;
+  organization?: {
+    id: number;
+    name: string;
+    type: OrganizationType;
+  };
+};
+
 export class AuthService {
   /**
    * Helper to issue a signed access JWT token using configured JWT_EXPIRES_IN.
@@ -94,15 +116,19 @@ export class AuthService {
    */
   public generateRefreshToken(
     user: { id: number; organizationId: number; role: UserRole; email: string },
-    tokenVersion: number = 0
+    tokenVersion: number = 0,
+    options: RefreshTokenOptions = {}
   ): string {
-    return signRefreshToken({
-      userId: user.id,
-      organizationId: user.organizationId,
-      role: user.role,
-      email: user.email,
-      tokenVersion,
-    });
+    return signRefreshToken(
+      {
+        userId: user.id,
+        organizationId: user.organizationId,
+        role: user.role,
+        email: user.email,
+        tokenVersion,
+      },
+      options
+    );
   }
 
   /**
@@ -112,55 +138,14 @@ export class AuthService {
     return verifyAccessToken(token);
   }
 
-  /**
-   * Exchange a valid refresh token for a new access token plus a rotated
-   * refresh token.
-   *
-   * Rejects tokens that are not of type `refresh`, belong to a deactivated
-   * user, or whose `tokenVersion` no longer matches the value in Redis (i.e.
-   * it was revoked via logout-all).
-   */
-  public async refresh(refreshToken?: string): Promise<AuthResponse> {
-    if (!refreshToken || typeof refreshToken !== 'string') {
-      throw { status: 400, message: 'Refresh token is required.' };
-    }
-
-    let decoded: any;
-    try {
-      decoded = verifyRefreshToken(refreshToken);
-    } catch {
-      throw { status: 401, message: 'Invalid or expired refresh token.' };
-    }
-
-    // Only genuine refresh tokens may be redeemed here. Access and 2FA
-    // challenge tokens must never be accepted.
-    if (!decoded || decoded.type !== 'refresh') {
-      throw { status: 401, message: 'Invalid refresh token.' };
-    }
-
-    const user = await authRepository.findUserWithOrganizationById(decoded.userId);
-
-    if (!user) {
-      throw { status: 401, message: 'Invalid refresh token.' };
-    }
-
-    if (!user.isActive) {
-      throw { status: 403, message: 'Account is deactivated. Please contact support.' };
-    }
-
-    // Revocation check: logout-all increments the Redis token version, which
-    // instantly invalidates every previously issued refresh token.
-    const currentVersion = await this.getUserTokenVersion(user.id);
-    if ((decoded.tokenVersion ?? 0) !== currentVersion) {
-      throw { status: 401, message: 'Refresh token has been revoked. Please login again.' };
-    }
-
-    const token = this.generateToken(user, currentVersion);
-    const rotatedRefreshToken = this.generateRefreshToken(user, currentVersion);
-
+  private buildAuthResponse(
+    user: AuthUserWithOrganization,
+    token: string,
+    refreshToken: string
+  ): AuthResponse {
     return {
       token,
-      refreshToken: rotatedRefreshToken,
+      refreshToken,
       user: {
         id: user.id,
         email: user.email,
@@ -174,18 +159,307 @@ export class AuthService {
   }
 
   /**
-   * Fetch user's current token version from Redis (defaults to 0 if not set).
+   * Creates a stateful refresh-token session. `familyExpiresAt` is the absolute
+   * deadline for a login session and is inherited by every rotated token.
    */
-  public async getUserTokenVersion(userId: number): Promise<number> {
-    const version = await redis.get(`user:${userId}:tokenVersion`);
-    return version !== null ? parseInt(version, 10) : 0;
+  private async createRefreshSession(
+    userId: number,
+    context: SessionRequestContext = {},
+    family?: { familyId: string; familyExpiresAt: Date },
+    client: DbClient = db
+  ): Promise<RefreshSession> {
+    const now = new Date();
+    const familyId = family?.familyId ?? crypto.randomUUID();
+    const familyExpiresAt =
+      family?.familyExpiresAt ??
+      new Date(now.getTime() + securityConfig.refreshSessionAbsoluteTtlMs);
+    const expiresAt = new Date(
+      Math.min(now.getTime() + securityConfig.refreshTokenTtlMs, familyExpiresAt.getTime())
+    );
+
+    return refreshSessionRepository.create(
+      {
+        userId,
+        jti: crypto.randomUUID(),
+        familyId,
+        familyExpiresAt,
+        expiresAt,
+        lastUsedAt: now,
+        userAgent: context.userAgent?.slice(0, 1024),
+        ipAddress: context.ipAddress?.slice(0, 64),
+      },
+      client
+    );
+  }
+
+  private signSessionRefreshToken(
+    user: { id: number; organizationId: number; role: UserRole; email: string },
+    tokenVersion: number,
+    session: RefreshSession
+  ): string {
+    const expiresInSeconds = Math.max(
+      1,
+      Math.floor((session.expiresAt.getTime() - Date.now()) / 1000)
+    );
+
+    return this.generateRefreshToken(user, tokenVersion, {
+      jti: session.jti,
+      familyId: session.familyId,
+      expiresIn: expiresInSeconds,
+    });
   }
 
   /**
-   * Invalidate all active sessions for a user by incrementing their token version in Redis.
+   * Issues an access token plus a new stateful refresh-token session. Used by
+   * login, registration, and successful 2FA verification.
+   */
+  public async issueSessionTokens(
+    user: { id: number; organizationId: number; role: UserRole; email: string },
+    tokenVersion: number,
+    context: SessionRequestContext = {}
+  ): Promise<{ token: string; refreshToken: string; session: RefreshSession }> {
+    void this.cleanupExpiredSessions();
+    const session = await this.createRefreshSession(user.id, context);
+
+    return {
+      token: this.generateToken(user, tokenVersion),
+      refreshToken: this.signSessionRefreshToken(user, tokenVersion, session),
+      session,
+    };
+  }
+
+  /**
+   * A concurrent tab may retry a refresh with the token that was just rotated.
+   * Within a short grace window, return tokens for the replacement session
+   * instead of treating the retry as replay.
+   */
+  private async resumeRotatedSession(
+    user: AuthUserWithOrganization,
+    tokenVersion: number,
+    session: RefreshSession,
+    now: Date
+  ): Promise<{ token: string; refreshToken: string } | null> {
+    if (
+      session.revokedReason !== 'ROTATED' ||
+      !session.revokedAt ||
+      !session.replacedByJti
+    ) {
+      return null;
+    }
+
+    if (now.getTime() - session.revokedAt.getTime() > securityConfig.refreshReuseGraceMs) {
+      return null;
+    }
+
+    const replacement = await refreshSessionRepository.findByJti(session.replacedByJti);
+
+    if (
+      !replacement ||
+      replacement.userId !== user.id ||
+      replacement.familyId !== session.familyId ||
+      replacement.revokedAt ||
+      replacement.expiresAt <= now ||
+      replacement.familyExpiresAt <= now
+    ) {
+      return null;
+    }
+
+    return {
+      token: this.generateToken(user, tokenVersion),
+      refreshToken: this.signSessionRefreshToken(user, tokenVersion, replacement),
+    };
+  }
+
+  /**
+   * Exchange a valid refresh token for a new access token plus a rotated
+   * refresh token. The old session is revoked atomically, and replay outside
+   * the concurrent-refresh grace window revokes the whole token family.
+   */
+  public async refresh(
+    refreshToken?: string,
+    context: SessionRequestContext = {}
+  ): Promise<AuthResponse> {
+    if (!refreshToken || typeof refreshToken !== 'string') {
+      throw { status: 400, message: 'Refresh token is required.' };
+    }
+
+    let decoded: any;
+    try {
+      decoded = verifyRefreshToken(refreshToken);
+    } catch {
+      throw { status: 401, message: 'Invalid or expired refresh token.' };
+    }
+
+    // Only genuine, stateful refresh tokens may be redeemed here.
+    if (!decoded || decoded.type !== 'refresh' || !decoded.jti || !decoded.familyId) {
+      throw { status: 401, message: 'Invalid refresh token.' };
+    }
+
+    const user = await authRepository.findUserWithOrganizationById(decoded.userId);
+
+    if (!user) {
+      throw { status: 401, message: 'Invalid refresh token.' };
+    }
+
+    if (!user.isActive) {
+      throw { status: 403, message: 'Account is deactivated. Please contact support.' };
+    }
+
+    // Revocation check: logout-all increments the durable token version.
+    const currentVersion = await this.getUserTokenVersion(user.id);
+    if ((decoded.tokenVersion ?? 0) !== currentVersion) {
+      throw { status: 401, message: 'Refresh token has been revoked. Please login again.' };
+    }
+
+    const now = new Date();
+    const session = await refreshSessionRepository.findByJti(decoded.jti);
+
+    if (!session || session.userId !== user.id || session.familyId !== decoded.familyId) {
+      await refreshSessionRepository.revokeFamily(decoded.familyId, 'REUSE_DETECTED');
+      throw {
+        status: 401,
+        message: 'Refresh token reuse detected. Please login again.',
+      };
+    }
+
+    if (session.revokedAt) {
+      const resumed = await this.resumeRotatedSession(user, currentVersion, session, now);
+      if (resumed) {
+        return this.buildAuthResponse(user, resumed.token, resumed.refreshToken);
+      }
+
+      await refreshSessionRepository.revokeFamily(session.familyId, 'REUSE_DETECTED');
+      throw {
+        status: 401,
+        message: 'Refresh token reuse detected. Please login again.',
+      };
+    }
+
+    if (session.expiresAt <= now || session.familyExpiresAt <= now) {
+      await refreshSessionRepository.revokeByJti(session.jti, 'EXPIRED');
+      throw { status: 401, message: 'Invalid or expired refresh token.' };
+    }
+
+    // Atomically revoke the old session and create its replacement. Concurrent
+    // requests race on revokeActiveByJti; only one wins.
+    const rotatedSession = await authRepository.transaction(async (tx) => {
+      const revoked = await refreshSessionRepository.revokeActiveByJti(
+        session.jti,
+        {
+          revokedAt: now,
+          revokedReason: 'ROTATED',
+          lastUsedAt: now,
+        },
+        tx
+      );
+
+      if (revoked.count === 0) {
+        return null;
+      }
+
+      const next = await this.createRefreshSession(
+        user.id,
+        context,
+        { familyId: session.familyId, familyExpiresAt: session.familyExpiresAt },
+        tx
+      );
+
+      await tx.refreshSession.update({
+        where: { jti: session.jti },
+        data: { replacedByJti: next.jti },
+      });
+
+      return next;
+    });
+
+    if (!rotatedSession) {
+      const latest = await refreshSessionRepository.findByJti(session.jti);
+      const resumed = latest
+        ? await this.resumeRotatedSession(user, currentVersion, latest, new Date())
+        : null;
+
+      if (resumed) {
+        return this.buildAuthResponse(user, resumed.token, resumed.refreshToken);
+      }
+
+      await refreshSessionRepository.revokeFamily(session.familyId, 'REUSE_DETECTED');
+      throw {
+        status: 401,
+        message: 'Refresh token reuse detected. Please login again.',
+      };
+    }
+
+    void this.cleanupExpiredSessions();
+
+    const token = this.generateToken(user, currentVersion);
+    const nextRefreshToken = this.signSessionRefreshToken(user, currentVersion, rotatedSession);
+
+    return this.buildAuthResponse(user, token, nextRefreshToken);
+  }
+
+  private cleanupExpiredSessions(): Promise<{ count: number }> {
+    return refreshSessionRepository.deleteExpired().catch((error: unknown) => {
+      console.error('[AuthService] Failed to clean up expired refresh sessions:', error);
+      return { count: 0 };
+    });
+  }
+
+  /**
+   * Fetch the durable token version from MySQL and cache it in Redis. The
+   * database is the source of truth so revocation survives a Redis flush.
+   */
+  public async getUserTokenVersion(userId: number): Promise<number> {
+    const user = await authRepository.findTokenVersionById(userId);
+
+    if (!user) {
+      throw { status: 401, message: 'User not found.' };
+    }
+
+    await redis.set(
+      `user:${userId}:tokenVersion`,
+      String(user.tokenVersion),
+      'EX',
+      securityConfig.tokenVersionCacheTtlSeconds
+    );
+
+    return user.tokenVersion;
+  }
+
+  /**
+   * Revoke the current refresh-token session without logging out other devices.
+   */
+  public async logout(refreshToken?: string): Promise<void> {
+    if (!refreshToken) return;
+
+    let decoded: any;
+    try {
+      decoded = verifyRefreshToken(refreshToken);
+    } catch {
+      return;
+    }
+
+    if (!decoded?.jti) return;
+
+    await refreshSessionRepository.revokeByJti(decoded.jti, 'LOGOUT');
+  }
+
+  /**
+   * Invalidate every access and refresh token for a user by incrementing the
+   * durable token version and revoking all refresh sessions.
    */
   public async logoutAll(userId: number): Promise<void> {
-    await redis.incr(`user:${userId}:tokenVersion`);
+    const updated = await authRepository.transaction(async (tx) => {
+      const user = await authRepository.incrementTokenVersion(userId, tx);
+      await refreshSessionRepository.revokeAllForUser(userId, 'LOGOUT_ALL', tx);
+      return user;
+    });
+
+    await redis.set(
+      `user:${userId}:tokenVersion`,
+      String(updated.tokenVersion),
+      'EX',
+      securityConfig.tokenVersionCacheTtlSeconds
+    );
   }
 
   /**
@@ -291,26 +565,13 @@ export class AuthService {
       });
 
       const tokenVersion = await this.getUserTokenVersion(user.id);
-      const token = this.generateToken(user, tokenVersion);
-      const refreshToken = this.generateRefreshToken(user, tokenVersion);
+      const { token, refreshToken } = await this.issueSessionTokens(
+        user,
+        tokenVersion,
+        input
+      );
 
-      return {
-        token,
-        refreshToken,
-        user: {
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          organizationId: user.organizationId,
-          isEmailVerified: user.isEmailVerified,
-          isTwoFactorEnabled: user.isTwoFactorEnabled,
-          organization: {
-            id: organization.id,
-            name: organization.name,
-            type: organization.type,
-          },
-        },
-      };
+      return this.buildAuthResponse({ ...user, organization }, token, refreshToken);
     }
 
     // Scenario B: Joining an existing Organization (e.g., invited employee/dispatcher)
@@ -342,26 +603,9 @@ export class AuthService {
     });
 
     const tokenVersion = await this.getUserTokenVersion(user.id);
-    const token = this.generateToken(user, tokenVersion);
-    const refreshToken = this.generateRefreshToken(user, tokenVersion);
+    const { token, refreshToken } = await this.issueSessionTokens(user, tokenVersion, input);
 
-    return {
-      token,
-      refreshToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        organizationId: user.organizationId,
-        isEmailVerified: user.isEmailVerified,
-        isTwoFactorEnabled: user.isTwoFactorEnabled,
-        organization: {
-          id: existingOrg.id,
-          name: existingOrg.name,
-          type: existingOrg.type,
-        },
-      },
-    };
+    return this.buildAuthResponse({ ...user, organization: existingOrg }, token, refreshToken);
   }
 
   /**
@@ -515,22 +759,9 @@ export class AuthService {
     }
 
     const tokenVersion = await this.getUserTokenVersion(user.id);
-    const token = this.generateToken(user, tokenVersion);
-    const refreshToken = this.generateRefreshToken(user, tokenVersion);
+    const { token, refreshToken } = await this.issueSessionTokens(user, tokenVersion, input);
 
-    return {
-      token,
-      refreshToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        organizationId: user.organizationId,
-        isEmailVerified: user.isEmailVerified,
-        isTwoFactorEnabled: user.isTwoFactorEnabled,
-        organization: user.organization,
-      },
-    };
+    return this.buildAuthResponse(user, token, refreshToken);
   }
 
   /**

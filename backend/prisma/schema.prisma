@@ -62,14 +62,44 @@ model User {
   lockUntil            DateTime?
   totpSecret           String?
   isTwoFactorEnabled   Boolean   @default(false)
+  /// Durable session generation. Incremented to revoke every access and
+  /// refresh token for the user (e.g. logout-all, account deactivation).
+  tokenVersion         Int       @default(0)
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  auditLogs    AuditLog[]
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  auditLogs       AuditLog[]
+  refreshSessions RefreshSession[]
 
   @@index([organizationId])
   @@map("users")
+}
+
+/// Server-side refresh-token session. Access tokens stay stateless; refresh
+/// tokens are stateful so they can be rotated and revoked immediately.
+model RefreshSession {
+  id              String    @id @default(cuid())
+  userId          Int
+  jti             String    @unique
+  familyId        String
+  /// Absolute lifetime for the token family. Rotated tokens cannot outlive it.
+  familyExpiresAt DateTime
+  expiresAt       DateTime
+  createdAt       DateTime  @default(now())
+  lastUsedAt      DateTime?
+  revokedAt       DateTime?
+  revokedReason   String?
+  replacedByJti   String?
+  userAgent       String?   @db.Text
+  ipAddress       String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@map("refresh_sessions")
 }
 
 model Warehouse {

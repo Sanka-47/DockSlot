@@ -5,7 +5,7 @@ import app from '../src/index';
 import { prisma } from '../src/config/db.config';
 import redis from '../src/config/redis';
 import { securityConfig } from '../src/config/security.config';
-import { signAccessToken, signRefreshToken } from '../src/utils/jwt.utils';
+import { signAccessToken, verifyRefreshToken } from '../src/utils/jwt.utils';
 import { OrganizationType, UserRole } from '@prisma/client';
 
 const COOKIE_NAME = securityConfig.refreshCookieName;
@@ -17,6 +17,19 @@ const getRefreshSetCookie = (res: request.Response): string | undefined => {
   return cookies.find((cookie) => cookie.startsWith(`${COOKIE_NAME}=`));
 };
 
+/** Turn a Set-Cookie header into a Cookie header value that can be replayed. */
+const toCookieHeader = (res: request.Response): string => {
+  const setCookie = getRefreshSetCookie(res);
+  if (!setCookie) throw new Error('Refresh cookie was not set');
+  return setCookie.split(';')[0];
+};
+
+const cookieToken = (cookieHeader: string): string =>
+  cookieHeader.slice(COOKIE_NAME.length + 1);
+
+const cookieJti = (cookieHeader: string): string =>
+  (verifyRefreshToken(cookieToken(cookieHeader)) as { jti?: string }).jti!;
+
 describe('JWT Refresh Token Flow (HttpOnly cookie)', () => {
   const ts = Date.now();
 
@@ -26,7 +39,18 @@ describe('JWT Refresh Token Flow (HttpOnly cookie)', () => {
   const password = 'Password123!';
 
   const agent = request.agent(app);
-  let accessToken: string;
+  let loginSessionJti: string;
+
+  const createLogin = async () => {
+    const loginAgent = request.agent(app);
+    const res = await loginAgent.post('/api/auth/login').send({ email, password });
+    expect(res.status).toBe(200);
+    return {
+      agent: loginAgent,
+      accessToken: res.body.token as string,
+      cookieHeader: toCookieHeader(res),
+    };
+  };
 
   beforeAll(async () => {
     const org = await prisma.organization.create({
@@ -70,10 +94,18 @@ describe('JWT Refresh Token Flow (HttpOnly cookie)', () => {
     expect(setCookie).toBeDefined();
     expect(setCookie).toMatch(/HttpOnly/i);
 
-    accessToken = res.body.token;
+    const loginCookieHeader = toCookieHeader(res);
+
+    const session = await prisma.refreshSession.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(session).toBeDefined();
+    expect(session!.jti).toBe(cookieJti(loginCookieHeader));
+    loginSessionJti = session!.jti;
   });
 
-  it('exchanges the cookie for a new access token that the API accepts', async () => {
+  it('rotates the refresh session and accepts the new access token', async () => {
     const res = await agent.post('/api/auth/refresh').send({});
 
     expect(res.status).toBe(200);
@@ -90,16 +122,43 @@ describe('JWT Refresh Token Flow (HttpOnly cookie)', () => {
 
     expect(me.status).toBe(200);
     expect(me.body.data.id).toBe(userId);
+
+    const oldSession = await prisma.refreshSession.findUnique({
+      where: { jti: loginSessionJti },
+    });
+    const newSession = await prisma.refreshSession.findFirst({
+      where: { userId, revokedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    expect(oldSession?.revokedReason).toBe('ROTATED');
+    expect(oldSession?.replacedByJti).toBe(newSession!.jti);
+    expect(newSession?.jti).not.toBe(loginSessionJti);
+    expect(newSession?.familyId).toBe(oldSession!.familyId);
   });
 
-  it('clears the refresh cookie on logout', async () => {
-    const res = await request(app).post('/api/auth/logout');
+  it('revokes the current refresh session on logout', async () => {
+    const cookieHeader = toCookieHeader(
+      await agent.post('/api/auth/refresh').send({})
+    );
+    const jti = cookieJti(cookieHeader);
+
+    const res = await agent.post('/api/auth/logout');
 
     expect(res.status).toBe(200);
     const setCookie = getRefreshSetCookie(res);
     expect(setCookie).toBeDefined();
     // Express clears a cookie by setting an empty value with an expiry in the past.
     expect(setCookie).toMatch(new RegExp(`${COOKIE_NAME}=;`));
+
+    const session = await prisma.refreshSession.findUnique({ where: { jti } });
+    expect(session?.revokedReason).toBe('LOGOUT');
+
+    const retry = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', cookieHeader)
+      .send({});
+    expect(retry.status).toBe(401);
   });
 
   it('rejects a request with no refresh cookie with 400', async () => {
@@ -118,9 +177,16 @@ describe('JWT Refresh Token Flow (HttpOnly cookie)', () => {
   });
 
   it('rejects an access token presented as a refresh token (wrong type) with 401', async () => {
+    const access = signAccessToken({
+      userId,
+      organizationId: orgId,
+      role: UserRole.CARRIER_ADMIN,
+      email,
+    });
+
     const res = await request(app)
       .post('/api/auth/refresh')
-      .set('Cookie', `${COOKIE_NAME}=${accessToken}`)
+      .set('Cookie', `${COOKIE_NAME}=${access}`)
       .send({});
 
     expect(res.status).toBe(401);
@@ -128,48 +194,98 @@ describe('JWT Refresh Token Flow (HttpOnly cookie)', () => {
     expect(res.body.message).toMatch(/Invalid .*refresh token/i);
   });
 
-  it('revokes refresh tokens after logout-all', async () => {
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-
-    // Mirror what logout-all does: bump the Redis token version.
-    await redis.incr(`user:${userId}:tokenVersion`);
-
-    const revoked = signRefreshToken({
-      userId: user!.id,
-      organizationId: user!.organizationId,
-      role: user!.role,
-      email: user!.email,
-      tokenVersion: 0,
-    });
+  it('revokes every refresh session after logout-all', async () => {
+    const deviceA = await createLogin();
+    const deviceB = await createLogin();
 
     const res = await request(app)
-      .post('/api/auth/refresh')
-      .set('Cookie', `${COOKIE_NAME}=${revoked}`)
-      .send({});
+      .post('/api/auth/logout-all')
+      .set('Authorization', `Bearer ${deviceA.accessToken}`);
 
-    expect(res.status).toBe(401);
-    expect(res.body.success).toBe(false);
-    expect(res.body.message).toContain('revoked');
+    expect(res.status).toBe(200);
+
+    for (const device of [deviceA, deviceB]) {
+      const retry = await request(app)
+        .post('/api/auth/refresh')
+        .set('Cookie', device.cookieHeader)
+        .send({});
+      expect(retry.status).toBe(401);
+      expect(retry.body.success).toBe(false);
+    }
+
+    const activeSessions = await prisma.refreshSession.count({
+      where: { userId, revokedAt: null },
+    });
+    expect(activeSessions).toBe(0);
+  });
+
+  it('detects refresh-token reuse and revokes the whole token family', async () => {
+    const device = await createLogin();
+    const oldJti = cookieJti(device.cookieHeader);
+    const oldSession = await prisma.refreshSession.findUnique({ where: { jti: oldJti } });
+
+    const rotated = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', device.cookieHeader)
+      .send({});
+    expect(rotated.status).toBe(200);
+
+    const replay = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', device.cookieHeader)
+      .send({});
+    // Inside the grace window this is a concurrent-tab retry, not replay.
+    expect(replay.status).toBe(200);
+
+    // Age the rotated session past the grace window, then replay it.
+    await prisma.refreshSession.update({
+      where: { jti: oldJti },
+      data: { revokedAt: new Date(Date.now() - 60_000) },
+    });
+
+    const reuse = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', device.cookieHeader)
+      .send({});
+    expect(reuse.status).toBe(401);
+    expect(reuse.body.message).toMatch(/reuse/i);
+
+    const family = await prisma.refreshSession.findMany({
+      where: { familyId: oldSession!.familyId },
+    });
+    expect(family.every((session) => session.revokedAt !== null)).toBe(true);
+  });
+
+  it('allows two simultaneous refreshes from the same cookie', async () => {
+    const device = await createLogin();
+
+    const [first, second] = await Promise.all([
+      request(app).post('/api/auth/refresh').set('Cookie', device.cookieHeader).send({}),
+      request(app).post('/api/auth/refresh').set('Cookie', device.cookieHeader).send({}),
+    ]);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+
+    const firstJti = cookieJti(toCookieHeader(first));
+    const secondJti = cookieJti(toCookieHeader(second));
+    expect(firstJti).toBe(secondJti);
+
+    const followUp = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', toCookieHeader(first))
+      .send({});
+    expect(followUp.status).toBe(200);
   });
 
   it('rejects refresh cookies for a deactivated account with 403', async () => {
-    const versionStr = await redis.get(`user:${userId}:tokenVersion`);
-    const currentVersion = parseInt(versionStr || '0', 10);
+    const device = await createLogin();
 
     await prisma.user.update({ where: { id: userId }, data: { isActive: false } });
 
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    const token = signRefreshToken({
-      userId: user!.id,
-      organizationId: user!.organizationId,
-      role: user!.role,
-      email: user!.email,
-      tokenVersion: currentVersion,
-    });
-
     const res = await request(app)
       .post('/api/auth/refresh')
-      .set('Cookie', `${COOKIE_NAME}=${token}`)
+      .set('Cookie', device.cookieHeader)
       .send({});
 
     expect(res.status).toBe(403);

@@ -27,6 +27,8 @@ export interface LoginVerify2FAInput {
   token: string;
   email?: string;
   password?: string;
+  userAgent?: string;
+  ipAddress?: string;
 }
 
 export class TotpService {
@@ -265,8 +267,11 @@ export class TotpService {
     }
 
     const tokenVersion = await authService.getUserTokenVersion(user.id);
-    const accessToken = authService.generateToken(user, tokenVersion);
-    const refreshToken = authService.generateRefreshToken(user, tokenVersion);
+    const { token: accessToken, refreshToken } = await authService.issueSessionTokens(
+      user,
+      tokenVersion,
+      input
+    );
 
     return {
       token: accessToken,

@@ -106,6 +106,23 @@ export const securityConfig = {
   get jwtRefreshExpiresIn(): string {
     return parseEnvString(process.env.JWT_REFRESH_EXPIRES_IN, '7d');
   },
+  get refreshTokenTtlMs(): number {
+    return parseDurationToMs(this.jwtRefreshExpiresIn, 7 * 24 * 60 * 60 * 1000);
+  },
+  /** Absolute lifetime of a refresh-token family, independent of sliding rotation. */
+  get refreshSessionAbsoluteTtlMs(): number {
+    return parseDurationToMs(
+      process.env.REFRESH_SESSION_ABSOLUTE_TTL,
+      30 * 24 * 60 * 60 * 1000
+    );
+  },
+  /** Short window in which a rotated token can be retried by a concurrent tab. */
+  get refreshReuseGraceMs(): number {
+    return parseEnvInt(process.env.REFRESH_REUSE_GRACE_SECONDS, 30) * 1000;
+  },
+  get tokenVersionCacheTtlSeconds(): number {
+    return parseEnvInt(process.env.TOKEN_VERSION_CACHE_TTL_SECONDS, 60);
+  },
   get saltRounds(): number {
     return parseEnvInt(process.env.BCRYPT_SALT_ROUNDS, 10);
   },

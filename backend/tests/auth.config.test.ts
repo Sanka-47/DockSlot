@@ -109,6 +109,34 @@ describe('Authentication environment validation', () => {
       })
     ).not.toThrow();
   });
+
+  it('exposes stateful refresh-session settings', () => {
+    const original = {
+      JWT_REFRESH_EXPIRES_IN: process.env.JWT_REFRESH_EXPIRES_IN,
+      REFRESH_SESSION_ABSOLUTE_TTL: process.env.REFRESH_SESSION_ABSOLUTE_TTL,
+      REFRESH_REUSE_GRACE_SECONDS: process.env.REFRESH_REUSE_GRACE_SECONDS,
+      TOKEN_VERSION_CACHE_TTL_SECONDS: process.env.TOKEN_VERSION_CACHE_TTL_SECONDS,
+    };
+
+    process.env.JWT_REFRESH_EXPIRES_IN = '7d';
+    process.env.REFRESH_SESSION_ABSOLUTE_TTL = '30d';
+    process.env.REFRESH_REUSE_GRACE_SECONDS = '30';
+    process.env.TOKEN_VERSION_CACHE_TTL_SECONDS = '60';
+
+    try {
+      expect(securityConfig.refreshTokenTtlMs).toBe(7 * 24 * 60 * 60 * 1000);
+      expect(securityConfig.refreshSessionAbsoluteTtlMs).toBe(
+        30 * 24 * 60 * 60 * 1000
+      );
+      expect(securityConfig.refreshReuseGraceMs).toBe(30 * 1000);
+      expect(securityConfig.tokenVersionCacheTtlSeconds).toBe(60);
+    } finally {
+      for (const [key, value] of Object.entries(original)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
 });
 
 describe('JWT hardening', () => {
@@ -138,6 +166,20 @@ describe('JWT hardening', () => {
     );
 
     expect(() => verifyAccessToken(wrongAudience)).toThrow();
+  });
+
+  it('embeds the session jti and family id in stateful refresh tokens', () => {
+    const token = signRefreshToken(payload, {
+      jti: 'session-jti',
+      familyId: 'token-family',
+      expiresIn: 60,
+    });
+
+    expect(verifyRefreshToken(token)).toMatchObject({
+      type: 'refresh',
+      jti: 'session-jti',
+      familyId: 'token-family',
+    });
   });
 
   it('rejects a refresh token when an access token is expected', () => {
