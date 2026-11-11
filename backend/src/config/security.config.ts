@@ -1,6 +1,38 @@
 import dotenv from 'dotenv';
+import { validateEnv } from './env.validation';
 
 dotenv.config();
+
+// Fail fast before any route or middleware can use an insecure configuration.
+validateEnv(process.env);
+
+const TEST_ACCESS_SECRET = 'dockslot-test-access-secret-not-for-production';
+const TEST_REFRESH_SECRET = 'dockslot-test-refresh-secret-not-for-production';
+
+/**
+ * Reads the secret for the requested token type.
+ *
+ * Production requires dedicated secrets. Development and tests may temporarily
+ * fall back to the legacy JWT_SECRET while deployments migrate.
+ */
+function readJwtSecret(kind: 'access' | 'refresh'): string {
+  const key = kind === 'access' ? 'JWT_ACCESS_SECRET' : 'JWT_REFRESH_SECRET';
+  const primary = parseEnvString(process.env[key], '');
+  if (primary) return primary;
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(`${key} is required when NODE_ENV=production.`);
+  }
+
+  const legacy = parseEnvString(process.env.JWT_SECRET, '');
+  if (legacy) return legacy;
+
+  if (process.env.NODE_ENV === 'test') {
+    return kind === 'access' ? TEST_ACCESS_SECRET : TEST_REFRESH_SECRET;
+  }
+
+  throw new Error(`${key} (or legacy JWT_SECRET) is required.`);
+}
 
 function parseEnvInt(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
@@ -50,9 +82,24 @@ function parseSameSite(value: string | undefined, fallback: RefreshSameSite): Re
 }
 
 export const securityConfig = {
+  /** @deprecated Use jwtAccessSecret. Kept for backwards-compatible imports. */
   get jwtSecret(): string {
-    return parseEnvString(process.env.JWT_SECRET, 'default_secret_key');
+    return this.jwtAccessSecret;
   },
+  get jwtAccessSecret(): string {
+    return readJwtSecret('access');
+  },
+  get jwtRefreshSecret(): string {
+    return readJwtSecret('refresh');
+  },
+  get jwtIssuer(): string {
+    return parseEnvString(process.env.JWT_ISSUER, 'dockslot-api');
+  },
+  get jwtAudience(): string {
+    return parseEnvString(process.env.JWT_AUDIENCE, 'dockslot-web');
+  },
+  /** Pinned to prevent algorithm-confusion attacks. */
+  jwtAlgorithm: 'HS256' as const,
   get jwtExpiresIn(): string {
     return parseEnvString(process.env.JWT_EXPIRES_IN, '15m');
   },
@@ -104,6 +151,18 @@ export const securityConfig = {
   get JWT_SECRET(): string {
     return this.jwtSecret;
   },
+  get JWT_ACCESS_SECRET(): string {
+    return this.jwtAccessSecret;
+  },
+  get JWT_REFRESH_SECRET(): string {
+    return this.jwtRefreshSecret;
+  },
+  get JWT_ISSUER(): string {
+    return this.jwtIssuer;
+  },
+  get JWT_AUDIENCE(): string {
+    return this.jwtAudience;
+  },
   get JWT_EXPIRES_IN(): string {
     return this.jwtExpiresIn;
   },
@@ -131,6 +190,11 @@ export const securityConfig = {
 };
 
 export const JWT_SECRET = securityConfig.jwtSecret;
+export const JWT_ACCESS_SECRET = securityConfig.jwtAccessSecret;
+export const JWT_REFRESH_SECRET = securityConfig.jwtRefreshSecret;
+export const JWT_ISSUER = securityConfig.jwtIssuer;
+export const JWT_AUDIENCE = securityConfig.jwtAudience;
+export const JWT_ALGORITHM = securityConfig.jwtAlgorithm;
 export const JWT_EXPIRES_IN = securityConfig.jwtExpiresIn;
 export const JWT_REFRESH_EXPIRES_IN = securityConfig.jwtRefreshExpiresIn;
 export const RATE_LIMIT_WINDOW_MS = securityConfig.rateLimitWindowMs;

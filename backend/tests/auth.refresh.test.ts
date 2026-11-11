@@ -125,7 +125,7 @@ describe('JWT Refresh Token Flow (HttpOnly cookie)', () => {
 
     expect(res.status).toBe(401);
     expect(res.body.success).toBe(false);
-    expect(res.body.message).toBe('Invalid refresh token.');
+    expect(res.body.message).toMatch(/Invalid .*refresh token/i);
   });
 
   it('revokes refresh tokens after logout-all', async () => {

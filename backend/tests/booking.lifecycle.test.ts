@@ -23,15 +23,20 @@ describe('Booking Lifecycle Management Integration Tests', () => {
   let dispatcherBId: number;
   let dispatcherBToken: string;
 
-  // Time slots in UTC (within 24/7 Colombo timezone)
-  const slot1Start = '2026-11-10T04:00:00.000Z';
-  const slot1End = '2026-11-10T04:30:00.000Z';
+  // Time slots in UTC (within 24/7 Colombo timezone). Kept in the future so the
+  // suite does not start failing as time passes.
+  const slotBase = new Date();
+  slotBase.setUTCDate(slotBase.getUTCDate() + 7);
+  slotBase.setUTCHours(4, 0, 0, 0);
 
-  const slot2Start = '2026-11-10T05:00:00.000Z';
-  const slot2End = '2026-11-10T05:30:00.000Z';
+  const slot1Start = slotBase.toISOString();
+  const slot1End = new Date(slotBase.getTime() + 30 * 60 * 1000).toISOString();
 
-  const slot3Start = '2026-11-10T06:00:00.000Z';
-  const slot3End = '2026-11-10T06:30:00.000Z';
+  const slot2Start = new Date(slotBase.getTime() + 60 * 60 * 1000).toISOString();
+  const slot2End = new Date(slotBase.getTime() + 90 * 60 * 1000).toISOString();
+
+  const slot3Start = new Date(slotBase.getTime() + 120 * 60 * 1000).toISOString();
+  const slot3End = new Date(slotBase.getTime() + 150 * 60 * 1000).toISOString();
 
   beforeAll(async () => {
     // 1. Create Warehouse Operator Org & Warehouse with 2 docks
@@ -62,7 +67,7 @@ describe('Booking Lifecycle Management Integration Tests', () => {
         email: warehouseAdmin.email,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
 
     const warehouse = await prisma.warehouse.create({
@@ -120,7 +125,7 @@ describe('Booking Lifecycle Management Integration Tests', () => {
         email: userA.email,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
 
     // 3. Create Carrier Organization B & Dispatcher B (for tenant isolation tests)
@@ -151,7 +156,7 @@ describe('Booking Lifecycle Management Integration Tests', () => {
         email: userB.email,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
   });
 

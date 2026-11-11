@@ -96,7 +96,7 @@ describe('Booking Idempotency & Mobile Retry Safety Tests', () => {
         email: dispatcherUser.email,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
   });
 

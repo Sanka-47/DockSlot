@@ -61,7 +61,7 @@ describe('Dock Maintenance Closures & Booking Status Management Tests', () => {
         email: warehouseAdminA.email,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
 
     const dockManagerA = await prisma.user.create({
@@ -83,7 +83,7 @@ describe('Dock Maintenance Closures & Booking Status Management Tests', () => {
         email: dockManagerA.email,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
 
     // 2. Create Warehouse Operator Org B & Dock Manager B (for tenant isolation)
@@ -113,7 +113,7 @@ describe('Dock Maintenance Closures & Booking Status Management Tests', () => {
         email: dockManagerB.email,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
 
     // 3. Create Warehouse
@@ -171,7 +171,7 @@ describe('Dock Maintenance Closures & Booking Status Management Tests', () => {
         email: dispatcher.email,
       },
       securityConfig.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', issuer: securityConfig.jwtIssuer, audience: securityConfig.jwtAudience, algorithm: 'HS256' }
     );
   });
 

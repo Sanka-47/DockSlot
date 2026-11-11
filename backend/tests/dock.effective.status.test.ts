@@ -8,7 +8,13 @@ import jwt from 'jsonwebtoken';
 import { securityConfig } from '../src/config/security.config';
 import { dockService } from '../src/services/dock.service';
 
-const jwtSecret = securityConfig.jwtSecret || process.env.JWT_SECRET || 'your_jwt_secret_key';
+const jwtSecret = securityConfig.jwtAccessSecret;
+const jwtSignOptions = {
+  expiresIn: '1h' as const,
+  issuer: securityConfig.jwtIssuer,
+  audience: securityConfig.jwtAudience,
+  algorithm: 'HS256' as const,
+};
 
 describe('Real-Time Dynamic Dock Status Evaluation & Active Closure Enforcement Tests', () => {
   let warehouseOrgId: number;
@@ -48,7 +54,7 @@ describe('Real-Time Dynamic Dock Status Evaluation & Active Closure Enforcement 
     warehouseAdminToken = jwt.sign(
       { userId: adminUser.id, email: adminUser.email, role: adminUser.role, organizationId: warehouseOrgId },
       jwtSecret,
-      { expiresIn: '1h' }
+      jwtSignOptions
     );
 
     // 3. Create Carrier Org & Dispatcher User
@@ -73,7 +79,7 @@ describe('Real-Time Dynamic Dock Status Evaluation & Active Closure Enforcement 
     dispatcherToken = jwt.sign(
       { userId: dispatcherUser.id, email: dispatcherUser.email, role: dispatcherUser.role, organizationId: carrierOrgId },
       jwtSecret,
-      { expiresIn: '1h' }
+      jwtSignOptions
     );
 
     // 4. Create Warehouse with 24/7 operating hours
