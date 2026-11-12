@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest';
-import { randomBytes } from 'crypto';
 import jwt from 'jsonwebtoken';
 import { validateEnv } from '../src/config/env.validation';
 import { securityConfig } from '../src/config/security.config';
@@ -20,10 +19,10 @@ const payload = {
   tokenVersion: 0,
 };
 
-// Generated per test process so no real or secret-shaped values are committed.
-const testSecretSalt = randomBytes(32).toString('base64url');
-const strongSecret = (label: string) => `${label}-${testSecretSalt}`;
-const totpKey = randomBytes(32).toString('base64');
+// Test-only values: long enough for validation, but deliberately non-secret.
+const testSecretSuffix = 'x'.repeat(40);
+const strongSecret = (label: string) => `${label}-${testSecretSuffix}`;
+const validTotpConfigValue = '0'.repeat(64);
 const placeholderAccessSecret = [
   'replace',
   'with',
@@ -131,7 +130,7 @@ describe('Authentication environment validation', () => {
         CORS_ORIGIN: 'https://app.dockslot.example',
         JWT_ACCESS_SECRET: strongSecret('access'),
         JWT_REFRESH_SECRET: strongSecret('refresh'),
-        TOTP_ENCRYPTION_KEY: totpKey,
+        TOTP_ENCRYPTION_KEY: validTotpConfigValue,
       })
     ).not.toThrow();
   });
