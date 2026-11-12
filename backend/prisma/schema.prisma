@@ -48,28 +48,59 @@ model Organization {
 }
 
 model User {
-  id                   Int       @id @default(autoincrement())
-  organizationId       Int
-  email                String    @unique
-  passwordHash         String
-  role                 UserRole
-  isActive             Boolean   @default(true)
-  isEmailVerified      Boolean   @default(false)
-  verificationToken    String?   @unique
-  resetPasswordToken   String?   @unique
-  resetPasswordExpires DateTime?
-  failedLoginAttempts  Int       @default(0)
-  lockUntil            DateTime?
-  totpSecret           String?
-  isTwoFactorEnabled   Boolean   @default(false)
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  id                       Int       @id @default(autoincrement())
+  organizationId           Int
+  email                    String    @unique
+  passwordHash             String
+  role                     UserRole
+  isActive                 Boolean   @default(true)
+  isEmailVerified          Boolean   @default(false)
+  verificationToken        String?   @unique
+  verificationTokenExpires DateTime?
+  resetPasswordToken       String?   @unique
+  resetPasswordExpires     DateTime?
+  failedLoginAttempts      Int       @default(0)
+  lockUntil                DateTime?
+  totpSecret               String?
+  isTwoFactorEnabled       Boolean   @default(false)
+  /// Durable session generation. Incremented to revoke every access and
+  /// refresh token for the user (e.g. logout-all, account deactivation).
+  tokenVersion             Int       @default(0)
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  auditLogs    AuditLog[]
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  auditLogs       AuditLog[]
+  refreshSessions RefreshSession[]
 
   @@index([organizationId])
   @@map("users")
+}
+
+/// Server-side refresh-token session. Access tokens stay stateless; refresh
+/// tokens are stateful so they can be rotated and revoked immediately.
+model RefreshSession {
+  id              String    @id @default(cuid())
+  userId          Int
+  jti             String    @unique
+  familyId        String
+  /// Absolute lifetime for the token family. Rotated tokens cannot outlive it.
+  familyExpiresAt DateTime
+  expiresAt       DateTime
+  createdAt       DateTime  @default(now())
+  lastUsedAt      DateTime?
+  revokedAt       DateTime?
+  revokedReason   String?
+  replacedByJti   String?
+  userAgent       String?   @db.Text
+  ipAddress       String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@map("refresh_sessions")
 }
 
 model Warehouse {
@@ -115,7 +146,7 @@ model DockClosure {
   reason    String?
   createdAt DateTime @default(now())
 
-  dock      Dock     @relation(fields: [dockId], references: [id], onDelete: Cascade)
+  dock Dock @relation(fields: [dockId], references: [id], onDelete: Cascade)
 
   @@index([dockId])
   @@index([dockId, startTime, endTime], map: "dock_closures_active_check_idx")
@@ -167,12 +198,12 @@ model AuditLog {
   id        Int      @id @default(autoincrement())
   bookingId Int
   userId    Int
-  action    String   // "CREATED", "RESCHEDULED", "CANCELLED", "STATUS_CHANGED"
-  details   Json?    // Stores old vs new values, reason, etc.
+  action    String // "CREATED", "RESCHEDULED", "CANCELLED", "STATUS_CHANGED"
+  details   Json? // Stores old vs new values, reason, etc.
   createdAt DateTime @default(now())
 
-  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([bookingId])
   @@index([userId])
@@ -185,9 +216,9 @@ model AuditLog {
 model OutboxEvent {
   id            Int      @id @default(autoincrement())
   eventId       String   @unique @default(uuid()) // stable idempotency key sent as X-Event-Id to the receiver
-  aggregateType String   // e.g., "BOOKING"
-  aggregateId   Int      // Booking ID
-  payload       Json     // Full event details (carrier org, booking info, message)
+  aggregateType String // e.g., "BOOKING"
+  aggregateId   Int // Booking ID
+  payload       Json // Full event details (carrier org, booking info, message)
   status        String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
   retryCount    Int      @default(0)
   maxRetries    Int      @default(5)
@@ -215,29 +246,27 @@ model Invitation {
   id             Int      @id @default(autoincrement())
   email          String   @unique
   organizationId Int
-  role           String   // "DISPATCHER" or "DOCK_MANAGER"
+  role           String // "DISPATCHER" or "DOCK_MANAGER"
   token          String   @unique
   expiresAt      DateTime
   status         String   @default("PENDING") // PENDING, ACCEPTED, EXPIRED
   createdAt      DateTime @default(now())
 
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("invitations")
 }
 
 model WarehousePolicy {
-  id                     Int       @id @default(autoincrement())
-  warehouseId            Int       @unique
-  maxConcurrentBookings  Int       @default(3)
-  maxAdvanceDays         Int       @default(14)
-  bookingLockWindowHours Int       @default(24)
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  id                     Int      @id @default(autoincrement())
+  warehouseId            Int      @unique
+  maxConcurrentBookings  Int      @default(3)
+  maxAdvanceDays         Int      @default(14)
+  bookingLockWindowHours Int      @default(24)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
-  warehouse              Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
 
   @@map("warehouse_policies")
 }
-
-

@@ -168,7 +168,7 @@ describe('Redis + JWT Session Control & User Deactivation Tests', () => {
       expect(res.body.data.id).toBe(dispatcherUser.id);
     });
 
-    it('should successfully log out of all devices by incrementing token version in Redis', async () => {
+    it('should log out all devices by incrementing durable tokenVersion and clearing the Redis cache', async () => {
       const res = await request(app)
         .post('/api/auth/logout-all')
         .set('Authorization', `Bearer ${dispatcherToken}`);
@@ -177,9 +177,16 @@ describe('Redis + JWT Session Control & User Deactivation Tests', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.message).toContain('logged out of all devices');
 
-      // Verify Redis tokenVersion was incremented
-      const newVersion = await redis.get(`user:${dispatcherUser.id}:tokenVersion`);
-      expect(Number(newVersion)).toBeGreaterThanOrEqual(1);
+      const userInDb = await prisma.user.findUnique({
+        where: { id: dispatcherUser.id },
+        select: { tokenVersion: true },
+      });
+      expect(userInDb?.tokenVersion).toBeGreaterThanOrEqual(1);
+
+      // The cache must be deleted, not left with a stale value for its TTL.
+      await expect(
+        redis.get(`user:${dispatcherUser.id}:tokenVersion`)
+      ).resolves.toBeNull();
     });
 
     it('should reject previous JWT with 401 Unauthorized after logout-all', async () => {
@@ -193,8 +200,11 @@ describe('Redis + JWT Session Control & User Deactivation Tests', () => {
     });
 
     it('should allow access again when a new token with the updated tokenVersion is issued', async () => {
-      const versionStr = await redis.get(`user:${dispatcherUser.id}:tokenVersion`);
-      const currentVersion = parseInt(versionStr || '0', 10);
+      const userInDb = await prisma.user.findUnique({
+        where: { id: dispatcherUser.id },
+        select: { tokenVersion: true },
+      });
+      const currentVersion = userInDb!.tokenVersion;
 
       const freshToken = jwt.sign(
         {
@@ -275,8 +285,11 @@ describe('Redis + JWT Session Control & User Deactivation Tests', () => {
     });
 
     it('should immediately reject deactivated user requests with 403 Forbidden', async () => {
-      const versionStr = await redis.get(`user:${dispatcherUser.id}:tokenVersion`);
-      const currentVersion = parseInt(versionStr || '0', 10);
+      const userInDb = await prisma.user.findUnique({
+        where: { id: dispatcherUser.id },
+        select: { tokenVersion: true },
+      });
+      const currentVersion = userInDb!.tokenVersion;
 
       // Even with updated tokenVersion, deactivated status in Redis/MySQL must return 403
       const tokenWithNewVersion = jwt.sign(
@@ -343,8 +356,11 @@ describe('Redis + JWT Session Control & User Deactivation Tests', () => {
     });
 
     it('should allow reactivated user to authenticate with valid token', async () => {
-      const versionStr = await redis.get(`user:${dispatcherUser.id}:tokenVersion`);
-      const currentVersion = parseInt(versionStr || '0', 10);
+      const userInDb = await prisma.user.findUnique({
+        where: { id: dispatcherUser.id },
+        select: { tokenVersion: true },
+      });
+      const currentVersion = userInDb!.tokenVersion;
 
       const validToken = jwt.sign(
         {

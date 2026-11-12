@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken } from '../utils/jwt.utils';
 import { userRepository } from '../repositories/user.repository';
 import redis from '../config/redis';
+import { securityConfig } from '../config/security.config';
 
 export interface AuthPayload {
   userId: number;
@@ -72,8 +73,15 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       return;
     }
 
-    // Step 2: Check MySQL/Prisma or Redis for isActive status
-    const cachedActive = await redis.get(`user:${userId}:isActive`);
+    // Step 2: Check MySQL/Prisma or Redis for isActive and tokenVersion.
+    // tokenVersion is durable in MySQL; Redis is only a short-lived cache.
+    const activeKey = `user:${userId}:isActive`;
+    const versionKey = `user:${userId}:tokenVersion`;
+    const [cachedActive, cachedVersion] = await Promise.all([
+      redis.get(activeKey),
+      redis.get(versionKey),
+    ]);
+
     if (cachedActive === '0' || cachedActive === 'false') {
       res.status(403).json({
         success: false,
@@ -82,24 +90,34 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       return;
     }
 
-    if (cachedActive === null) {
-      const user = await userRepository.findActiveStatusById(userId);
+    let currentTokenVersion: number;
+    if (cachedActive === null || cachedVersion === null) {
+      const authState = await userRepository.findAuthStateById(userId);
 
-      if (!user || user.isActive === false) {
-        await redis.set(`user:${userId}:isActive`, '0');
+      if (!authState || authState.isActive === false) {
+        await redis.set(activeKey, '0');
         res.status(403).json({
           success: false,
           message: 'Account has been deactivated',
         });
         return;
       }
-      // Cache active status
-      await redis.set(`user:${userId}:isActive`, '1');
+
+      currentTokenVersion = authState.tokenVersion;
+      await Promise.all([
+        redis.set(activeKey, '1'),
+        redis.set(
+          versionKey,
+          String(currentTokenVersion),
+          'EX',
+          securityConfig.tokenVersionCacheTtlSeconds
+        ),
+      ]);
+    } else {
+      const parsed = parseInt(cachedVersion, 10);
+      currentTokenVersion = Number.isNaN(parsed) ? 0 : parsed;
     }
 
-    // Step 3: Check Redis for the user's current token version
-    const currentVersionStr = await redis.get(`user:${userId}:tokenVersion`);
-    const currentTokenVersion = currentVersionStr !== null ? parseInt(currentVersionStr, 10) : 0;
     const tokenVersionInJwt = decoded.tokenVersion ?? 0;
 
     if (tokenVersionInJwt !== currentTokenVersion) {

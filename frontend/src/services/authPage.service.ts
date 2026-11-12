@@ -1,4 +1,5 @@
 import { authApi } from '../api/auth.api';
+import { validatePassword } from '../utils/passwordPolicy';
 import { getApiErrorMessage } from './errors';
 import type {
   AuthResponse,
@@ -160,8 +161,9 @@ export const authPageService = {
       return 'Email Address is required.';
     }
 
-    if (!input.password || input.password.length < 6) {
-      return 'Password must be at least 6 characters long.';
+    const passwordError = validatePassword(input.password);
+    if (passwordError) {
+      return passwordError;
     }
 
     return null;

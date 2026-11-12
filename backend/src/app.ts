@@ -1,8 +1,13 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger';
+import {
+  buildSecurityHeadersOptions,
+  SWAGGER_CONTENT_SECURITY_POLICY,
+} from './config/securityHeaders.config';
 import authRoutes from './routes/auth.routes';
 import bookingRoutes from './routes/booking.routes';
 import warehouseRoutes from './routes/warehouse.routes';
@@ -27,7 +32,16 @@ if (trustProxy !== undefined) {
   app.set('trust proxy', trustProxy);
 }
 
-// Correlation id + structured logging. Mounted first so every request -
+// Security headers are applied before any route so even rejected requests
+// carry CSP, HSTS (production), nosniff, frame denial, and referrer policy.
+const isProduction = process.env.NODE_ENV === 'production';
+app.use(helmet(buildSecurityHeadersOptions(isProduction)));
+app.use((_req, res, next) => {
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  next();
+});
+
+// Correlation id + structured logging. Mounted next so every request -
 // including ones rejected by the rate limiter or auth - is traced, and so the
 // id is available to anything downstream (services, outbox payload).
 app.use(requestLogger);
@@ -47,6 +61,13 @@ app.use(
 );
 app.use(express.json());
 
+// Swagger UI needs inline scripts/styles, so give only the docs routes a
+// relaxed CSP. The global Helmet policy remains strict for every API response.
+app.use('/api-docs', (_req, res, next) => {
+  res.setHeader('Content-Security-Policy', SWAGGER_CONTENT_SECURITY_POLICY);
+  next();
+});
+
 // Swagger Documentation UI
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
@@ -63,6 +84,15 @@ app.get('/api-docs.json', (_req, res) => {
 
 // Global API Rate Limiter (Redis-backed)
 app.use('/api', apiRateLimiter);
+
+// Authentication responses can contain access tokens and user identity. Keep
+// them out of browser, intermediary, and proxy caches.
+app.use('/api/auth', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
 
 // Application Routes
 app.use('/api/auth', authRoutes);

@@ -20,7 +20,13 @@ import {
   get2FAStatus,
 } from '../controllers/auth.controller';
 import { authenticate } from '../middleware/auth.middleware';
-import { twoFactorRateLimiter } from '../middleware/rateLimit.middleware';
+import {
+  authRateLimiter,
+  loginRateLimiter,
+  passwordResetRateLimiter,
+  refreshRateLimiter,
+  twoFactorRateLimiter,
+} from '../middleware/rateLimit.middleware';
 
 const router = Router();
 
@@ -50,7 +56,7 @@ const router = Router();
  *               password:
  *                 type: string
  *                 format: password
- *                 minLength: 6
+ *                 minLength: 8
  *                 example: SecurePass123!
  *               organizationName:
  *                 type: string
@@ -76,7 +82,7 @@ const router = Router();
  *       429:
  *         description: Too many API requests (rate limit exceeded)
  */
-router.post('/register', register);
+router.post('/register', authRateLimiter, register);
 
 /**
  * @openapi
@@ -86,6 +92,7 @@ router.post('/register', register);
  *     description: |
  *       Authenticates a user by email and password and issues signed JWT tokens (JWT_EXPIRES_IN, JWT_REFRESH_EXPIRES_IN).
  *       Tracks consecutive failed login attempts and locks the account for LOGIN_LOCKOUT_DURATION_MINUTES after MAX_FAILED_LOGIN_ATTEMPTS failures.
+ *       Failed attempts are also throttled per normalized email + IP by RATE_LIMIT_LOGIN_MAX within RATE_LIMIT_LOGIN_WINDOW_MS; successful logins do not consume that budget.
  *     tags:
  *       - Authentication
  *     requestBody:
@@ -118,7 +125,7 @@ router.post('/register', register);
  *       429:
  *         description: Too many API requests (rate limit exceeded)
  */
-router.post('/login', login);
+router.post('/login', authRateLimiter, loginRateLimiter, login);
 
 /**
  * @openapi
@@ -129,8 +136,9 @@ router.post('/login', login);
  *       Redeems the refresh JWT stored in the `refreshToken` HttpOnly cookie for a fresh access
  *       token (JWT_EXPIRES_IN) and a rotated refresh cookie (JWT_REFRESH_EXPIRES_IN). A raw
  *       `refreshToken` may also be supplied in the body for non-browser clients. The token must be
- *       of type `refresh` and will be rejected if the user is deactivated or has logged out of all
- *       devices (token version revoked).
+ *       of type `refresh` and is backed by a server-side session that is revoked on rotation,
+ *       logout, logout-all, account deactivation, or reuse. Replaying a rotated token outside a
+ *       short concurrent-refresh grace window revokes the whole token family.
  *     tags:
  *       - Authentication
  *     requestBody:
@@ -169,14 +177,14 @@ router.post('/login', login);
  *       429:
  *         description: Too many API requests (rate limit exceeded)
  */
-router.post('/refresh', refresh);
+router.post('/refresh', refreshRateLimiter, refresh);
 
 /**
  * @openapi
  * /auth/logout:
  *   post:
  *     summary: Log out the current browser session
- *     description: Clears the `refreshToken` HttpOnly cookie. Already-issued access tokens remain valid until they expire; use /auth/logout-all to revoke those too.
+ *     description: Revokes the refresh session identified by the `refreshToken` cookie and clears the cookie. Other devices keep their sessions. Already-issued access tokens remain valid until they expire; use /auth/logout-all to revoke those too.
  *     tags:
  *       - Authentication
  *     security: []
@@ -210,7 +218,7 @@ router.post('/logout', logout);
  *               password:
  *                 type: string
  *                 format: password
- *                 minLength: 6
+ *                 minLength: 8
  *                 example: Password123!
  *     responses:
  *       201:
@@ -288,13 +296,14 @@ router.get('/verify', verifyEmail);
  *       200:
  *         description: Verification email resent
  */
-router.post('/resend-verification', resendVerification);
+router.post('/resend-verification', authRateLimiter, resendVerification);
 
 /**
  * @openapi
  * /auth/forgot-password:
  *   post:
  *     summary: Request a password reset link
+ *     description: Always returns a generic success response to avoid account enumeration. The raw reset token is sent by email; only its SHA-256 hash is stored. Requests are throttled per email + IP.
  *     tags:
  *       - Authentication
  *     requestBody:
@@ -313,13 +322,14 @@ router.post('/resend-verification', resendVerification);
  *       200:
  *         description: Reset email sent if account exists
  */
-router.post('/forgot-password', forgotPassword);
+router.post('/forgot-password', authRateLimiter, passwordResetRateLimiter, forgotPassword);
 
 /**
  * @openapi
  * /auth/reset-password:
  *   post:
  *     summary: Reset account password with reset token
+ *     description: Updates the password, increments the durable tokenVersion, revokes every refresh session, and deletes the Redis tokenVersion cache entry. All existing tokens become invalid immediately.
  *     tags:
  *       - Authentication
  *     requestBody:
@@ -336,14 +346,14 @@ router.post('/forgot-password', forgotPassword);
  *                 type: string
  *               newPassword:
  *                 type: string
- *                 minLength: 6
+ *                 minLength: 8
  *     responses:
  *       200:
  *         description: Password updated successfully
  *       400:
  *         description: Invalid or expired token
  */
-router.post('/reset-password', resetPassword);
+router.post('/reset-password', authRateLimiter, resetPassword);
 
 /**
  * @openapi
@@ -367,6 +377,7 @@ router.get('/me', authenticate, getMe);
  * /auth/change-password:
  *   post:
  *     summary: Change password for currently authenticated user
+ *     description: Updates the password, increments the durable tokenVersion, revokes every refresh session, and deletes the Redis tokenVersion cache entry. The current access token is invalidated, so the user must sign in again.
  *     tags:
  *       - Authentication
  *     security:
@@ -385,7 +396,7 @@ router.get('/me', authenticate, getMe);
  *                 type: string
  *               newPassword:
  *                 type: string
- *                 minLength: 6
+ *                 minLength: 8
  *     responses:
  *       200:
  *         description: Password changed successfully
@@ -399,7 +410,7 @@ router.post('/change-password', authenticate, changePassword);
  * /auth/logout-all:
  *   post:
  *     summary: Log out of all devices by invalidating all active sessions
- *     description: Increments the user's token version in Redis, instantly invalidating all active JWTs across every device.
+ *     description: Increments the durable token version in MySQL, revokes every refresh session, and updates the Redis token-version cache, instantly invalidating all active JWTs and refresh tokens across every device.
  *     tags:
  *       - Authentication
  *     security:

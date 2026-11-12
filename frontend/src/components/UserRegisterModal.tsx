@@ -237,7 +237,7 @@ export const UserRegisterModal: React.FC<UserRegisterModalProps> = ({
                 }
               />
               <span className="text-[11px] text-gray-500 mt-0.5 block">
-                Must be at least 6 characters long
+                Must be at least 8 characters long
               </span>
             </div>
 

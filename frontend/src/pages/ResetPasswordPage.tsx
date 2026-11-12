@@ -198,7 +198,7 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
 
               <div>
                 <Label htmlFor="new-password" required>
-                  New Password (min. 6 characters)
+                  New Password (min. 8 characters)
                 </Label>
                 <Input
                   id="new-password"

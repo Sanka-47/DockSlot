@@ -3,9 +3,11 @@ import bcrypt from 'bcrypt';
 import { UserRole } from '@prisma/client';
 import { invitationRepository } from '../repositories/invitation.repository';
 import { securityConfig } from '../config/security.config';
+import { assertValidPassword } from '../utils/passwordPolicy';
+import { assertPasswordNotBreached } from '../utils/passwordBreach';
 import { signAccessToken, signRefreshToken } from '../utils/jwt.utils';
 import { emailService } from './email.service';
-import redis from '../config/redis';
+import { authService } from './auth.service';
 
 export interface CreateInvitationInput {
   email: string;
@@ -172,9 +174,8 @@ export class InvitationService {
       throw { status: 400, message: 'Invitation token is required.' };
     }
 
-    if (!password || typeof password !== 'string' || password.length < 6) {
-      throw { status: 400, message: 'Password must be at least 6 characters long.' };
-    }
+    assertValidPassword(password);
+    await assertPasswordNotBreached(password);
 
     const invitation = await invitationRepository.findByToken(token);
 
@@ -218,8 +219,7 @@ export class InvitationService {
       return { user: newUser, organization: invitation.organization };
     });
 
-    const version = await redis.get(`user:${user.id}:tokenVersion`);
-    const tokenVersion = version !== null ? parseInt(version, 10) : 0;
+    const tokenVersion = await authService.getUserTokenVersion(user.id);
     const jwtToken = this.generateToken(user, tokenVersion);
 
     return {

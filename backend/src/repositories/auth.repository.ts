@@ -16,9 +16,24 @@ export const authRepository = {
     });
   },
 
-  findUserByVerificationToken(token: string) {
+  findTokenVersionById(userId: number, client: DbClient = db) {
+    return client.user.findUnique({
+      where: { id: userId },
+      select: { tokenVersion: true },
+    });
+  },
+
+  incrementTokenVersion(userId: number, client: DbClient = db) {
+    return client.user.update({
+      where: { id: userId },
+      data: { tokenVersion: { increment: 1 } },
+      select: { tokenVersion: true },
+    });
+  },
+
+  findUserByVerificationToken(tokenHash: string) {
     return db.user.findUnique({
-      where: { verificationToken: token },
+      where: { verificationToken: tokenHash },
     });
   },
 
@@ -112,11 +127,19 @@ export const authRepository = {
     return this.updateUser(userId, {
       isEmailVerified: true,
       verificationToken: null,
+      verificationTokenExpires: null,
     });
   },
 
-  setVerificationToken(userId: number, verificationToken: string) {
-    return this.updateUser(userId, { verificationToken });
+  setVerificationToken(
+    userId: number,
+    verificationTokenHash: string,
+    expiresAt: Date
+  ) {
+    return this.updateUser(userId, {
+      verificationToken: verificationTokenHash,
+      verificationTokenExpires: expiresAt,
+    });
   },
 
   setPasswordResetToken(userId: number, token: string, expiresAt: Date) {
@@ -126,15 +149,23 @@ export const authRepository = {
     });
   },
 
-  clearPasswordResetToken(userId: number, passwordHash: string) {
-    return this.updateUser(userId, {
-      passwordHash,
-      resetPasswordToken: null,
-      resetPasswordExpires: null,
-    });
+  clearPasswordResetToken(
+    userId: number,
+    passwordHash: string,
+    client: DbClient = db
+  ) {
+    return this.updateUser(
+      userId,
+      {
+        passwordHash,
+        resetPasswordToken: null,
+        resetPasswordExpires: null,
+      },
+      client
+    );
   },
 
-  setPasswordHash(userId: number, passwordHash: string) {
-    return this.updateUser(userId, { passwordHash });
+  setPasswordHash(userId: number, passwordHash: string, client: DbClient = db) {
+    return this.updateUser(userId, { passwordHash }, client);
   },
 };

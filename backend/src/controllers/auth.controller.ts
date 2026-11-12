@@ -9,10 +9,17 @@ import {
 } from '../utils/cookie.utils';
 import { sendError } from '../utils/httpError';
 
+/** Non-sensitive context stored on refresh sessions for audit/support. */
+const sessionContext = (req: Request) => ({
+  userAgent: req.get('user-agent'),
+  ipAddress: req.ip,
+});
+
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
     const payload = {
       ...req.body,
+      ...sessionContext(req),
       organizationName: req.body.organizationName || req.body.orgName,
       organizationType: req.body.organizationType || req.body.orgType,
     };
@@ -36,7 +43,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
-    const result = await authService.login(req.body);
+    const result = await authService.login({ ...req.body, ...sessionContext(req) });
     if (result.requires2FA) {
       res.status(200).json({
         success: true,
@@ -71,7 +78,7 @@ export const refresh = async (req: Request, res: Response): Promise<void> => {
     const refreshToken =
       getRefreshTokenFromRequest(req) ?? req.body?.refreshToken ?? req.body?.refresh_token;
 
-    const result = await authService.refresh(refreshToken);
+    const result = await authService.refresh(refreshToken, sessionContext(req));
 
     // Rotate the cookie on every successful refresh.
     if (result.refreshToken) {
@@ -92,14 +99,22 @@ export const refresh = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-export const logout = async (_req: Request, res: Response): Promise<void> => {
+export const logout = async (req: Request, res: Response): Promise<void> => {
   try {
+    const refreshToken =
+      getRefreshTokenFromRequest(req) ?? req.body?.refreshToken ?? req.body?.refresh_token;
+
+    // Revoke this device's refresh session server-side; other devices keep
+    // their sessions. The cookie is cleared even if the token is stale.
+    await authService.logout(refreshToken);
     clearRefreshTokenCookie(res);
+
     res.status(200).json({
       success: true,
       message: 'Logged out successfully.',
     });
   } catch (error: any) {
+    clearRefreshTokenCookie(res);
     sendError(res, error, 'An error occurred while logging out.');
   }
 };
@@ -150,6 +165,8 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
   try {
     const { token, newPassword } = req.body;
     const result = await authService.resetPassword(token, newPassword);
+    // All sessions are revoked server-side; drop this browser's dead cookie too.
+    clearRefreshTokenCookie(res);
     res.status(200).json({
       success: true,
       message: result.message,
@@ -177,6 +194,9 @@ export const changePassword = async (req: Request, res: Response): Promise<void>
       oldPassword,
       newPassword,
     });
+
+    // The current access/refresh tokens are now revoked.
+    clearRefreshTokenCookie(res);
 
     res.status(200).json({
       success: true,
@@ -338,7 +358,13 @@ export const disable2FA = async (req: Request, res: Response): Promise<void> => 
 export const loginVerify2FA = async (req: Request, res: Response): Promise<void> => {
   try {
     const { tempToken, token, email, password } = req.body;
-    const result = await totpService.loginVerify({ tempToken, token, email, password });
+    const result = await totpService.loginVerify({
+      tempToken,
+      token,
+      email,
+      password,
+      ...sessionContext(req),
+    });
     if (result.refreshToken) {
       setRefreshTokenCookie(res, result.refreshToken);
     }

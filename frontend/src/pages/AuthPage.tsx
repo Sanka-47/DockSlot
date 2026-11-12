@@ -683,7 +683,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
               {/* Password */}
               <div>
                 <Label htmlFor="register-password" required>
-                  Password (min. 6 characters)
+                  Password (min. 8 characters)
                 </Label>
                 <Input
                   id="register-password"

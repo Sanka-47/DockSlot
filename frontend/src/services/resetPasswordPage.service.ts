@@ -1,4 +1,5 @@
 import { authApi } from '../api/auth.api';
+import { validatePassword } from '../utils/passwordPolicy';
 
 /** Reads the reset token from the current URL (?token=...). */
 export function getResetTokenFromUrl(): string | null {
@@ -20,8 +21,9 @@ export const resetPasswordPageService = {
       return 'Missing password reset token. Please use the link provided in your email or request a new one.';
     }
 
-    if (newPassword.length < 6) {
-      return 'New password must be at least 6 characters long.';
+    const passwordError = validatePassword(newPassword);
+    if (passwordError) {
+      return passwordError;
     }
 
     if (newPassword !== confirmPassword) {
