@@ -165,6 +165,8 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
   try {
     const { token, newPassword } = req.body;
     const result = await authService.resetPassword(token, newPassword);
+    // All sessions are revoked server-side; drop this browser's dead cookie too.
+    clearRefreshTokenCookie(res);
     res.status(200).json({
       success: true,
       message: result.message,
@@ -192,6 +194,9 @@ export const changePassword = async (req: Request, res: Response): Promise<void>
       oldPassword,
       newPassword,
     });
+
+    // The current access/refresh tokens are now revoked.
+    clearRefreshTokenCookie(res);
 
     res.status(200).json({
       success: true,

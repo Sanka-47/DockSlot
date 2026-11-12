@@ -404,6 +404,32 @@ export class AuthService {
     });
   }
 
+  private tokenVersionCacheKey(userId: number): string {
+    return `user:${userId}:tokenVersion`;
+  }
+
+  /**
+   * Drop the cached token version after a durable revocation. The next
+   * authentication request repopulates it from MySQL, so callers do not wait
+   * for the full cache TTL before seeing the new version.
+   */
+  private async invalidateTokenVersionCache(userId: number): Promise<void> {
+    await redis.del(this.tokenVersionCacheKey(userId));
+  }
+
+  /**
+   * Increment the durable token version and revoke every refresh session in one
+   * transaction, then explicitly invalidate the Redis cache.
+   */
+  private async revokeAllUserSessions(userId: number, reason: string): Promise<void> {
+    await authRepository.transaction(async (tx) => {
+      await authRepository.incrementTokenVersion(userId, tx);
+      await refreshSessionRepository.revokeAllForUser(userId, reason, tx);
+    });
+
+    await this.invalidateTokenVersionCache(userId);
+  }
+
   /**
    * Fetch the durable token version from MySQL and cache it in Redis. The
    * database is the source of truth so revocation survives a Redis flush.
@@ -416,7 +442,7 @@ export class AuthService {
     }
 
     await redis.set(
-      `user:${userId}:tokenVersion`,
+      this.tokenVersionCacheKey(userId),
       String(user.tokenVersion),
       'EX',
       securityConfig.tokenVersionCacheTtlSeconds
@@ -448,18 +474,7 @@ export class AuthService {
    * durable token version and revoking all refresh sessions.
    */
   public async logoutAll(userId: number): Promise<void> {
-    const updated = await authRepository.transaction(async (tx) => {
-      const user = await authRepository.incrementTokenVersion(userId, tx);
-      await refreshSessionRepository.revokeAllForUser(userId, 'LOGOUT_ALL', tx);
-      return user;
-    });
-
-    await redis.set(
-      `user:${userId}:tokenVersion`,
-      String(updated.tokenVersion),
-      'EX',
-      securityConfig.tokenVersionCacheTtlSeconds
-    );
+    await this.revokeAllUserSessions(userId, 'LOGOUT_ALL');
   }
 
   /**
@@ -818,7 +833,15 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(newPassword, securityConfig.saltRounds);
 
-    await authRepository.clearPasswordResetToken(user.id, passwordHash);
+    await authRepository.transaction(async (tx) => {
+      await authRepository.clearPasswordResetToken(user.id, passwordHash, tx);
+      await authRepository.incrementTokenVersion(user.id, tx);
+      await refreshSessionRepository.revokeAllForUser(user.id, 'PASSWORD_RESET', tx);
+    });
+
+    // Explicitly drop the cache so the new tokenVersion is read from MySQL on
+    // the very next request instead of after the cache TTL expires.
+    await this.invalidateTokenVersionCache(user.id);
 
     return { message: 'Password has been reset successfully. You can now login with your new password.' };
   }
@@ -850,9 +873,17 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(newPassword, securityConfig.saltRounds);
 
-    await authRepository.setPasswordHash(user.id, passwordHash);
+    await authRepository.transaction(async (tx) => {
+      await authRepository.setPasswordHash(user.id, passwordHash, tx);
+      await authRepository.incrementTokenVersion(user.id, tx);
+      await refreshSessionRepository.revokeAllForUser(user.id, 'PASSWORD_CHANGED', tx);
+    });
 
-    return { message: 'Password changed successfully.' };
+    // Invalidate the cache immediately; the current access token is revoked,
+    // so the user must sign in again with the new password.
+    await this.invalidateTokenVersionCache(user.id);
+
+    return { message: 'Password changed successfully. Please sign in again.' };
   }
 
   /**

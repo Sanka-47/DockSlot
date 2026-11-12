@@ -95,11 +95,13 @@ All seeded accounts are pre-verified and share the same password: `12345678`
 - **Absolute family lifetime:** sliding rotation cannot exceed
   `REFRESH_SESSION_ABSOLUTE_TTL` (default 30 days) from the original login.
 - **Revocation:** `/auth/logout` revokes only the current refresh session.
-  `/auth/logout-all` and account deactivation increment the durable
-  `users.tokenVersion` and revoke every refresh session, so old credentials stay
-  dead even after a Redis flush or reactivation.
+  `/auth/logout-all`, password change, password reset, and account deactivation
+  increment the durable `users.tokenVersion`, revoke every refresh session, and
+  explicitly delete the Redis `tokenVersion` cache entry, so old credentials
+  stay dead even after a Redis flush or reactivation.
 - **Redis** caches `tokenVersion` for `TOKEN_VERSION_CACHE_TTL_SECONDS` (default
-  60) but MySQL is the source of truth.
+  60) but MySQL is the source of truth. Revocation paths delete the cache key
+  instead of waiting for that TTL to expire.
 
 Relevant environment variables:
 

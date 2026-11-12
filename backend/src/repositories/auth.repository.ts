@@ -141,15 +141,23 @@ export const authRepository = {
     });
   },
 
-  clearPasswordResetToken(userId: number, passwordHash: string) {
-    return this.updateUser(userId, {
-      passwordHash,
-      resetPasswordToken: null,
-      resetPasswordExpires: null,
-    });
+  clearPasswordResetToken(
+    userId: number,
+    passwordHash: string,
+    client: DbClient = db
+  ) {
+    return this.updateUser(
+      userId,
+      {
+        passwordHash,
+        resetPasswordToken: null,
+        resetPasswordExpires: null,
+      },
+      client
+    );
   },
 
-  setPasswordHash(userId: number, passwordHash: string) {
-    return this.updateUser(userId, { passwordHash });
+  setPasswordHash(userId: number, passwordHash: string, client: DbClient = db) {
+    return this.updateUser(userId, { passwordHash }, client);
   },
 };

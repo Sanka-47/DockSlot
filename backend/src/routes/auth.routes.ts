@@ -321,6 +321,7 @@ router.post('/forgot-password', forgotPassword);
  * /auth/reset-password:
  *   post:
  *     summary: Reset account password with reset token
+ *     description: Updates the password, increments the durable tokenVersion, revokes every refresh session, and deletes the Redis tokenVersion cache entry. All existing tokens become invalid immediately.
  *     tags:
  *       - Authentication
  *     requestBody:
@@ -368,6 +369,7 @@ router.get('/me', authenticate, getMe);
  * /auth/change-password:
  *   post:
  *     summary: Change password for currently authenticated user
+ *     description: Updates the password, increments the durable tokenVersion, revokes every refresh session, and deletes the Redis tokenVersion cache entry. The current access token is invalidated, so the user must sign in again.
  *     tags:
  *       - Authentication
  *     security:
