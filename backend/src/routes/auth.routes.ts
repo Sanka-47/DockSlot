@@ -21,8 +21,10 @@ import {
 } from '../controllers/auth.controller';
 import { authenticate } from '../middleware/auth.middleware';
 import {
+  authRateLimiter,
   loginRateLimiter,
   passwordResetRateLimiter,
+  refreshRateLimiter,
   twoFactorRateLimiter,
 } from '../middleware/rateLimit.middleware';
 
@@ -80,7 +82,7 @@ const router = Router();
  *       429:
  *         description: Too many API requests (rate limit exceeded)
  */
-router.post('/register', register);
+router.post('/register', authRateLimiter, register);
 
 /**
  * @openapi
@@ -123,7 +125,7 @@ router.post('/register', register);
  *       429:
  *         description: Too many API requests (rate limit exceeded)
  */
-router.post('/login', loginRateLimiter, login);
+router.post('/login', authRateLimiter, loginRateLimiter, login);
 
 /**
  * @openapi
@@ -175,7 +177,7 @@ router.post('/login', loginRateLimiter, login);
  *       429:
  *         description: Too many API requests (rate limit exceeded)
  */
-router.post('/refresh', refresh);
+router.post('/refresh', refreshRateLimiter, refresh);
 
 /**
  * @openapi
@@ -294,7 +296,7 @@ router.get('/verify', verifyEmail);
  *       200:
  *         description: Verification email resent
  */
-router.post('/resend-verification', resendVerification);
+router.post('/resend-verification', authRateLimiter, resendVerification);
 
 /**
  * @openapi
@@ -320,7 +322,7 @@ router.post('/resend-verification', resendVerification);
  *       200:
  *         description: Reset email sent if account exists
  */
-router.post('/forgot-password', passwordResetRateLimiter, forgotPassword);
+router.post('/forgot-password', authRateLimiter, passwordResetRateLimiter, forgotPassword);
 
 /**
  * @openapi
@@ -351,7 +353,7 @@ router.post('/forgot-password', passwordResetRateLimiter, forgotPassword);
  *       400:
  *         description: Invalid or expired token
  */
-router.post('/reset-password', resetPassword);
+router.post('/reset-password', authRateLimiter, resetPassword);
 
 /**
  * @openapi

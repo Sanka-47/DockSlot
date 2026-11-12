@@ -188,6 +188,14 @@ export const securityConfig = {
   get rateLimitApiMax(): number {
     return parseEnvInt(process.env.RATE_LIMIT_API_MAX, 100);
   },
+  /** Dedicated cap for credential/auth endpoints (default 10 per minute). */
+  get rateLimitAuthMax(): number {
+    return parseEnvInt(process.env.RATE_LIMIT_AUTH_MAX, 10);
+  },
+  /** Refresh-endpoint cap per token family + IP. */
+  get rateLimitRefreshMax(): number {
+    return parseEnvInt(process.env.RATE_LIMIT_REFRESH_MAX, 30);
+  },
   get rateLimitBookingMax(): number {
     return parseEnvInt(process.env.RATE_LIMIT_BOOKING_MAX, 10);
   },
@@ -261,6 +269,12 @@ export const securityConfig = {
   get RATE_LIMIT_API_MAX(): number {
     return this.rateLimitApiMax;
   },
+  get RATE_LIMIT_AUTH_MAX(): number {
+    return this.rateLimitAuthMax;
+  },
+  get RATE_LIMIT_REFRESH_MAX(): number {
+    return this.rateLimitRefreshMax;
+  },
   get RATE_LIMIT_BOOKING_MAX(): number {
     return this.rateLimitBookingMax;
   },
@@ -297,6 +311,8 @@ export const JWT_EXPIRES_IN = securityConfig.jwtExpiresIn;
 export const JWT_REFRESH_EXPIRES_IN = securityConfig.jwtRefreshExpiresIn;
 export const RATE_LIMIT_WINDOW_MS = securityConfig.rateLimitWindowMs;
 export const RATE_LIMIT_API_MAX = securityConfig.rateLimitApiMax;
+export const RATE_LIMIT_AUTH_MAX = securityConfig.rateLimitAuthMax;
+export const RATE_LIMIT_REFRESH_MAX = securityConfig.rateLimitRefreshMax;
 export const RATE_LIMIT_BOOKING_MAX = securityConfig.rateLimitBookingMax;
 export const RATE_LIMIT_2FA_MAX = securityConfig.rateLimit2faMax;
 export const RATE_LIMIT_LOGIN_WINDOW_MS = securityConfig.rateLimitLoginWindowMs;

@@ -115,10 +115,16 @@ All seeded accounts are pre-verified and share the same password: `12345678`
   `NODE_ENV=production`. Swagger UI gets a separately scoped, relaxed CSP.
 - **Caching:** every `/api/auth` response is sent with `Cache-Control: no-store`
   so access tokens and identity data cannot be cached by browsers or proxies.
-- **Credential abuse controls:** failed logins are limited per normalized email +
-  IP (`RATE_LIMIT_LOGIN_MAX` / `RATE_LIMIT_LOGIN_WINDOW_MS`, default 10 per 15
-  minutes), on top of the per-account lockout. Forgot-password has its own
-  email+IP limiter and a one-hour reset-token lifetime.
+- **Credential abuse controls:** the credential entry routes (`/login`,
+  `/register`, `/forgot-password`, `/reset-password`, `/resend-verification`)
+  carry a dedicated `RATE_LIMIT_AUTH_MAX` limiter (default 10/min) keyed by route
+  + account/token + IP. Failed logins additionally have their own email+IP limiter
+  (`RATE_LIMIT_LOGIN_MAX` / `RATE_LIMIT_LOGIN_WINDOW_MS`, default 10 per 15
+  minutes), and refresh attempts are capped per token family + IP
+  (`RATE_LIMIT_REFRESH_MAX`, default 30/min). The 2FA limiter remains scoped
+  per route and IP. Forgot-password has its own email+IP limiter and a one-hour
+  reset-token lifetime. The existing per-account lockout remains as a last line
+  of defense; the limiters above reduce how often an attacker can reach it.
 - **Password policy:** new/changed/reset passwords must be 8–128 characters.
   Common passwords are rejected. Set `PASSWORD_BREACH_CHECK_ENABLED=true` to add
   a k-anonymity HaveIBeenPwned check; the check fails open if HIBP is
@@ -151,6 +157,8 @@ Relevant environment variables:
 | `REFRESH_REUSE_GRACE_SECONDS` | `30` | Concurrent-tab rotation grace window |
 | `TOTP_ENCRYPTION_KEY` | required in production | 32-byte AES-256-GCM key for TOTP secrets |
 | `TOKEN_VERSION_CACHE_TTL_SECONDS` | `60` | Redis cache TTL for tokenVersion |
+| `RATE_LIMIT_AUTH_MAX` | `10` | Auth requests per account/token+IP per window |
+| `RATE_LIMIT_REFRESH_MAX` | `30` | Refresh requests per token family+IP per window |
 | `RATE_LIMIT_LOGIN_WINDOW_MS` | `900000` | Failed-login limiter window |
 | `RATE_LIMIT_LOGIN_MAX` | `10` | Failed logins per email+IP per window |
 | `RATE_LIMIT_PASSWORD_RESET_WINDOW_MS` | `3600000` | Forgot-password limiter window |

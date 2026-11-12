@@ -86,6 +86,8 @@ describe('Configurable Security Controls Integration Tests', () => {
     process.env.JWT_REFRESH_EXPIRES_IN = '7d';
     process.env.RATE_LIMIT_WINDOW_MS = '60000';
     process.env.RATE_LIMIT_API_MAX = '100';
+    process.env.RATE_LIMIT_AUTH_MAX = '10';
+    process.env.RATE_LIMIT_REFRESH_MAX = '30';
     process.env.RATE_LIMIT_BOOKING_MAX = '10';
     process.env.MAX_FAILED_LOGIN_ATTEMPTS = '5';
     process.env.LOGIN_LOCKOUT_DURATION_MINUTES = '15';
@@ -113,6 +115,8 @@ describe('Configurable Security Controls Integration Tests', () => {
       expect(securityConfig.jwtRefreshExpiresIn).toBe('7d');
       expect(securityConfig.rateLimitWindowMs).toBe(60000);
       expect(securityConfig.rateLimitApiMax).toBe(100);
+      expect(securityConfig.rateLimitAuthMax).toBe(10);
+      expect(securityConfig.rateLimitRefreshMax).toBe(30);
       expect(securityConfig.rateLimitBookingMax).toBe(10);
       expect(securityConfig.maxFailedLoginAttempts).toBe(5);
       expect(securityConfig.loginLockoutDurationMinutes).toBe(15);
