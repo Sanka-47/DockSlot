@@ -23,7 +23,11 @@ describe('Password changes revoke existing credentials', () => {
   const createdUserIds: number[] = [];
   const cacheKeys: string[] = [];
 
-  const createUser = async (label: string, password: string) => {
+  const createUser = async (
+    label: string,
+    password: string,
+    role: UserRole = UserRole.CARRIER_ADMIN
+  ) => {
     const email = `password_${label}_${ts}@swiftrefresh.com`;
     const passwordHash = await bcrypt.hash(password, securityConfig.saltRounds);
     const user = await prisma.user.create({
@@ -31,7 +35,7 @@ describe('Password changes revoke existing credentials', () => {
         organizationId: orgId,
         email,
         passwordHash,
-        role: UserRole.CARRIER_ADMIN,
+        role,
         isActive: true,
         isEmailVerified: true,
       },
@@ -144,5 +148,55 @@ describe('Password changes revoke existing credentials', () => {
 
     expect((await login(user.email, oldPassword)).status).toBe(401);
     expect((await login(user.email, newPassword)).status).toBe(200);
+  });
+
+  it('revokes sessions on deactivation and does not restore them on reactivation', async () => {
+    const adminPassword = 'AdminPassword123!';
+    const targetPassword = 'TargetPassword123!';
+    const admin = await createUser('deact_admin', adminPassword);
+    const target = await createUser(
+      'deact_target',
+      targetPassword,
+      UserRole.DISPATCHER
+    );
+
+    const adminLogin = await login(admin.email, adminPassword);
+    expect(adminLogin.status).toBe(200);
+    const adminToken = adminLogin.body.token as string;
+
+    const targetLogin = await login(target.email, targetPassword);
+    expect(targetLogin.status).toBe(200);
+    const targetToken = targetLogin.body.token as string;
+    const targetCookie = refreshCookieHeader(targetLogin);
+
+    const deactivate = await request(app)
+      .patch(`/api/users/${target.id}/deactivate`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(deactivate.status).toBe(200);
+
+    const activeSessions = await prisma.refreshSession.count({
+      where: { userId: target.id, revokedAt: null },
+    });
+    expect(activeSessions).toBe(0);
+
+    const reactivate = await request(app)
+      .patch(`/api/users/${target.id}/reactivate`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(reactivate.status).toBe(200);
+
+    // Reactivation must not resurrect either the access token or the refresh
+    // session that existed before deactivation.
+    const me = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${targetToken}`);
+    expect(me.status).toBe(401);
+
+    const refresh = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', targetCookie)
+      .send({});
+    expect(refresh.status).toBe(401);
+
+    expect((await login(target.email, targetPassword)).status).toBe(200);
   });
 });
