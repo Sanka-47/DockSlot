@@ -87,11 +87,40 @@ All seeded accounts are pre-verified and share the same password: `12345678`
 
 ## Authentication model
 
+DockSlot uses a defense-in-depth, industry-standard authentication design:
+short-lived access tokens, rotating refresh sessions, server-side revocation,
+adaptive password hashing, optional TOTP MFA, and layered abuse controls. The
+implementation follows patterns recommended by OWASP (ASVS, Authentication,
+Session Management, and Password Storage Cheat Sheets) and NIST SP 800-63B.
+This is an alignment statement, not a formal certification.
+
+### Standards alignment at a glance
+
+| Area | Control |
+| --- | --- |
+| Password storage | bcrypt hashes with a configurable work factor (`BCRYPT_SALT_ROUNDS`); plaintext passwords are never stored. |
+| Password quality | 8–128 characters, common-password rejection, and an optional HIBP k-anonymity breach check. |
+| Access tokens | 15-minute signed JWTs kept in browser memory only—never `localStorage`, `sessionStorage`, or a JS-readable cookie. |
+| Refresh sessions | HttpOnly, `SameSite=Lax` (configurable), and `Secure` in production; scoped to `/api/auth` with a sliding 7-day lifetime, 30-day absolute cap, optional idle timeout, rotation, and reuse detection. |
+| Session revocation | Durable `tokenVersion` plus server-side refresh-session revocation; Redis cache entries are deleted immediately. |
+| Token storage | Refresh sessions store only the `jti`; reset and email-verification tokens are stored as SHA-256 hashes. |
+| MFA | TOTP with AES-256-GCM encrypted secrets at rest and rate-limited verification. |
+| Abuse prevention | Per-route/account/IP auth limits, failed-login limits, per-family refresh limits, password-reset limits, 2FA limits, and per-account lockout. |
+| Browser hardening | Helmet security headers, a strict CSP, production HSTS, `no-store` auth responses, and a credentialed CORS allowlist. |
+
+These controls assume TLS termination, strong independent secrets, and a trusted
+reverse proxy in production. The table documents the application’s security
+posture, not a formal compliance certification.
+
+### Implementation details
+
 - **Access tokens** are short-lived (15 minutes) and returned in the JSON
   response. The browser client keeps them in memory only; they are never written
   to `localStorage`, `sessionStorage`, or a JS-readable cookie.
-- **Refresh tokens** are 7-day JWTs delivered in an HttpOnly, SameSite cookie
-  scoped to `/api/auth`. Each token is backed by a row in `refresh_sessions`.
+- **Refresh tokens** are 7-day JWTs delivered in an HttpOnly,
+  `SameSite=Lax` (configurable) cookie scoped to `/api/auth`; `Secure` is
+  enabled in production (or when `COOKIE_SECURE=true`). Each token is backed by
+  a row in `refresh_sessions`.
 - **Rotation:** every successful `/auth/refresh` creates a new `jti`, marks the
   previous session `ROTATED`, and links it with `replacedByJti`. A short grace
   window lets concurrent tabs retry the same cookie; replay outside that window
@@ -150,15 +179,23 @@ Relevant environment variables:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
+| `JWT_ACCESS_SECRET` | required in production | Independent access-token signing secret |
+| `JWT_REFRESH_SECRET` | required in production | Independent refresh-token signing secret |
 | `JWT_EXPIRES_IN` | `15m` | Access-token lifetime |
 | `JWT_REFRESH_EXPIRES_IN` | `7d` | Sliding refresh-token lifetime |
 | `REFRESH_SESSION_ABSOLUTE_TTL` | `30d` | Maximum lifetime of a login family |
 | `REFRESH_SESSION_IDLE_TTL` | unset | Optional inactivity timeout for a login family |
 | `REFRESH_REUSE_GRACE_SECONDS` | `30` | Concurrent-tab rotation grace window |
+| `COOKIE_SECURE` | `true` in production | Override the refresh cookie’s `Secure` flag |
+| `COOKIE_SAME_SITE` | `lax` | Refresh cookie `SameSite` policy |
+| `BCRYPT_SALT_ROUNDS` | `10` | bcrypt work factor |
+| `MAX_FAILED_LOGIN_ATTEMPTS` | `5` | Failed attempts before account lockout |
+| `LOGIN_LOCKOUT_DURATION_MINUTES` | `15` | Account lockout duration |
 | `TOTP_ENCRYPTION_KEY` | required in production | 32-byte AES-256-GCM key for TOTP secrets |
 | `TOKEN_VERSION_CACHE_TTL_SECONDS` | `60` | Redis cache TTL for tokenVersion |
-| `RATE_LIMIT_AUTH_MAX` | `10` | Auth requests per account/token+IP per window |
+| `RATE_LIMIT_AUTH_MAX` | `10` | Auth requests per route/account/token+IP per window |
 | `RATE_LIMIT_REFRESH_MAX` | `30` | Refresh requests per token family+IP per window |
+| `RATE_LIMIT_2FA_MAX` | `5` | 2FA code submissions per route+IP per window |
 | `RATE_LIMIT_LOGIN_WINDOW_MS` | `900000` | Failed-login limiter window |
 | `RATE_LIMIT_LOGIN_MAX` | `10` | Failed logins per email+IP per window |
 | `RATE_LIMIT_PASSWORD_RESET_WINDOW_MS` | `3600000` | Forgot-password limiter window |
