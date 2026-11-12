@@ -391,14 +391,14 @@ describe('Secure Token-Based Invitation & Account Creation Workflow Tests', () =
       expect(res.body.success).toBe(false);
     });
 
-    it('should reject accept-invite with too short password (< 12 chars)', async () => {
+    it('should reject accept-invite with too short password (< 8 chars)', async () => {
       const res = await request(app)
         .post('/api/auth/accept-invite')
         .send({ token: pendingToken, password: '123' });
 
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
-      expect(res.body.message).toMatch(/at least 12 characters/i);
+      expect(res.body.message).toMatch(/at least 8 characters/i);
     });
 
     it('should reject accept-invite if the token has expired', async () => {

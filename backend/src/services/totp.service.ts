@@ -4,6 +4,11 @@ import bcrypt from 'bcrypt';
 import { totpRepository } from '../repositories/totp.repository';
 import { authService, AuthResponse } from './auth.service';
 import { verifyTemp2faToken } from '../utils/jwt.utils';
+import {
+  decryptTotpSecret,
+  encryptTotpSecret,
+  isEncryptedTotpSecret,
+} from '../utils/totpCrypto';
 
 export interface Setup2FAResponse {
   secret: string;
@@ -32,6 +37,30 @@ export interface LoginVerify2FAInput {
 }
 
 export class TotpService {
+  /**
+   * Decrypts a stored TOTP secret and lazily upgrades legacy plaintext values
+   * to AES-256-GCM. This keeps existing enrollments working until the one-time
+   * migration script has been run.
+   */
+  private async resolveTotpSecret(user: {
+    id: number;
+    totpSecret: string | null;
+  }): Promise<string> {
+    if (!user.totpSecret) {
+      throw { status: 400, message: 'Two-factor authentication is not configured.' };
+    }
+
+    const secret = decryptTotpSecret(user.totpSecret);
+
+    if (!isEncryptedTotpSecret(user.totpSecret)) {
+      await totpRepository.updateUser(user.id, {
+        totpSecret: encryptTotpSecret(secret),
+      });
+    }
+
+    return secret;
+  }
+
   /**
    * Reports whether 2FA is fully enabled, or whether a setup was started but never confirmed.
    */
@@ -76,9 +105,9 @@ export class TotpService {
 
     const qrCode = await QRCode.toDataURL(otpauthUrl);
 
-    // Persist secret on the user record; 2FA remains disabled until verifyAndEnable is completed
+    // Persist an encrypted secret; 2FA remains disabled until verifyAndEnable is completed.
     await totpRepository.updateUser(userId, {
-      totpSecret: secret.base32,
+      totpSecret: encryptTotpSecret(secret.base32),
     });
 
     return {
@@ -113,8 +142,9 @@ export class TotpService {
       throw { status: 400, message: '2FA setup has not been initiated. Please run setup first.' };
     }
 
+    const totpSecret = await this.resolveTotpSecret(user);
     const isVerified = speakeasy.totp.verify({
-      secret: user.totpSecret,
+      secret: totpSecret,
       encoding: 'base32',
       token: cleanToken,
       window: 1, // Allow 1-step window (±30s) for time drift
@@ -165,8 +195,9 @@ export class TotpService {
     // Validate 2FA token if password was not provided or to allow token-based disable
     if (!authorized && token && typeof token === 'string' && user.totpSecret) {
       const cleanToken = token.trim();
+      const totpSecret = await this.resolveTotpSecret(user);
       const isVerified = speakeasy.totp.verify({
-        secret: user.totpSecret,
+        secret: totpSecret,
         encoding: 'base32',
         token: cleanToken,
         window: 1,
@@ -247,8 +278,9 @@ export class TotpService {
       throw { status: 400, message: 'Two-factor authentication is not enabled for this account.' };
     }
 
+    const totpSecret = await this.resolveTotpSecret(user);
     const isVerified = speakeasy.totp.verify({
-      secret: user.totpSecret,
+      secret: totpSecret,
       encoding: 'base32',
       token: cleanToken,
       window: 1,

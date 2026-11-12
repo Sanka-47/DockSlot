@@ -20,6 +20,7 @@ const payload = {
 };
 
 const strongSecret = (label: string) => `${label}-${'x'.repeat(40)}`;
+const totpKey = Buffer.from('0123456789abcdef0123456789abcdef', 'utf8').toString('base64');
 
 describe('Authentication environment validation', () => {
   it('rejects production without dedicated access and refresh secrets', () => {
@@ -90,6 +91,27 @@ describe('Authentication environment validation', () => {
     ).toThrow(/COOKIE_SECURE must be true/i);
   });
 
+  it('requires a 32-byte TOTP encryption key in production', () => {
+    expect(() =>
+      validateEnv({
+        NODE_ENV: 'production',
+        CORS_ORIGIN: 'https://app.dockslot.example',
+        JWT_ACCESS_SECRET: strongSecret('access'),
+        JWT_REFRESH_SECRET: strongSecret('refresh'),
+      })
+    ).toThrow(/TOTP_ENCRYPTION_KEY is required/i);
+
+    expect(() =>
+      validateEnv({
+        NODE_ENV: 'production',
+        CORS_ORIGIN: 'https://app.dockslot.example',
+        JWT_ACCESS_SECRET: strongSecret('access'),
+        JWT_REFRESH_SECRET: strongSecret('refresh'),
+        TOTP_ENCRYPTION_KEY: 'not-a-32-byte-key',
+      })
+    ).toThrow(/TOTP_ENCRYPTION_KEY must decode to exactly 32 bytes/i);
+  });
+
   it('accepts strong, distinct production secrets', () => {
     expect(() =>
       validateEnv({
@@ -97,6 +119,7 @@ describe('Authentication environment validation', () => {
         CORS_ORIGIN: 'https://app.dockslot.example',
         JWT_ACCESS_SECRET: strongSecret('access'),
         JWT_REFRESH_SECRET: strongSecret('refresh'),
+        TOTP_ENCRYPTION_KEY: totpKey,
       })
     ).not.toThrow();
   });
@@ -114,12 +137,14 @@ describe('Authentication environment validation', () => {
     const original = {
       JWT_REFRESH_EXPIRES_IN: process.env.JWT_REFRESH_EXPIRES_IN,
       REFRESH_SESSION_ABSOLUTE_TTL: process.env.REFRESH_SESSION_ABSOLUTE_TTL,
+      REFRESH_SESSION_IDLE_TTL: process.env.REFRESH_SESSION_IDLE_TTL,
       REFRESH_REUSE_GRACE_SECONDS: process.env.REFRESH_REUSE_GRACE_SECONDS,
       TOKEN_VERSION_CACHE_TTL_SECONDS: process.env.TOKEN_VERSION_CACHE_TTL_SECONDS,
     };
 
     process.env.JWT_REFRESH_EXPIRES_IN = '7d';
     process.env.REFRESH_SESSION_ABSOLUTE_TTL = '30d';
+    process.env.REFRESH_SESSION_IDLE_TTL = '7d';
     process.env.REFRESH_REUSE_GRACE_SECONDS = '30';
     process.env.TOKEN_VERSION_CACHE_TTL_SECONDS = '60';
 
@@ -128,8 +153,14 @@ describe('Authentication environment validation', () => {
       expect(securityConfig.refreshSessionAbsoluteTtlMs).toBe(
         30 * 24 * 60 * 60 * 1000
       );
+      expect(securityConfig.refreshSessionIdleTtlMs).toBe(
+        7 * 24 * 60 * 60 * 1000
+      );
       expect(securityConfig.refreshReuseGraceMs).toBe(30 * 1000);
       expect(securityConfig.tokenVersionCacheTtlSeconds).toBe(60);
+
+      delete process.env.REFRESH_SESSION_IDLE_TTL;
+      expect(securityConfig.refreshSessionIdleTtlMs).toBeNull();
     } finally {
       for (const [key, value] of Object.entries(original)) {
         if (value === undefined) delete process.env[key];

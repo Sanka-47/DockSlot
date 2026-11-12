@@ -33,22 +33,26 @@ Screenshots captured from the running app with the seeded demo data. See
 
 ## Running the project
 
-Docker Compose requires two independent JWT secrets (no defaults are committed).
-Generate them once and export them, or put them in a root `.env` file:
+Docker Compose requires two independent JWT secrets and a 32-byte TOTP
+encryption key (no defaults are committed). Generate them once and export them,
+or put them in a root `.env` file:
 
 ```sh
 node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
 
 ```sh
 export JWT_ACCESS_SECRET="<first generated value>"
 export JWT_REFRESH_SECRET="<second generated value>"
+export TOTP_ENCRYPTION_KEY="<third generated value>"
 docker compose up --build
 ```
 
 For a non-Docker backend, copy `backend/.env.example` to `backend/.env` and fill
-in the same values. Production requires both secrets, at least 32 characters
-each, and the values must differ.
+in the same values. Production requires both JWT secrets (at least 32 characters
+each, and different from each other) and a base64/hex TOTP key that decodes to
+exactly 32 bytes.
 
 The backend container applies the schema and loads the demo data on boot
 (`prisma db push` + `prisma db seed`). See `docker-compose.yml` for the services
@@ -94,6 +98,8 @@ All seeded accounts are pre-verified and share the same password: `12345678`
   revokes the entire token family.
 - **Absolute family lifetime:** sliding rotation cannot exceed
   `REFRESH_SESSION_ABSOLUTE_TTL` (default 30 days) from the original login.
+  `REFRESH_SESSION_IDLE_TTL` optionally revokes a family when it has not been
+  refreshed within the configured window.
 - **Revocation:** `/auth/logout` revokes only the current refresh session.
   `/auth/logout-all`, password change, password reset, and account deactivation
   increment the durable `users.tokenVersion`, revoke every refresh session, and
@@ -113,13 +119,26 @@ All seeded accounts are pre-verified and share the same password: `12345678`
   IP (`RATE_LIMIT_LOGIN_MAX` / `RATE_LIMIT_LOGIN_WINDOW_MS`, default 10 per 15
   minutes), on top of the per-account lockout. Forgot-password has its own
   email+IP limiter and a one-hour reset-token lifetime.
-- **Password policy:** new/changed/reset passwords must be 12–128 characters and
-  include at least three of lowercase, uppercase, numbers, and symbols. The
-  seeded demo passwords (`12345678`) are legacy demo credentials only; they
-  cannot be used to register or change a password.
+- **Password policy:** new/changed/reset passwords must be 8–128 characters.
+  Common passwords are rejected. Set `PASSWORD_BREACH_CHECK_ENABLED=true` to add
+  a k-anonymity HaveIBeenPwned check; the check fails open if HIBP is
+  unavailable. The seeded demo passwords (`12345678`) are legacy demo
+  credentials only; they cannot be used to register or change a password.
 - **Credential storage:** passwords are bcrypt hashes, refresh sessions store
-  only the token `jti` (not the token), and password-reset tokens are stored as
-  SHA-256 hashes. The raw reset token exists only in the email link.
+  only the token `jti` (not the token), and password-reset and email-verification
+  tokens are stored as SHA-256 hashes. The raw reset and verification tokens
+  exist only in the email link.
+- **Email verification:** registration and resend links are valid for 24 hours.
+  Expired tokens are rejected and consumed so they cannot be retried. Links
+  issued before this change have no recorded expiry and are treated as expired;
+  request a new verification email.
+- **2FA secret encryption:** TOTP secrets are encrypted at rest with
+  AES-256-GCM using `TOTP_ENCRYPTION_KEY` and stored as
+  `iv:authTag:ciphertext`. The key must decode to 32 bytes. Existing plaintext
+  secrets are re-encrypted lazily on first use; operators can also run the
+  one-time `npm run migrate:totp` migration in `backend/` (or
+  `npm run migrate:totp:prod` from a compiled deployment). In Docker:
+  `docker compose exec backend node dist/scripts/migrate-totp-secrets.js`.
 
 Relevant environment variables:
 
@@ -128,12 +147,19 @@ Relevant environment variables:
 | `JWT_EXPIRES_IN` | `15m` | Access-token lifetime |
 | `JWT_REFRESH_EXPIRES_IN` | `7d` | Sliding refresh-token lifetime |
 | `REFRESH_SESSION_ABSOLUTE_TTL` | `30d` | Maximum lifetime of a login family |
+| `REFRESH_SESSION_IDLE_TTL` | unset | Optional inactivity timeout for a login family |
 | `REFRESH_REUSE_GRACE_SECONDS` | `30` | Concurrent-tab rotation grace window |
+| `TOTP_ENCRYPTION_KEY` | required in production | 32-byte AES-256-GCM key for TOTP secrets |
 | `TOKEN_VERSION_CACHE_TTL_SECONDS` | `60` | Redis cache TTL for tokenVersion |
 | `RATE_LIMIT_LOGIN_WINDOW_MS` | `900000` | Failed-login limiter window |
 | `RATE_LIMIT_LOGIN_MAX` | `10` | Failed logins per email+IP per window |
 | `RATE_LIMIT_PASSWORD_RESET_WINDOW_MS` | `3600000` | Forgot-password limiter window |
 | `RATE_LIMIT_PASSWORD_RESET_MAX` | `5` | Forgot-password requests per email+IP per window |
+| `PASSWORD_BREACH_CHECK_ENABLED` | `false` | Optional HIBP k-anonymity password check |
+
+Generate a TOTP key with
+`node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`.
+Docker Compose requires `TOTP_ENCRYPTION_KEY` alongside the JWT secrets.
 
 ## Running tests
 

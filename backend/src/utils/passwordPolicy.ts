@@ -1,13 +1,12 @@
 /**
  * Central password policy for user-chosen credentials.
  *
- * The policy favors length over mandatory character-class complexity: a
- * 12-character minimum with at least three of four character classes is easier
- * for users to satisfy with passphrases while still blocking the weakest
- * passwords. Callers should surface the returned message directly.
+ * Phase 5 sets an 8-character minimum and 128-character maximum. Common
+ * passwords are still rejected, and callers should surface the returned message
+ * directly.
  */
 
-export const PASSWORD_MIN_LENGTH = 12;
+export const PASSWORD_MIN_LENGTH = 8;
 export const PASSWORD_MAX_LENGTH = 128;
 
 const COMMON_PASSWORDS = new Set([
@@ -43,17 +42,6 @@ export function validatePassword(password: unknown): string | null {
 
   if (password.length > PASSWORD_MAX_LENGTH) {
     return `Password must be at most ${PASSWORD_MAX_LENGTH} characters long.`;
-  }
-
-  const classes = [
-    /[a-z]/.test(password),
-    /[A-Z]/.test(password),
-    /\d/.test(password),
-    /[^A-Za-z0-9]/.test(password),
-  ].filter(Boolean).length;
-
-  if (classes < 3) {
-    return 'Password must include at least three of: lowercase letters, uppercase letters, numbers, and symbols.';
   }
 
   if (COMMON_PASSWORDS.has(password.toLowerCase())) {

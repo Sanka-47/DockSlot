@@ -4,6 +4,7 @@ import { UserRole } from '@prisma/client';
 import { invitationRepository } from '../repositories/invitation.repository';
 import { securityConfig } from '../config/security.config';
 import { assertValidPassword } from '../utils/passwordPolicy';
+import { assertPasswordNotBreached } from '../utils/passwordBreach';
 import { signAccessToken, signRefreshToken } from '../utils/jwt.utils';
 import { emailService } from './email.service';
 import { authService } from './auth.service';
@@ -174,6 +175,7 @@ export class InvitationService {
     }
 
     assertValidPassword(password);
+    await assertPasswordNotBreached(password);
 
     const invitation = await invitationRepository.findByToken(token);
 

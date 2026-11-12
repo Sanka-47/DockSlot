@@ -5,6 +5,7 @@ import { userRepository } from '../repositories/user.repository';
 import { securityConfig } from '../config/security.config';
 import { emailService } from './email.service';
 import { authService } from './auth.service';
+import { createVerificationToken } from '../utils/verificationToken';
 import redis from '../config/redis';
 
 export interface InviteUserInput {
@@ -92,8 +93,8 @@ export class UserService {
     const temporaryPassword = crypto.randomBytes(32).toString('hex');
     const passwordHash = await bcrypt.hash(temporaryPassword, securityConfig.saltRounds);
 
-    // Generate verification/invitation token
-    const verificationToken = crypto.randomBytes(32).toString('hex');
+    // Generate a 24-hour verification/invitation token; persist only its hash.
+    const verification = createVerificationToken();
 
     // Create user record linked to requester's organization
     const newUser = await userRepository.createInvitedUser({
@@ -103,12 +104,13 @@ export class UserService {
       organizationId: requester.organizationId,
       isActive: true,
       isEmailVerified: false,
-      verificationToken,
+      verificationToken: verification.tokenHash,
+      verificationTokenExpires: verification.expiresAt,
     });
 
     // Dispatch invitation email asynchronously
     emailService
-      .sendInvitationEmail(newUser.email, organization.name, targetRole, verificationToken)
+      .sendInvitationEmail(newUser.email, organization.name, targetRole, verification.token)
       .catch((err) => {
         console.error('[UserService] Failed to dispatch invitation email:', err);
       });

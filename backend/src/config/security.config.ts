@@ -8,6 +8,10 @@ validateEnv(process.env);
 
 const TEST_ACCESS_SECRET = 'dockslot-test-access-secret-not-for-production';
 const TEST_REFRESH_SECRET = 'dockslot-test-refresh-secret-not-for-production';
+const TEST_TOTP_ENCRYPTION_KEY = Buffer.from(
+  '0123456789abcdef0123456789abcdef',
+  'utf8'
+);
 
 /**
  * Reads the secret for the requested token type.
@@ -47,6 +51,14 @@ function parseEnvString(value: string | undefined, fallback: string): string {
   return cleaned || fallback;
 }
 
+function parseEnvBoolean(value: string | undefined, fallback: boolean): boolean {
+  if (!value) return fallback;
+  const cleaned = value.split('#')[0].trim().toLowerCase();
+  if (['true', '1', 'yes', 'on'].includes(cleaned)) return true;
+  if (['false', '0', 'no', 'off'].includes(cleaned)) return false;
+  return fallback;
+}
+
 /**
  * Parses a duration string such as "7d", "60m", "900s" (or a raw number of
  * seconds) into milliseconds. Used to align the refresh cookie's Max-Age with
@@ -79,6 +91,32 @@ function parseSameSite(value: string | undefined, fallback: RefreshSameSite): Re
   return (REFRESH_SAME_SITE_VALUES as readonly string[]).includes(cleaned)
     ? (cleaned as RefreshSameSite)
     : fallback;
+}
+
+const TOTP_KEY_PLACEHOLDER = 'replace-with-a-32-byte-base64-key';
+
+/**
+ * Decodes the TOTP encryption key. Both 64-character hex and base64 encodings
+ * are accepted, but the decoded value must be exactly 32 bytes (AES-256).
+ */
+function parseTotpEncryptionKey(value: string | undefined): Buffer {
+  const cleaned = parseEnvString(value, '');
+  if (!cleaned || cleaned === TOTP_KEY_PLACEHOLDER) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('TOTP_ENCRYPTION_KEY is required for production 2FA.');
+    }
+    return TEST_TOTP_ENCRYPTION_KEY;
+  }
+
+  const key = /^[0-9a-f]{64}$/i.test(cleaned)
+    ? Buffer.from(cleaned, 'hex')
+    : Buffer.from(cleaned, 'base64');
+
+  if (key.length !== 32) {
+    throw new Error('TOTP_ENCRYPTION_KEY must decode to exactly 32 bytes.');
+  }
+
+  return key;
 }
 
 export const securityConfig = {
@@ -116,6 +154,16 @@ export const securityConfig = {
       30 * 24 * 60 * 60 * 1000
     );
   },
+  /**
+   * Optional idle timeout for a refresh-token family. Unset/empty disables the
+   * idle check; the absolute family lifetime still applies.
+   */
+  get refreshSessionIdleTtlMs(): number | null {
+    const raw = parseEnvString(process.env.REFRESH_SESSION_IDLE_TTL, '');
+    if (!raw) return null;
+    const parsed = parseDurationToMs(raw, 0);
+    return parsed > 0 ? parsed : null;
+  },
   /** Short window in which a rotated token can be retried by a concurrent tab. */
   get refreshReuseGraceMs(): number {
     return parseEnvInt(process.env.REFRESH_REUSE_GRACE_SECONDS, 30) * 1000;
@@ -125,6 +173,14 @@ export const securityConfig = {
   },
   get saltRounds(): number {
     return parseEnvInt(process.env.BCRYPT_SALT_ROUNDS, 10);
+  },
+  /** AES-256-GCM key used to encrypt TOTP secrets at rest. */
+  get totpEncryptionKey(): Buffer {
+    return parseTotpEncryptionKey(process.env.TOTP_ENCRYPTION_KEY);
+  },
+  /** Optional HaveIBeenPwned k-anonymity check for new passwords. */
+  get passwordBreachCheckEnabled(): boolean {
+    return parseEnvBoolean(process.env.PASSWORD_BREACH_CHECK_ENABLED, false);
   },
   get rateLimitWindowMs(): number {
     return parseEnvInt(process.env.RATE_LIMIT_WINDOW_MS, 60000);

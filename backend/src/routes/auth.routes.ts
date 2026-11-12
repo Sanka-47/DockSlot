@@ -54,7 +54,7 @@ const router = Router();
  *               password:
  *                 type: string
  *                 format: password
- *                 minLength: 12
+ *                 minLength: 8
  *                 example: SecurePass123!
  *               organizationName:
  *                 type: string
@@ -216,7 +216,7 @@ router.post('/logout', logout);
  *               password:
  *                 type: string
  *                 format: password
- *                 minLength: 12
+ *                 minLength: 8
  *                 example: Password123!
  *     responses:
  *       201:
@@ -344,7 +344,7 @@ router.post('/forgot-password', passwordResetRateLimiter, forgotPassword);
  *                 type: string
  *               newPassword:
  *                 type: string
- *                 minLength: 12
+ *                 minLength: 8
  *     responses:
  *       200:
  *         description: Password updated successfully
@@ -394,7 +394,7 @@ router.get('/me', authenticate, getMe);
  *                 type: string
  *               newPassword:
  *                 type: string
- *                 minLength: 12
+ *                 minLength: 8
  *     responses:
  *       200:
  *         description: Password changed successfully

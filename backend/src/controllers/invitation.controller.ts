@@ -26,7 +26,9 @@ export const inviteUser = async (req: Request, res: Response): Promise<void> => 
     );
 
     const inviteUrl = `${mailConfig.frontendUrl}/accept-invite?token=${result.invitation.token}`;
-    console.log(`[InvitationController] Invitation link for ${email} (${result.invitation.role}): ${inviteUrl}`);
+    console.log(
+      `[InvitationController] Invitation created for ${email} (${result.invitation.role})`
+    );
 
     res.status(201).json({
       success: true,

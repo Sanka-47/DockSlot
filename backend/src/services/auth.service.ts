@@ -15,7 +15,9 @@ import {
 } from '../utils/jwt.utils';
 import { emailService } from './email.service';
 import { assertValidPassword } from '../utils/passwordPolicy';
+import { assertPasswordNotBreached } from '../utils/passwordBreach';
 import { hashOpaqueToken } from '../utils/tokenHash';
+import { createVerificationToken } from '../utils/verificationToken';
 import redis from '../config/redis';
 
 export interface SessionRequestContext {
@@ -337,6 +339,19 @@ export class AuthService {
       };
     }
 
+    const idleTtlMs = securityConfig.refreshSessionIdleTtlMs;
+    if (
+      idleTtlMs !== null &&
+      session.lastUsedAt &&
+      now.getTime() - session.lastUsedAt.getTime() > idleTtlMs
+    ) {
+      await refreshSessionRepository.revokeFamily(session.familyId, 'IDLE_TIMEOUT');
+      throw {
+        status: 401,
+        message: 'Refresh session expired due to inactivity. Please login again.',
+      };
+    }
+
     if (session.expiresAt <= now || session.familyExpiresAt <= now) {
       await refreshSessionRepository.revokeByJti(session.jti, 'EXPIRED');
       throw { status: 401, message: 'Invalid or expired refresh token.' };
@@ -508,7 +523,7 @@ export class AuthService {
    * Register a new user.
    * Requirement: Creating an account creates a new organization (warehouse or carrier)
    * and that user automatically becomes its Admin.
-   * Also generates verificationToken and sends a verification email.
+   * Also creates a hashed 24-hour verification token and sends the raw value by email.
    */
   public async register(input: RegisterInput): Promise<AuthResponse> {
     const { email, password, organizationName, organizationType, organizationId, role } = input;
@@ -518,6 +533,7 @@ export class AuthService {
     }
 
     assertValidPassword(password);
+    await assertPasswordNotBreached(password);
 
     const normalizedEmail = email.toLowerCase().trim();
 
@@ -531,8 +547,8 @@ export class AuthService {
     // Hash password before transaction
     const passwordHash = await bcrypt.hash(password, securityConfig.saltRounds);
 
-    // Generate secure email verification token
-    const verificationToken = crypto.randomBytes(32).toString('hex');
+    // Generate a 24-hour email verification token. Only its hash is stored.
+    const verification = createVerificationToken();
 
     // Scenario A: Standard Sign Up (Creates a new Organization & designates user as its Admin)
     if (!organizationId) {
@@ -566,7 +582,8 @@ export class AuthService {
             organizationId: newOrg.id,
             isActive: true,
             isEmailVerified: false,
-            verificationToken,
+            verificationToken: verification.tokenHash,
+            verificationTokenExpires: verification.expiresAt,
           },
           tx
         );
@@ -575,7 +592,7 @@ export class AuthService {
       });
 
       // Send verification email asynchronously
-      emailService.sendVerificationEmail(user.email, verificationToken).catch((err) => {
+      emailService.sendVerificationEmail(user.email, verification.token).catch((err) => {
         console.error('[AuthService] Error dispatching verification email:', err);
       });
 
@@ -609,11 +626,12 @@ export class AuthService {
       organizationId: existingOrg.id,
       isActive: true,
       isEmailVerified: false,
-      verificationToken,
+      verificationToken: verification.tokenHash,
+      verificationTokenExpires: verification.expiresAt,
     });
 
     // Send verification email asynchronously
-    emailService.sendVerificationEmail(user.email, verificationToken).catch((err) => {
+    emailService.sendVerificationEmail(user.email, verification.token).catch((err) => {
       console.error('[AuthService] Error dispatching verification email:', err);
     });
 
@@ -631,10 +649,24 @@ export class AuthService {
       throw { status: 400, message: 'Verification token is required.' };
     }
 
-    const user = await authRepository.findUserByVerificationToken(token.trim());
+    const user = await authRepository.findUserByVerificationToken(
+      hashOpaqueToken(token.trim())
+    );
 
     if (!user) {
       throw { status: 400, message: 'Invalid or expired verification token.' };
+    }
+
+    if (!user.verificationTokenExpires || user.verificationTokenExpires <= new Date()) {
+      // Consume the expired token so it cannot be retried later.
+      await authRepository.updateUser(user.id, {
+        verificationToken: null,
+        verificationTokenExpires: null,
+      });
+      throw {
+        status: 400,
+        message: 'Verification token has expired. Please request a new verification email.',
+      };
     }
 
     await authRepository.markEmailVerified(user.id);
@@ -668,13 +700,17 @@ export class AuthService {
       return { message: 'Email is already verified.' };
     }
 
-    // Generate a fresh token
-    const verificationToken = crypto.randomBytes(32).toString('hex');
+    // Generate a fresh 24-hour token; persist only its hash.
+    const verification = createVerificationToken();
 
-    await authRepository.setVerificationToken(user.id, verificationToken);
+    await authRepository.setVerificationToken(
+      user.id,
+      verification.tokenHash,
+      verification.expiresAt
+    );
 
-    // Send verification email
-    await emailService.sendVerificationEmail(user.email, verificationToken);
+    // Send verification email with the raw token.
+    await emailService.sendVerificationEmail(user.email, verification.token);
 
     return { message: 'A new verification email has been sent to your email address.' };
   }
@@ -827,6 +863,7 @@ export class AuthService {
     }
 
     assertValidPassword(newPassword);
+    await assertPasswordNotBreached(newPassword);
 
     const user = await authRepository.findUserByResetToken(hashOpaqueToken(token.trim()));
 
@@ -860,6 +897,7 @@ export class AuthService {
     }
 
     assertValidPassword(newPassword);
+    await assertPasswordNotBreached(newPassword);
 
     if (oldPassword === newPassword) {
       throw { status: 400, message: 'New password must be different from the current password.' };

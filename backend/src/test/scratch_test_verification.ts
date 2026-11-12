@@ -1,6 +1,7 @@
 import app from '../index';
 import http from 'http';
 import { prisma } from '../config/db.config';
+import { hashOpaqueToken } from '../utils/tokenHash';
 
 async function runVerificationTests() {
   console.log('🧪 Starting Email Verification & Middleware Guard Integration Tests...');
@@ -41,10 +42,26 @@ async function runVerificationTests() {
       hasToken: !!dbUserBefore?.verificationToken,
     });
 
-    if (dbUserBefore?.isEmailVerified !== false || !dbUserBefore?.verificationToken) {
-      throw new Error('User was not saved with isEmailVerified: false and verificationToken!');
+    if (
+      dbUserBefore?.isEmailVerified !== false ||
+      !dbUserBefore?.verificationToken ||
+      !dbUserBefore?.verificationTokenExpires
+    ) {
+      throw new Error(
+        'User was not saved with isEmailVerified: false, verificationToken, and expiry!'
+      );
     }
-    const verificationToken = dbUserBefore.verificationToken;
+
+    // The database stores only the hash, so set a known raw token for this
+    // scratch test instead of trying to recover the emailed value.
+    const verificationToken = `scratch-verify-${Date.now()}`;
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        verificationToken: hashOpaqueToken(verificationToken),
+        verificationTokenExpires: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      },
+    });
 
     // 2. Attempt sensitive booking creation while unverified
     console.log('\n2. Attempting POST /api/bookings while UNVERIFIED (should fail with 403)...');

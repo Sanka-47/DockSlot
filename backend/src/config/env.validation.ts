@@ -15,8 +15,16 @@ const PLACEHOLDER_SECRETS = new Set([
   'default_secret_key',
 ]);
 
+const TOTP_KEY_PLACEHOLDER = 'replace-with-a-32-byte-base64-key';
+
 function readEnv(env: NodeJS.ProcessEnv, key: string): string {
   return (env[key] ?? '').split('#')[0].trim();
+}
+
+function decodeTotpKey(value: string): Buffer {
+  return /^[0-9a-f]{64}$/i.test(value)
+    ? Buffer.from(value, 'hex')
+    : Buffer.from(value, 'base64');
 }
 
 export interface ValidateEnvOptions {
@@ -72,6 +80,15 @@ export function validateEnv(
     }
     if (refreshSecret && legacySecret && refreshSecret === legacySecret) {
       errors.push('JWT_REFRESH_SECRET must differ from the legacy JWT_SECRET.');
+    }
+
+    const totpKey = readEnv(env, 'TOTP_ENCRYPTION_KEY');
+    if (!totpKey) {
+      errors.push('TOTP_ENCRYPTION_KEY is required when NODE_ENV=production.');
+    } else if (totpKey === TOTP_KEY_PLACEHOLDER) {
+      errors.push('TOTP_ENCRYPTION_KEY must not use an example/placeholder value.');
+    } else if (decodeTotpKey(totpKey).length !== 32) {
+      errors.push('TOTP_ENCRYPTION_KEY must decode to exactly 32 bytes.');
     }
   } else {
     // Local development and tests may keep the legacy single secret until the

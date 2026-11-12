@@ -31,9 +31,9 @@ export const authRepository = {
     });
   },
 
-  findUserByVerificationToken(token: string) {
+  findUserByVerificationToken(tokenHash: string) {
     return db.user.findUnique({
-      where: { verificationToken: token },
+      where: { verificationToken: tokenHash },
     });
   },
 
@@ -127,11 +127,19 @@ export const authRepository = {
     return this.updateUser(userId, {
       isEmailVerified: true,
       verificationToken: null,
+      verificationTokenExpires: null,
     });
   },
 
-  setVerificationToken(userId: number, verificationToken: string) {
-    return this.updateUser(userId, { verificationToken });
+  setVerificationToken(
+    userId: number,
+    verificationTokenHash: string,
+    expiresAt: Date
+  ) {
+    return this.updateUser(userId, {
+      verificationToken: verificationTokenHash,
+      verificationTokenExpires: expiresAt,
+    });
   },
 
   setPasswordResetToken(userId: number, token: string, expiresAt: Date) {
