@@ -6,9 +6,10 @@ import {
 } from '../src/utils/totpCrypto';
 
 const ORIGINAL_KEY = process.env.TOTP_ENCRYPTION_KEY;
-const testKey = Buffer.from('0123456789abcdef0123456789abcdef', 'utf8').toString(
-  'base64'
-);
+// Deterministic test-only keys; no secret-shaped literals are committed.
+const testKey = Buffer.alloc(32, 0x42).toString('base64');
+const otherKey = Buffer.alloc(32, 0x43).toString('base64');
+const plaintextSecret = 'test-only-totp-value';
 
 describe('TOTP secret encryption', () => {
   beforeEach(() => {
@@ -21,26 +22,22 @@ describe('TOTP secret encryption', () => {
   });
 
   it('round-trips a secret in iv:authTag:ciphertext format', () => {
-    const secret = 'JBSWY3DPEHPK3PXP';
-    const encrypted = encryptTotpSecret(secret);
+    const encrypted = encryptTotpSecret(plaintextSecret);
 
     expect(encrypted.split(':')).toHaveLength(3);
-    expect(encrypted).not.toContain(secret);
+    expect(encrypted).not.toContain(plaintextSecret);
     expect(isEncryptedTotpSecret(encrypted)).toBe(true);
-    expect(decryptTotpSecret(encrypted)).toBe(secret);
+    expect(decryptTotpSecret(encrypted)).toBe(plaintextSecret);
   });
 
   it('returns legacy plaintext values unchanged for lazy migration', () => {
-    expect(isEncryptedTotpSecret('JBSWY3DPEHPK3PXP')).toBe(false);
-    expect(decryptTotpSecret('JBSWY3DPEHPK3PXP')).toBe('JBSWY3DPEHPK3PXP');
+    expect(isEncryptedTotpSecret(plaintextSecret)).toBe(false);
+    expect(decryptTotpSecret(plaintextSecret)).toBe(plaintextSecret);
   });
 
   it('fails authentication when the key changes', () => {
-    const encrypted = encryptTotpSecret('JBSWY3DPEHPK3PXP');
-    process.env.TOTP_ENCRYPTION_KEY = Buffer.from(
-      'abcdef0123456789abcdef0123456789',
-      'utf8'
-    ).toString('base64');
+    const encrypted = encryptTotpSecret(plaintextSecret);
+    process.env.TOTP_ENCRYPTION_KEY = otherKey;
 
     expect(() => decryptTotpSecret(encrypted)).toThrow(/unable to decrypt/i);
   });

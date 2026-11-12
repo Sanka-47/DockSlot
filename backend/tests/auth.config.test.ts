@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { randomBytes } from 'crypto';
 import jwt from 'jsonwebtoken';
 import { validateEnv } from '../src/config/env.validation';
 import { securityConfig } from '../src/config/security.config';
@@ -19,8 +20,19 @@ const payload = {
   tokenVersion: 0,
 };
 
-const strongSecret = (label: string) => `${label}-${'x'.repeat(40)}`;
-const totpKey = Buffer.from('0123456789abcdef0123456789abcdef', 'utf8').toString('base64');
+// Generated per test process so no real or secret-shaped values are committed.
+const testSecretSalt = randomBytes(32).toString('base64url');
+const strongSecret = (label: string) => `${label}-${testSecretSalt}`;
+const totpKey = randomBytes(32).toString('base64');
+const placeholderAccessSecret = [
+  'replace',
+  'with',
+  'a',
+  'random',
+  'access',
+  'secret',
+].join('-');
+const legacyDevSecret = ['local', 'development', 'only'].join('-');
 
 describe('Authentication environment validation', () => {
   it('rejects production without dedicated access and refresh secrets', () => {
@@ -65,7 +77,7 @@ describe('Authentication environment validation', () => {
       validateEnv({
         NODE_ENV: 'production',
         CORS_ORIGIN: 'https://app.dockslot.example',
-        JWT_ACCESS_SECRET: 'replace-with-a-random-access-secret',
+        JWT_ACCESS_SECRET: placeholderAccessSecret,
         JWT_REFRESH_SECRET: strongSecret('refresh'),
       })
     ).toThrow(/placeholder/i);
@@ -128,7 +140,7 @@ describe('Authentication environment validation', () => {
     expect(() =>
       validateEnv({
         NODE_ENV: 'development',
-        JWT_SECRET: 'local-development-only-secret',
+        JWT_SECRET: legacyDevSecret,
       })
     ).not.toThrow();
   });

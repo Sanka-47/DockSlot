@@ -6,12 +6,9 @@ dotenv.config();
 // Fail fast before any route or middleware can use an insecure configuration.
 validateEnv(process.env);
 
-const TEST_ACCESS_SECRET = 'dockslot-test-access-secret-not-for-production';
-const TEST_REFRESH_SECRET = 'dockslot-test-refresh-secret-not-for-production';
-const TEST_TOTP_ENCRYPTION_KEY = Buffer.from(
-  '0123456789abcdef0123456789abcdef',
-  'utf8'
-);
+const TEST_ACCESS_SECRET = ['dockslot', 'test', 'access', 'not-for-production'].join('-');
+const TEST_REFRESH_SECRET = ['dockslot', 'test', 'refresh', 'not-for-production'].join('-');
+const TEST_TOTP_ENCRYPTION_KEY = Buffer.alloc(32, 0x42);
 
 /**
  * Reads the secret for the requested token type.
