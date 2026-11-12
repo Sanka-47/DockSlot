@@ -138,6 +138,19 @@ export const securityConfig = {
   get rateLimit2faMax(): number {
     return parseEnvInt(process.env.RATE_LIMIT_2FA_MAX, 5);
   },
+  /** Independent, longer window for credential endpoints. */
+  get rateLimitLoginWindowMs(): number {
+    return parseEnvInt(process.env.RATE_LIMIT_LOGIN_WINDOW_MS, 15 * 60 * 1000);
+  },
+  get rateLimitLoginMax(): number {
+    return parseEnvInt(process.env.RATE_LIMIT_LOGIN_MAX, 10);
+  },
+  get rateLimitPasswordResetWindowMs(): number {
+    return parseEnvInt(process.env.RATE_LIMIT_PASSWORD_RESET_WINDOW_MS, 60 * 60 * 1000);
+  },
+  get rateLimitPasswordResetMax(): number {
+    return parseEnvInt(process.env.RATE_LIMIT_PASSWORD_RESET_MAX, 5);
+  },
   get maxFailedLoginAttempts(): number {
     return parseEnvInt(process.env.MAX_FAILED_LOGIN_ATTEMPTS, 5);
   },
@@ -198,6 +211,18 @@ export const securityConfig = {
   get RATE_LIMIT_2FA_MAX(): number {
     return this.rateLimit2faMax;
   },
+  get RATE_LIMIT_LOGIN_WINDOW_MS(): number {
+    return this.rateLimitLoginWindowMs;
+  },
+  get RATE_LIMIT_LOGIN_MAX(): number {
+    return this.rateLimitLoginMax;
+  },
+  get RATE_LIMIT_PASSWORD_RESET_WINDOW_MS(): number {
+    return this.rateLimitPasswordResetWindowMs;
+  },
+  get RATE_LIMIT_PASSWORD_RESET_MAX(): number {
+    return this.rateLimitPasswordResetMax;
+  },
   get MAX_FAILED_LOGIN_ATTEMPTS(): number {
     return this.maxFailedLoginAttempts;
   },
@@ -218,6 +243,10 @@ export const RATE_LIMIT_WINDOW_MS = securityConfig.rateLimitWindowMs;
 export const RATE_LIMIT_API_MAX = securityConfig.rateLimitApiMax;
 export const RATE_LIMIT_BOOKING_MAX = securityConfig.rateLimitBookingMax;
 export const RATE_LIMIT_2FA_MAX = securityConfig.rateLimit2faMax;
+export const RATE_LIMIT_LOGIN_WINDOW_MS = securityConfig.rateLimitLoginWindowMs;
+export const RATE_LIMIT_LOGIN_MAX = securityConfig.rateLimitLoginMax;
+export const RATE_LIMIT_PASSWORD_RESET_WINDOW_MS = securityConfig.rateLimitPasswordResetWindowMs;
+export const RATE_LIMIT_PASSWORD_RESET_MAX = securityConfig.rateLimitPasswordResetMax;
 export const MAX_FAILED_LOGIN_ATTEMPTS = securityConfig.maxFailedLoginAttempts;
 export const LOGIN_LOCKOUT_DURATION_MINUTES = securityConfig.loginLockoutDurationMinutes;
 

@@ -14,6 +14,8 @@ import {
   RefreshTokenOptions,
 } from '../utils/jwt.utils';
 import { emailService } from './email.service';
+import { assertValidPassword } from '../utils/passwordPolicy';
+import { hashOpaqueToken } from '../utils/tokenHash';
 import redis from '../config/redis';
 
 export interface SessionRequestContext {
@@ -515,9 +517,7 @@ export class AuthService {
       throw { status: 400, message: 'Email and password are required.' };
     }
 
-    if (password.length < 6) {
-      throw { status: 400, message: 'Password must be at least 6 characters long.' };
-    }
+    assertValidPassword(password);
 
     const normalizedEmail = email.toLowerCase().trim();
 
@@ -799,11 +799,16 @@ export class AuthService {
       return genericSuccess;
     }
 
-    // Generate secure random reset token and set expiration (1 hour from now)
+    // Generate secure random reset token and set expiration (1 hour from now).
+    // Only the hash is persisted; the raw token is sent to the user's email.
     const resetPasswordToken = crypto.randomBytes(32).toString('hex');
     const resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000);
 
-    await authRepository.setPasswordResetToken(user.id, resetPasswordToken, resetPasswordExpires);
+    await authRepository.setPasswordResetToken(
+      user.id,
+      hashOpaqueToken(resetPasswordToken),
+      resetPasswordExpires
+    );
 
     // Send reset email via Nodemailer
     emailService.sendPasswordResetEmail(user.email, resetPasswordToken).catch((err) => {
@@ -821,11 +826,9 @@ export class AuthService {
       throw { status: 400, message: 'Password reset token is required.' };
     }
 
-    if (!newPassword || newPassword.length < 6) {
-      throw { status: 400, message: 'New password must be at least 6 characters long.' };
-    }
+    assertValidPassword(newPassword);
 
-    const user = await authRepository.findUserByResetToken(token.trim());
+    const user = await authRepository.findUserByResetToken(hashOpaqueToken(token.trim()));
 
     if (!user) {
       throw { status: 400, message: 'Invalid or expired password reset token.' };
@@ -856,8 +859,10 @@ export class AuthService {
       throw { status: 400, message: 'Current password and new password are required.' };
     }
 
-    if (newPassword.length < 6) {
-      throw { status: 400, message: 'New password must be at least 6 characters long.' };
+    assertValidPassword(newPassword);
+
+    if (oldPassword === newPassword) {
+      throw { status: 400, message: 'New password must be different from the current password.' };
     }
 
     const user = await authRepository.findUserById(userId);

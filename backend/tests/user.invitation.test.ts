@@ -385,20 +385,20 @@ describe('Secure Token-Based Invitation & Account Creation Workflow Tests', () =
     it('should reject accept-invite with missing or invalid token', async () => {
       const res = await request(app)
         .post('/api/auth/accept-invite')
-        .send({ token: 'non_existent_token_123', password: 'password123' });
+        .send({ token: 'non_existent_token_123', password: 'ValidPassword123!' });
 
       expect(res.status).toBe(404);
       expect(res.body.success).toBe(false);
     });
 
-    it('should reject accept-invite with too short password (< 6 chars)', async () => {
+    it('should reject accept-invite with too short password (< 12 chars)', async () => {
       const res = await request(app)
         .post('/api/auth/accept-invite')
         .send({ token: pendingToken, password: '123' });
 
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
-      expect(res.body.message).toMatch(/at least 6 characters/i);
+      expect(res.body.message).toMatch(/at least 12 characters/i);
     });
 
     it('should reject accept-invite if the token has expired', async () => {

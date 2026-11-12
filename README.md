@@ -102,6 +102,24 @@ All seeded accounts are pre-verified and share the same password: `12345678`
 - **Redis** caches `tokenVersion` for `TOKEN_VERSION_CACHE_TTL_SECONDS` (default
   60) but MySQL is the source of truth. Revocation paths delete the cache key
   instead of waiting for that TTL to expire.
+- **Security headers:** Helmet applies a strict CSP for API responses,
+  `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+  `Referrer-Policy: no-referrer`, and a restrictive `Permissions-Policy`. HSTS
+  (one year, includeSubDomains, preload) is enabled automatically when
+  `NODE_ENV=production`. Swagger UI gets a separately scoped, relaxed CSP.
+- **Caching:** every `/api/auth` response is sent with `Cache-Control: no-store`
+  so access tokens and identity data cannot be cached by browsers or proxies.
+- **Credential abuse controls:** failed logins are limited per normalized email +
+  IP (`RATE_LIMIT_LOGIN_MAX` / `RATE_LIMIT_LOGIN_WINDOW_MS`, default 10 per 15
+  minutes), on top of the per-account lockout. Forgot-password has its own
+  email+IP limiter and a one-hour reset-token lifetime.
+- **Password policy:** new/changed/reset passwords must be 12–128 characters and
+  include at least three of lowercase, uppercase, numbers, and symbols. The
+  seeded demo passwords (`12345678`) are legacy demo credentials only; they
+  cannot be used to register or change a password.
+- **Credential storage:** passwords are bcrypt hashes, refresh sessions store
+  only the token `jti` (not the token), and password-reset tokens are stored as
+  SHA-256 hashes. The raw reset token exists only in the email link.
 
 Relevant environment variables:
 
@@ -112,6 +130,10 @@ Relevant environment variables:
 | `REFRESH_SESSION_ABSOLUTE_TTL` | `30d` | Maximum lifetime of a login family |
 | `REFRESH_REUSE_GRACE_SECONDS` | `30` | Concurrent-tab rotation grace window |
 | `TOKEN_VERSION_CACHE_TTL_SECONDS` | `60` | Redis cache TTL for tokenVersion |
+| `RATE_LIMIT_LOGIN_WINDOW_MS` | `900000` | Failed-login limiter window |
+| `RATE_LIMIT_LOGIN_MAX` | `10` | Failed logins per email+IP per window |
+| `RATE_LIMIT_PASSWORD_RESET_WINDOW_MS` | `3600000` | Forgot-password limiter window |
+| `RATE_LIMIT_PASSWORD_RESET_MAX` | `5` | Forgot-password requests per email+IP per window |
 
 ## Running tests
 

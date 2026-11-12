@@ -1,4 +1,5 @@
 import { authApi } from '../api/auth.api';
+import { validatePassword } from '../utils/passwordPolicy';
 
 export interface InvitationDetails {
   email: string;
@@ -30,8 +31,9 @@ export const userRegisterModalService = {
       return 'Please enter a password.';
     }
 
-    if (password.length < 6) {
-      return 'Password must be at least 6 characters long.';
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      return passwordError;
     }
 
     if (password !== confirmPassword) {

@@ -3,6 +3,7 @@ import bcrypt from 'bcrypt';
 import { UserRole } from '@prisma/client';
 import { invitationRepository } from '../repositories/invitation.repository';
 import { securityConfig } from '../config/security.config';
+import { assertValidPassword } from '../utils/passwordPolicy';
 import { signAccessToken, signRefreshToken } from '../utils/jwt.utils';
 import { emailService } from './email.service';
 import { authService } from './auth.service';
@@ -172,9 +173,7 @@ export class InvitationService {
       throw { status: 400, message: 'Invitation token is required.' };
     }
 
-    if (!password || typeof password !== 'string' || password.length < 6) {
-      throw { status: 400, message: 'Password must be at least 6 characters long.' };
-    }
+    assertValidPassword(password);
 
     const invitation = await invitationRepository.findByToken(token);
 

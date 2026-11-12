@@ -5,6 +5,7 @@ import app from '../src/index';
 import { prisma } from '../src/config/db.config';
 import redis from '../src/config/redis';
 import { securityConfig } from '../src/config/security.config';
+import { hashOpaqueToken } from '../src/utils/tokenHash';
 import { OrganizationType, UserRole } from '@prisma/client';
 
 const COOKIE_NAME = securityConfig.refreshCookieName;
@@ -117,10 +118,18 @@ describe('Password changes revoke existing credentials', () => {
     await prisma.user.update({
       where: { id: user.id },
       data: {
-        resetPasswordToken: resetToken,
+        // Reset tokens are bearer credentials and must be stored hashed.
+        resetPasswordToken: hashOpaqueToken(resetToken),
         resetPasswordExpires: new Date(Date.now() + 60 * 60 * 1000),
       },
     });
+
+    const storedToken = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { resetPasswordToken: true },
+    });
+    expect(storedToken?.resetPasswordToken).toBe(hashOpaqueToken(resetToken));
+    expect(storedToken?.resetPasswordToken).not.toBe(resetToken);
 
     const res = await request(app)
       .post('/api/auth/reset-password')

@@ -20,7 +20,11 @@ import {
   get2FAStatus,
 } from '../controllers/auth.controller';
 import { authenticate } from '../middleware/auth.middleware';
-import { twoFactorRateLimiter } from '../middleware/rateLimit.middleware';
+import {
+  loginRateLimiter,
+  passwordResetRateLimiter,
+  twoFactorRateLimiter,
+} from '../middleware/rateLimit.middleware';
 
 const router = Router();
 
@@ -50,7 +54,7 @@ const router = Router();
  *               password:
  *                 type: string
  *                 format: password
- *                 minLength: 6
+ *                 minLength: 12
  *                 example: SecurePass123!
  *               organizationName:
  *                 type: string
@@ -86,6 +90,7 @@ router.post('/register', register);
  *     description: |
  *       Authenticates a user by email and password and issues signed JWT tokens (JWT_EXPIRES_IN, JWT_REFRESH_EXPIRES_IN).
  *       Tracks consecutive failed login attempts and locks the account for LOGIN_LOCKOUT_DURATION_MINUTES after MAX_FAILED_LOGIN_ATTEMPTS failures.
+ *       Failed attempts are also throttled per normalized email + IP by RATE_LIMIT_LOGIN_MAX within RATE_LIMIT_LOGIN_WINDOW_MS; successful logins do not consume that budget.
  *     tags:
  *       - Authentication
  *     requestBody:
@@ -118,7 +123,7 @@ router.post('/register', register);
  *       429:
  *         description: Too many API requests (rate limit exceeded)
  */
-router.post('/login', login);
+router.post('/login', loginRateLimiter, login);
 
 /**
  * @openapi
@@ -211,7 +216,7 @@ router.post('/logout', logout);
  *               password:
  *                 type: string
  *                 format: password
- *                 minLength: 6
+ *                 minLength: 12
  *                 example: Password123!
  *     responses:
  *       201:
@@ -296,6 +301,7 @@ router.post('/resend-verification', resendVerification);
  * /auth/forgot-password:
  *   post:
  *     summary: Request a password reset link
+ *     description: Always returns a generic success response to avoid account enumeration. The raw reset token is sent by email; only its SHA-256 hash is stored. Requests are throttled per email + IP.
  *     tags:
  *       - Authentication
  *     requestBody:
@@ -314,7 +320,7 @@ router.post('/resend-verification', resendVerification);
  *       200:
  *         description: Reset email sent if account exists
  */
-router.post('/forgot-password', forgotPassword);
+router.post('/forgot-password', passwordResetRateLimiter, forgotPassword);
 
 /**
  * @openapi
@@ -338,7 +344,7 @@ router.post('/forgot-password', forgotPassword);
  *                 type: string
  *               newPassword:
  *                 type: string
- *                 minLength: 6
+ *                 minLength: 12
  *     responses:
  *       200:
  *         description: Password updated successfully
@@ -388,7 +394,7 @@ router.get('/me', authenticate, getMe);
  *                 type: string
  *               newPassword:
  *                 type: string
- *                 minLength: 6
+ *                 minLength: 12
  *     responses:
  *       200:
  *         description: Password changed successfully

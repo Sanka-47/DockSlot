@@ -6,14 +6,41 @@ import redis from '../config/redis';
 import { securityConfig } from '../config/security.config';
 
 /**
- * Dynamic RedisStore that always reads the current `RATE_LIMIT_WINDOW_MS`
- * from `securityConfig` on each increment operation.
+ * Dynamic RedisStore that resolves its window on each increment. The default
+ * resolver preserves the original global `RATE_LIMIT_WINDOW_MS` behavior;
+ * credential limiters pass their own longer window.
  */
 class ConfigurableRedisStore extends RedisStore {
+  private readonly resolveWindowMs: () => number;
+
+  constructor(
+    options: ConstructorParameters<typeof RedisStore>[0],
+    resolveWindowMs: () => number = () => securityConfig.rateLimitWindowMs
+  ) {
+    super(options);
+    this.resolveWindowMs = resolveWindowMs;
+  }
+
   override async increment(key: string) {
-    this.windowMs = securityConfig.rateLimitWindowMs;
+    this.windowMs = this.resolveWindowMs();
     return super.increment(key);
   }
+}
+
+function clientIp(req: Request): string {
+  const rawIp = req.ip || req.socket?.remoteAddress || '127.0.0.1';
+  return ipKeyGenerator(rawIp);
+}
+
+/**
+ * Credential endpoints are keyed by normalized email *and* IP. This prevents a
+ * single shared NAT/IP from exhausting every user's budget while still making
+ * distributed password guessing against one account expensive.
+ */
+function credentialKey(scope: string, req: Request): string {
+  const email =
+    typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+  return `${scope}:${email ? `email:${email}:` : ''}ip:${clientIp(req)}`;
 }
 
 /**
@@ -112,6 +139,63 @@ export const authRateLimiter = rateLimit({
   message: {
     success: false,
     message: 'Too many authentication attempts from this IP address. Please try again later.',
+  },
+});
+
+/**
+ * Login Rate Limiter:
+ * Throttles failed credential submissions per email + IP. Successful logins are
+ * skipped so legitimate users do not consume their own budget. This complements
+ * the per-account lockout in AuthService: the IP limiter slows distributed
+ * attempts across many accounts, while the account lockout stops repeated
+ * guesses against a single account.
+ */
+export const loginRateLimiter = rateLimit({
+  windowMs: securityConfig.rateLimitLoginWindowMs,
+  limit: () => securityConfig.rateLimitLoginMax,
+  standardHeaders: true,
+  legacyHeaders: true,
+  statusCode: 429,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req: Request) => credentialKey('login', req),
+  store: new ConfigurableRedisStore(
+    {
+      sendCommand: (...args: string[]) => redis.call(...args),
+      prefix: 'rl:login:',
+    },
+    () => securityConfig.rateLimitLoginWindowMs
+  ),
+  validate: false,
+  message: {
+    success: false,
+    message: 'Too many login attempts. Please wait before trying again.',
+  },
+});
+
+/**
+ * Password Reset Request Rate Limiter:
+ * Forgot-password is unauthenticated and triggers an email. Keying by email + IP
+ * prevents mailbox flooding and slows reset-token brute force without letting
+ * one busy NAT block unrelated users.
+ */
+export const passwordResetRateLimiter = rateLimit({
+  windowMs: securityConfig.rateLimitPasswordResetWindowMs,
+  limit: () => securityConfig.rateLimitPasswordResetMax,
+  standardHeaders: true,
+  legacyHeaders: true,
+  statusCode: 429,
+  keyGenerator: (req: Request) => credentialKey('password-reset', req),
+  store: new ConfigurableRedisStore(
+    {
+      sendCommand: (...args: string[]) => redis.call(...args),
+      prefix: 'rl:password-reset:',
+    },
+    () => securityConfig.rateLimitPasswordResetWindowMs
+  ),
+  validate: false,
+  message: {
+    success: false,
+    message: 'Too many password reset requests. Please wait before trying again.',
   },
 });
 
