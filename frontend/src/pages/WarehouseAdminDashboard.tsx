@@ -43,7 +43,9 @@ import type {
 } from '../types/warehouse.types';
 import type { User } from '../types/user.types';
 import { useAuth } from '../hooks/useAuth';
+import { useDialogA11y } from '../hooks/useDialogA11y';
 import { getTimezoneOptions } from '../utils/timezones';
+import { handleTabListKeyDown } from '../utils/tabKeyboard';
 import { useConfirm } from '../hooks/useConfirm';
 import toast from 'react-hot-toast';
 
@@ -121,6 +123,22 @@ export const WarehouseAdminDashboard: React.FC = () => {
   // Feedback Notifications
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
+
+  const createWarehouseDialogRef = useDialogA11y<HTMLDivElement>({
+    isOpen: isCreateWarehouseModalOpen,
+    onClose: () => setIsCreateWarehouseModalOpen(false),
+    closeOnEscape: !isSubmittingWarehouse,
+  });
+  const createDockDialogRef = useDialogA11y<HTMLDivElement>({
+    isOpen: isCreateDockModalOpen,
+    onClose: () => setIsCreateDockModalOpen(false),
+    closeOnEscape: !isSubmittingDock,
+  });
+  const inviteDialogRef = useDialogA11y<HTMLDivElement>({
+    isOpen: isInviteModalOpen,
+    onClose: () => setIsInviteModalOpen(false),
+    closeOnEscape: !isSendingInvite,
+  });
 
   const selectedWarehouse = warehouses.find((w) => w.id === selectedWarehouseId);
 
@@ -556,8 +574,8 @@ export const WarehouseAdminDashboard: React.FC = () => {
         {/* Global Facility Selector & Action */}
         <div className="flex items-center space-x-3">
           {isLoadingWarehouses ? (
-            <div className="flex items-center space-x-2 text-xs text-gray-500 py-1.5 px-3">
-              <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#2F4F4F]" />
+            <div role="status" aria-live="polite" className="flex items-center space-x-2 text-xs text-gray-500 py-1.5 px-3">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#2F4F4F]" aria-hidden="true" />
               <span>Loading facilities...</span>
             </div>
           ) : warehouses.length > 0 && (
@@ -581,10 +599,11 @@ export const WarehouseAdminDashboard: React.FC = () => {
           )}
 
           <button
+            type="button"
             onClick={() => setIsCreateWarehouseModalOpen(true)}
-            className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-[#2F4F4F] hover:bg-[#1E3333] rounded-lg shadow-sm transition-colors"
+            className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-[#2F4F4F] hover:bg-[#1E3333] rounded-lg shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] focus-visible:ring-offset-2"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-4 h-4" aria-hidden="true" />
             <span>New Warehouse</span>
           </button>
         </div>
@@ -592,76 +611,114 @@ export const WarehouseAdminDashboard: React.FC = () => {
 
       {/* Global Banners */}
       {errorBanner && (
-        <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs flex items-center justify-between shadow-sm">
+        <div
+          role="alert"
+          className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs flex items-center justify-between shadow-sm"
+        >
           <div className="flex items-center space-x-2">
-            <AlertCircle className="w-4 h-4 shrink-0" />
+            <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
             <span>{errorBanner}</span>
           </div>
-          <button onClick={() => setErrorBanner(null)} className="text-red-500 hover:text-red-700">
-            <X className="w-4 h-4" />
+          <button
+            type="button"
+            onClick={() => setErrorBanner(null)}
+            aria-label="Dismiss error message"
+            className="text-red-500 hover:text-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 rounded"
+          >
+            <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
       )}
 
       {successBanner && (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs flex items-center justify-between shadow-sm">
+        <div
+          role="status"
+          aria-live="polite"
+          className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs flex items-center justify-between shadow-sm"
+        >
           <div className="flex items-center space-x-2">
-            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" aria-hidden="true" />
             <span>{successBanner}</span>
           </div>
-          <button onClick={() => setSuccessBanner(null)} className="text-emerald-500 hover:text-emerald-700">
-            <X className="w-4 h-4" />
+          <button
+            type="button"
+            onClick={() => setSuccessBanner(null)}
+            aria-label="Dismiss success message"
+            className="text-emerald-500 hover:text-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded"
+          >
+            <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
       )}
 
       {/* Navigation Tabs */}
-      <div className="flex border-b border-gray-200 bg-white rounded-t-xl px-4 pt-2 shadow-sm space-x-1 overflow-x-auto">
+      <div
+        role="tablist"
+        aria-label="Warehouse administration sections"
+        onKeyDown={handleTabListKeyDown}
+        className="flex border-b border-gray-200 bg-white rounded-t-xl px-4 pt-2 shadow-sm space-x-1 overflow-x-auto"
+      >
         <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'warehouses'}
+          tabIndex={activeTab === 'warehouses' ? 0 : -1}
           onClick={() => setActiveTab('warehouses')}
-          className={`flex items-center space-x-2 px-4 py-3 text-xs font-bold border-b-2 whitespace-nowrap transition-colors ${
+          className={`flex items-center space-x-2 px-4 py-3 text-xs font-bold border-b-2 whitespace-nowrap transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] ${
             activeTab === 'warehouses'
               ? 'border-[#2F4F4F] text-[#2F4F4F]'
               : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
-          <WarehouseIcon className="w-4 h-4" />
-          <span>Warehouses & Docks</span>
+          <WarehouseIcon className="w-4 h-4" aria-hidden="true" />
+          <span>Warehouses &amp; Docks</span>
         </button>
 
         <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'schedule'}
+          tabIndex={activeTab === 'schedule' ? 0 : -1}
           onClick={() => setActiveTab('schedule')}
-          className={`flex items-center space-x-2 px-4 py-3 text-xs font-bold border-b-2 whitespace-nowrap transition-colors ${
+          className={`flex items-center space-x-2 px-4 py-3 text-xs font-bold border-b-2 whitespace-nowrap transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] ${
             activeTab === 'schedule'
               ? 'border-[#2F4F4F] text-[#2F4F4F]'
               : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
-          <Clock className="w-4 h-4" />
-          <span>Operating Hours & Slots</span>
+          <Clock className="w-4 h-4" aria-hidden="true" />
+          <span>Operating Hours &amp; Slots</span>
         </button>
 
         <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'policies'}
+          tabIndex={activeTab === 'policies' ? 0 : -1}
           onClick={() => setActiveTab('policies')}
-          className={`flex items-center space-x-2 px-4 py-3 text-xs font-bold border-b-2 whitespace-nowrap transition-colors ${
+          className={`flex items-center space-x-2 px-4 py-3 text-xs font-bold border-b-2 whitespace-nowrap transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] ${
             activeTab === 'policies'
               ? 'border-[#2F4F4F] text-[#2F4F4F]'
               : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
-          <ShieldCheck className="w-4 h-4" />
+          <ShieldCheck className="w-4 h-4" aria-hidden="true" />
           <span>Booking Policies</span>
         </button>
 
         <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'users'}
+          tabIndex={activeTab === 'users' ? 0 : -1}
           onClick={() => setActiveTab('users')}
-          className={`flex items-center space-x-2 px-4 py-3 text-xs font-bold border-b-2 whitespace-nowrap transition-colors ${
+          className={`flex items-center space-x-2 px-4 py-3 text-xs font-bold border-b-2 whitespace-nowrap transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] ${
             activeTab === 'users'
               ? 'border-[#2F4F4F] text-[#2F4F4F]'
               : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
-          <Users className="w-4 h-4" />
+          <Users className="w-4 h-4" aria-hidden="true" />
           <span>User Management ({organizationUsers.length})</span>
         </button>
       </div>
@@ -771,12 +828,13 @@ export const WarehouseAdminDashboard: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isSavingWarehouse}
-                  className="w-full py-2.5 px-4 text-xs font-semibold text-white bg-[#2F4F4F] hover:bg-[#1E3333] disabled:opacity-50 rounded-lg transition-colors flex items-center justify-center space-x-2 shadow-sm"
+                  aria-busy={isSavingWarehouse || undefined}
+                  className="w-full py-2.5 px-4 text-xs font-semibold text-white bg-[#2F4F4F] hover:bg-[#1E3333] disabled:opacity-50 rounded-lg transition-colors flex items-center justify-center space-x-2 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] focus-visible:ring-offset-2"
                 >
                   {isSavingWarehouse ? (
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
                   ) : (
-                    <Save className="w-3.5 h-3.5" />
+                    <Save className="w-3.5 h-3.5" aria-hidden="true" />
                   )}
                   <span>Save Facility Changes</span>
                 </button>
@@ -801,18 +859,19 @@ export const WarehouseAdminDashboard: React.FC = () => {
 
               {selectedWarehouseId && (
                 <button
+                  type="button"
                   onClick={() => setIsCreateDockModalOpen(true)}
-                  className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition-colors"
+                  className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
                 >
-                  <Plus className="w-3.5 h-3.5" />
+                  <Plus className="w-3.5 h-3.5" aria-hidden="true" />
                   <span>Add Dock</span>
                 </button>
               )}
             </div>
 
             {isLoadingDocks ? (
-              <div className="py-16 text-center text-xs text-gray-500">
-                <RefreshCw className="w-6 h-6 animate-spin mx-auto text-gray-400 mb-2" />
+              <div role="status" aria-live="polite" className="py-16 text-center text-xs text-gray-500">
+                <RefreshCw className="w-6 h-6 animate-spin mx-auto text-gray-400 mb-2" aria-hidden="true" />
                 Loading loading docks...
               </div>
             ) : docks.length === 0 ? (
@@ -844,6 +903,7 @@ export const WarehouseAdminDashboard: React.FC = () => {
                           <div className="flex items-center space-x-2 flex-1 max-w-sm">
                             <input
                               type="text"
+                              aria-label={`Rename dock ${dock.name}`}
                               value={editingDockName}
                               onChange={(e) => setEditingDockName(e.target.value)}
                               placeholder="Dock name"
@@ -851,15 +911,22 @@ export const WarehouseAdminDashboard: React.FC = () => {
                               autoFocus
                             />
                             <button
+                              type="button"
                               onClick={handleSaveDockName}
                               disabled={isSavingDock || !editingDockName.trim()}
-                              className="px-2.5 py-1 text-xs font-semibold bg-[#2F4F4F] text-white rounded hover:bg-[#1E3333] disabled:opacity-50"
+                              aria-busy={isSavingDock || undefined}
+                              className="px-2.5 py-1 text-xs font-semibold bg-[#2F4F4F] text-white rounded hover:bg-[#1E3333] disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F]"
                             >
-                              {isSavingDock ? <RefreshCw className="w-3 h-3 animate-spin" /> : 'Save'}
+                              {isSavingDock ? (
+                                <RefreshCw className="w-3 h-3 animate-spin" aria-hidden="true" />
+                              ) : (
+                                'Save'
+                              )}
                             </button>
                             <button
+                              type="button"
                               onClick={() => setEditingDock(null)}
-                              className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700"
+                              className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] rounded"
                             >
                               Cancel
                             </button>
@@ -869,11 +936,13 @@ export const WarehouseAdminDashboard: React.FC = () => {
                             <div className="flex items-center space-x-2">
                               <span className="text-xs font-bold text-gray-900">{dock.name}</span>
                               <button
+                                type="button"
                                 onClick={() => handleStartEditDock(dock)}
-                                className="text-gray-400 hover:text-gray-600 p-0.5"
+                                aria-label={`Rename dock ${dock.name}`}
+                                className="text-gray-400 hover:text-gray-600 p-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] rounded"
                                 title="Rename Dock"
                               >
-                                <Edit2 className="w-3 h-3" />
+                                <Edit2 className="w-3 h-3" aria-hidden="true" />
                               </button>
                             </div>
                             <span className="text-[11px] text-gray-500">
@@ -907,8 +976,9 @@ export const WarehouseAdminDashboard: React.FC = () => {
                         )}
 
                         <button
+                          type="button"
                           onClick={() => handleToggleDockStatus(dock)}
-                          className={`text-xs px-2.5 py-1 rounded font-medium border transition-colors ${
+                          className={`text-xs px-2.5 py-1 rounded font-medium border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] ${
                             dock.status === 'ACTIVE'
                               ? 'text-amber-700 bg-amber-50 border-amber-200 hover:bg-amber-100'
                               : 'text-emerald-700 bg-emerald-50 border-emerald-200 hover:bg-emerald-100'
@@ -955,15 +1025,19 @@ export const WarehouseAdminDashboard: React.FC = () => {
               {[30, 45, 60].map((mins) => (
                 <button
                   key={mins}
+                  type="button"
+                  aria-pressed={scheduleSlotLength === mins}
                   onClick={() => handleSaveSlotLength(mins)}
                   disabled={isSavingSlotLength}
-                  className={`px-4 py-2.5 rounded-lg text-xs font-bold border transition-all flex items-center space-x-2 ${
+                  className={`px-4 py-2.5 rounded-lg text-xs font-bold border transition-all flex items-center space-x-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] ${
                     scheduleSlotLength === mins
                       ? 'bg-[#2F4F4F] text-white border-[#2F4F4F] shadow-sm'
                       : 'bg-white text-gray-700 border-gray-300 hover:border-gray-400'
                   }`}
                 >
-                  {scheduleSlotLength === mins && <Check className="w-3.5 h-3.5" />}
+                  {scheduleSlotLength === mins && (
+                    <Check className="w-3.5 h-3.5" aria-hidden="true" />
+                  )}
                   <span>{mins} Minutes</span>
                 </button>
               ))}
@@ -978,29 +1052,35 @@ export const WarehouseAdminDashboard: React.FC = () => {
                 <span>Weekly Operational Schedule Template</span>
               </h4>
               <button
+                type="button"
                 onClick={handleSaveScheduleDesign}
                 disabled={isSavingSchedule || isLoadingSchedule || !selectedWarehouseId}
-                className="px-3 py-1.5 text-xs font-semibold text-white bg-[#2F4F4F] hover:bg-[#1E3333] rounded-lg transition-colors flex items-center space-x-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-busy={isSavingSchedule || undefined}
+                className="px-3 py-1.5 text-xs font-semibold text-white bg-[#2F4F4F] hover:bg-[#1E3333] rounded-lg transition-colors flex items-center space-x-1.5 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] focus-visible:ring-offset-2"
               >
                 {isSavingSchedule ? (
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
                 ) : (
-                  <Save className="w-3.5 h-3.5" />
+                  <Save className="w-3.5 h-3.5" aria-hidden="true" />
                 )}
                 <span>{isSavingSchedule ? 'Saving...' : 'Save Schedule Template'}</span>
               </button>
             </div>
 
             {scheduleSavedToast && (
-              <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-lg flex items-center space-x-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <div
+                role="status"
+                aria-live="polite"
+                className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-lg flex items-center space-x-2"
+              >
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" aria-hidden="true" />
                 <span>Operational weekly schedule template updated successfully.</span>
               </div>
             )}
 
             {isLoadingSchedule ? (
-              <div className="py-8 text-center text-xs text-gray-500">
-                <RefreshCw className="w-5 h-5 animate-spin mx-auto text-gray-400 mb-2" />
+              <div role="status" aria-live="polite" className="py-8 text-center text-xs text-gray-500">
+                <RefreshCw className="w-5 h-5 animate-spin mx-auto text-gray-400 mb-2" aria-hidden="true" />
                 Loading weekly schedule...
               </div>
             ) : (
@@ -1010,6 +1090,7 @@ export const WarehouseAdminDashboard: React.FC = () => {
                     <div className="flex items-center space-x-3 w-36">
                       <input
                         type="checkbox"
+                        aria-label={`${item.day} operating hours enabled`}
                         checked={item.isOpen}
                         disabled={isSavingSchedule}
                         onChange={(e) => {
@@ -1044,6 +1125,7 @@ export const WarehouseAdminDashboard: React.FC = () => {
                             </button>
                             <input
                               type="time"
+                              aria-label={`${item.day} opening time`}
                               value={item.openTime}
                               disabled={isSavingSchedule}
                               onChange={(e) => {
@@ -1086,6 +1168,7 @@ export const WarehouseAdminDashboard: React.FC = () => {
                             </button>
                             <input
                               type="time"
+                              aria-label={`${item.day} closing time`}
                               value={item.closeTime}
                               disabled={isSavingSchedule}
                               onChange={(e) => {
@@ -1373,18 +1456,27 @@ export const WarehouseAdminDashboard: React.FC = () => {
 
       {/* Modal 1: Create Warehouse */}
       {isCreateWarehouseModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div
+          ref={createWarehouseDialogRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="create-warehouse-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 outline-none"
+        >
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
             <div className="px-6 py-4 bg-[#2F4F4F] text-white flex items-center justify-between">
-              <h3 className="text-sm font-bold flex items-center space-x-2">
-                <WarehouseIcon className="w-4 h-4 text-emerald-400" />
+              <h3 id="create-warehouse-title" className="text-sm font-bold flex items-center space-x-2">
+                <WarehouseIcon className="w-4 h-4 text-emerald-400" aria-hidden="true" />
                 <span>Create New Warehouse Facility</span>
               </h3>
               <button
+                type="button"
                 onClick={() => setIsCreateWarehouseModalOpen(false)}
-                className="text-gray-300 hover:text-white"
+                aria-label="Close create warehouse dialog"
+                className="text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 rounded"
               >
-                <X className="w-4 h-4" />
+                <X className="w-4 h-4" aria-hidden="true" />
               </button>
             </div>
 
@@ -1396,9 +1488,11 @@ export const WarehouseAdminDashboard: React.FC = () => {
                 <input
                   id="create-wh-name"
                   type="text"
+                  autoComplete="organization"
                   placeholder="e.g. Colombo Western Terminal"
                   value={newWarehouseForm.name}
                   onChange={(e) => setNewWarehouseForm((prev) => ({ ...prev, name: e.target.value }))}
+                  data-autofocus
                   required
                   className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2F4F4F] focus:outline-none"
                 />
@@ -1465,16 +1559,19 @@ export const WarehouseAdminDashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsCreateWarehouseModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmittingWarehouse}
-                  className="px-4 py-2 text-xs font-semibold text-white bg-[#2F4F4F] hover:bg-[#1E3333] disabled:opacity-50 rounded-lg transition-colors flex items-center space-x-1.5"
+                  aria-busy={isSubmittingWarehouse || undefined}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-[#2F4F4F] hover:bg-[#1E3333] disabled:opacity-50 rounded-lg transition-colors flex items-center space-x-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] focus-visible:ring-offset-2"
                 >
-                  {isSubmittingWarehouse && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                  {isSubmittingWarehouse && (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                  )}
                   <span>Create Facility</span>
                 </button>
               </div>
@@ -1485,15 +1582,27 @@ export const WarehouseAdminDashboard: React.FC = () => {
 
       {/* Modal 2: Create Dock */}
       {isCreateDockModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div
+          ref={createDockDialogRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="create-dock-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 outline-none"
+        >
           <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden animate-in zoom-in-95 duration-150">
             <div className="px-6 py-4 bg-[#2F4F4F] text-white flex items-center justify-between">
-              <h3 className="text-sm font-bold flex items-center space-x-2">
-                <Layers className="w-4 h-4 text-emerald-400" />
+              <h3 id="create-dock-title" className="text-sm font-bold flex items-center space-x-2">
+                <Layers className="w-4 h-4 text-emerald-400" aria-hidden="true" />
                 <span>Add Dock to {selectedWarehouse?.name}</span>
               </h3>
-              <button onClick={() => setIsCreateDockModalOpen(false)} className="text-gray-300 hover:text-white">
-                <X className="w-4 h-4" />
+              <button
+                type="button"
+                onClick={() => setIsCreateDockModalOpen(false)}
+                aria-label="Close create dock dialog"
+                className="text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 rounded"
+              >
+                <X className="w-4 h-4" aria-hidden="true" />
               </button>
             </div>
 
@@ -1508,6 +1617,7 @@ export const WarehouseAdminDashboard: React.FC = () => {
                   placeholder="e.g. Bay 03 - Cold Storage Express"
                   value={newDockForm.name}
                   onChange={(e) => setNewDockForm((prev) => ({ ...prev, name: e.target.value }))}
+                  data-autofocus
                   required
                   className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2F4F4F] focus:outline-none"
                 />
@@ -1534,16 +1644,19 @@ export const WarehouseAdminDashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsCreateDockModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmittingDock}
-                  className="px-4 py-2 text-xs font-semibold text-white bg-[#2F4F4F] hover:bg-[#1E3333] disabled:opacity-50 rounded-lg transition-colors flex items-center space-x-1.5"
+                  aria-busy={isSubmittingDock || undefined}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-[#2F4F4F] hover:bg-[#1E3333] disabled:opacity-50 rounded-lg transition-colors flex items-center space-x-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] focus-visible:ring-offset-2"
                 >
-                  {isSubmittingDock && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                  {isSubmittingDock && (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                  )}
                   <span>Add Dock</span>
                 </button>
               </div>
@@ -1554,15 +1667,27 @@ export const WarehouseAdminDashboard: React.FC = () => {
 
       {/* Modal 3: Invite Team Member */}
       {isInviteModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div
+          ref={inviteDialogRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="warehouse-invite-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 outline-none"
+        >
           <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden animate-in zoom-in-95 duration-150">
             <div className="px-6 py-4 bg-[#2F4F4F] text-white flex items-center justify-between">
-              <h3 className="text-sm font-bold flex items-center space-x-2">
-                <UserPlus className="w-4 h-4 text-emerald-400" />
+              <h3 id="warehouse-invite-title" className="text-sm font-bold flex items-center space-x-2">
+                <UserPlus className="w-4 h-4 text-emerald-400" aria-hidden="true" />
                 <span>Invite Team Member</span>
               </h3>
-              <button onClick={() => setIsInviteModalOpen(false)} className="text-gray-300 hover:text-white">
-                <X className="w-4 h-4" />
+              <button
+                type="button"
+                onClick={() => setIsInviteModalOpen(false)}
+                aria-label="Close invite dialog"
+                className="text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 rounded"
+              >
+                <X className="w-4 h-4" aria-hidden="true" />
               </button>
             </div>
 
@@ -1574,9 +1699,11 @@ export const WarehouseAdminDashboard: React.FC = () => {
                 <input
                   id="invite-email"
                   type="email"
+                  autoComplete="email"
                   placeholder="manager@colombo-yard.com"
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
+                  data-autofocus
                   required
                   className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2F4F4F] focus:outline-none"
                 />
@@ -1590,16 +1717,19 @@ export const WarehouseAdminDashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsInviteModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSendingInvite}
-                  className="px-4 py-2 text-xs font-semibold text-white bg-[#2F4F4F] hover:bg-[#1E3333] disabled:opacity-50 rounded-lg transition-colors flex items-center space-x-1.5"
+                  aria-busy={isSendingInvite || undefined}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-[#2F4F4F] hover:bg-[#1E3333] disabled:opacity-50 rounded-lg transition-colors flex items-center space-x-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] focus-visible:ring-offset-2"
                 >
-                  {isSendingInvite && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                  {isSendingInvite && (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                  )}
                   <span>Send Invitation</span>
                 </button>
               </div>

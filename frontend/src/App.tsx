@@ -101,6 +101,13 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:px-4 focus:py-2 focus:bg-white focus:text-[#2F4F4F] focus:font-semibold focus:rounded-md focus:shadow-lg"
+      >
+        Skip to main content
+      </a>
+
       {/* Top Navbar */}
       <header className="bg-[#2F4F4F] text-white px-3 sm:px-6 py-3 sm:py-3.5 flex flex-wrap items-center justify-between gap-2.5 shadow-md">
         <div className="flex items-center space-x-2.5 min-w-0">
@@ -115,15 +122,21 @@ const AppContent: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 sm:space-x-3">
+        <div
+          role="group"
+          aria-label="Account actions"
+          className="flex flex-wrap items-center gap-2 sm:space-x-3"
+        >
           <span className="text-xs text-gray-200 hidden lg:inline">
             Logged in as <strong className="text-white">{user.email}</strong>
           </span>
 
           {(user.role === 'CARRIER_ADMIN' || user.role === 'WAREHOUSE_ADMIN') && (
             <button
+              type="button"
               onClick={() => setIsTeamModalOpen(true)}
-              className="flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold bg-emerald-600/80 hover:bg-emerald-600 text-white rounded-md transition-colors shadow-sm"
+              aria-haspopup="dialog"
+              className="flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold bg-emerald-600/80 hover:bg-emerald-600 text-white rounded-md transition-colors shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
               title="Manage organization team members and deactivations"
             >
               <Users className="w-3.5 h-3.5 shrink-0" />
@@ -133,8 +146,11 @@ const AppContent: React.FC = () => {
           )}
 
           <button
+            type="button"
             onClick={() => setIsSecurityModalOpen(true)}
-            className="flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold bg-white/10 hover:bg-white/20 rounded-md transition-colors"
+            aria-label="Security settings"
+            aria-haspopup="dialog"
+            className="flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold bg-white/10 hover:bg-white/20 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
             title="Account security settings, including two-factor authentication"
           >
             <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
@@ -142,6 +158,7 @@ const AppContent: React.FC = () => {
           </button>
 
           <button
+            type="button"
             onClick={async () => {
               const confirmed = window.confirm(
                 'Are you sure you want to log out of all devices? This will invalidate all active sessions across every browser and device.'
@@ -150,7 +167,7 @@ const AppContent: React.FC = () => {
                 await logoutAll();
               }
             }}
-            className="flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold bg-amber-600/30 hover:bg-amber-600/50 text-amber-100 border border-amber-400/30 rounded-md transition-colors"
+            className="flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold bg-amber-600/30 hover:bg-amber-600/50 text-amber-100 border border-amber-400/30 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-200"
             title="Invalidate all active sessions across all devices"
           >
             <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
@@ -159,8 +176,9 @@ const AppContent: React.FC = () => {
           </button>
 
           <button
+            type="button"
             onClick={logout}
-            className="flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold bg-white/10 hover:bg-white/20 rounded-md transition-colors"
+            className="flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold bg-white/10 hover:bg-white/20 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
           >
             <LogOut className="w-3.5 h-3.5 shrink-0" />
             <span>Sign Out</span>
@@ -169,7 +187,7 @@ const AppContent: React.FC = () => {
       </header>
 
       {/* Main Dashboard View */}
-      <main className="flex-1 p-3 sm:p-6 max-w-7xl w-full mx-auto">
+      <main id="main-content" tabIndex={-1} className="flex-1 p-3 sm:p-6 max-w-7xl w-full mx-auto outline-none">
         {isCarrier ? (
           <CarrierDashboard />
         ) : user.role === 'DOCK_MANAGER' ? (

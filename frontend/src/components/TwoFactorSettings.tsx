@@ -242,8 +242,8 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
       <div className="p-5 space-y-4">
         {/* Status loading */}
         {isLoadingStatus && (
-          <div className="flex items-center space-x-2 text-xs text-gray-500">
-            <Loader2 className="w-4 h-4 animate-spin" />
+          <div role="status" aria-live="polite" className="flex items-center space-x-2 text-xs text-gray-500">
+            <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
             <span>Checking your security settings...</span>
           </div>
         )}
@@ -251,10 +251,11 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
         {/* Error Banner */}
         {errorMessage && (
           <div
+            id="two-factor-error"
             role="alert"
             className="flex items-start space-x-2.5 p-3 bg-red-50 border border-red-200 rounded-md text-red-800 text-xs"
           >
-            <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+            <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" aria-hidden="true" />
             <span className="flex-1 font-medium leading-tight">{errorMessage}</span>
           </div>
         )}
@@ -263,9 +264,10 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
         {successMessage && (
           <div
             role="status"
+            aria-live="polite"
             className="flex items-start space-x-2.5 p-3 bg-emerald-50 border border-emerald-200 rounded-md text-emerald-800 text-xs"
           >
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" aria-hidden="true" />
             <span className="flex-1 font-medium leading-tight">{successMessage}</span>
           </div>
         )}
@@ -314,6 +316,9 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
                     value={disablePassword}
                     onChange={(e) => setDisablePassword(e.target.value)}
                     disabled={isSubmitting}
+                    hasError={Boolean(errorMessage)}
+                    aria-invalid={Boolean(errorMessage)}
+                    aria-describedby={errorMessage ? 'two-factor-error' : undefined}
                   />
                 </div>
 
@@ -336,6 +341,9 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
                     value={disableCode}
                     onChange={(e) => setDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     disabled={isSubmitting}
+                    hasError={Boolean(errorMessage)}
+                    aria-invalid={Boolean(errorMessage)}
+                    aria-describedby={errorMessage ? 'two-factor-error' : undefined}
                     className="tracking-[0.3em] font-mono"
                   />
                 </div>
@@ -402,6 +410,10 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
                     value={setupPassword}
                     onChange={(e) => setSetupPassword(e.target.value)}
                     disabled={isSubmitting}
+                    required
+                    hasError={Boolean(errorMessage)}
+                    aria-invalid={Boolean(errorMessage)}
+                    aria-describedby={errorMessage ? 'two-factor-error' : undefined}
                   />
                 </div>
 
@@ -468,14 +480,17 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
                       type="button"
                       onClick={handleCopySecret}
                       aria-label="Copy secret key"
-                      className="p-2 rounded-md border border-gray-200 text-gray-500 hover:text-[#2F4F4F] hover:bg-gray-50 transition-colors shrink-0"
+                      className="p-2 rounded-md border border-gray-200 text-gray-500 hover:text-[#2F4F4F] hover:bg-gray-50 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F]"
                     >
                       {hasCopiedSecret ? (
-                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <Check className="w-3.5 h-3.5 text-emerald-600" aria-hidden="true" />
                       ) : (
-                        <Copy className="w-3.5 h-3.5" />
+                        <Copy className="w-3.5 h-3.5" aria-hidden="true" />
                       )}
                     </button>
+                    <span role="status" aria-live="polite" className="sr-only">
+                      {hasCopiedSecret ? 'Secret key copied to clipboard' : ''}
+                    </span>
                   </div>
                 </div>
 
@@ -549,6 +564,9 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
                 value={verifyCode}
                 onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                 disabled={isSubmitting}
+                hasError={Boolean(errorMessage)}
+                aria-invalid={Boolean(errorMessage)}
+                aria-describedby={errorMessage ? 'two-factor-error' : undefined}
                 className="tracking-[0.4em] font-mono text-base"
               />
             </div>

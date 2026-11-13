@@ -14,11 +14,12 @@ export const WarehouseDashboard: React.FC = () => {
           <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 pl-2">
             Warehouse View:
           </span>
-          <div className="inline-flex rounded-md shadow-sm">
+          <div role="group" aria-label="Warehouse view" className="inline-flex rounded-md shadow-sm">
             <button
               type="button"
+              aria-pressed={viewMode === 'admin'}
               onClick={() => setViewMode('admin')}
-              className={`inline-flex items-center px-3.5 py-1.5 rounded-l-md text-xs font-medium border transition-colors ${
+              className={`inline-flex items-center px-3.5 py-1.5 rounded-l-md text-xs font-medium border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] ${
                 viewMode === 'admin'
                   ? 'bg-[#2F4F4F] text-white border-[#2F4F4F]'
                   : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
@@ -29,8 +30,9 @@ export const WarehouseDashboard: React.FC = () => {
             </button>
             <button
               type="button"
+              aria-pressed={viewMode === 'operations'}
               onClick={() => setViewMode('operations')}
-              className={`inline-flex items-center px-3.5 py-1.5 rounded-r-md text-xs font-medium border-t border-b border-r transition-colors ${
+              className={`inline-flex items-center px-3.5 py-1.5 rounded-r-md text-xs font-medium border-t border-b border-r transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] ${
                 viewMode === 'operations'
                   ? 'bg-[#2F4F4F] text-white border-[#2F4F4F]'
                   : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'

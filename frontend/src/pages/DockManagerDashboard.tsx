@@ -36,6 +36,7 @@ import {
   validateClosureInput,
 } from '../services/dockManagerDashboard.service';
 import { getApiErrorMessage } from '../services/errors';
+import { useDialogA11y } from '../hooks/useDialogA11y';
 import { BookingAuditLogModal } from '../components/BookingAuditLogModal';
 import type { Booking, BookingStatus } from '../types/booking.types';
 import type { Warehouse, DockClosure } from '../types/warehouse.types';
@@ -74,6 +75,11 @@ export const DockManagerDashboard: React.FC = () => {
   const [closureReason, setClosureReason] = useState<string>('');
   const [closureError, setClosureError] = useState<string | null>(null);
   const [isSubmittingClosure, setIsSubmittingClosure] = useState<boolean>(false);
+  const closureDialogRef = useDialogA11y<HTMLDivElement>({
+    isOpen: isClosureModalOpen,
+    onClose: () => setIsClosureModalOpen(false),
+    closeOnEscape: !isSubmittingClosure,
+  });
 
   // Fetch initial data
   const fetchData = async () => {
@@ -402,10 +408,12 @@ export const DockManagerDashboard: React.FC = () => {
           <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
           <div className="flex-1 font-medium">{errorMessage}</div>
           <button
+            type="button"
             onClick={() => setErrorMessage(null)}
-            className="text-red-400 hover:text-red-600"
+            aria-label="Dismiss error message"
+            className="text-red-400 hover:text-red-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 rounded"
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
       )}
@@ -418,10 +426,12 @@ export const DockManagerDashboard: React.FC = () => {
           <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
           <div className="flex-1 font-medium">{successBanner}</div>
           <button
+            type="button"
             onClick={() => setSuccessBanner(null)}
-            className="text-emerald-400 hover:text-emerald-600"
+            aria-label="Dismiss success message"
+            className="text-emerald-400 hover:text-emerald-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded"
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
       )}
@@ -544,10 +554,12 @@ export const DockManagerDashboard: React.FC = () => {
           <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
           <div className="flex-1 font-medium">{bookingErrorMessage}</div>
           <button
+            type="button"
             onClick={() => setBookingErrorMessage(null)}
-            className="text-red-400 hover:text-red-600"
+            aria-label="Dismiss booking error message"
+            className="text-red-400 hover:text-red-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 rounded"
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
       )}
@@ -581,11 +593,12 @@ export const DockManagerDashboard: React.FC = () => {
             {/* Search Bar */}
             <div className="sm:col-span-2">
               <Input
-                type="text"
+                type="search"
+                aria-label="Search bookings by ID, truck plate, driver, or carrier"
                 placeholder="Search by ID, truck plate, driver, carrier..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                icon={<Search className="w-4 h-4 text-gray-400" />}
+                icon={<Search className="w-4 h-4 text-gray-400" aria-hidden="true" />}
               />
             </div>
 
@@ -593,6 +606,7 @@ export const DockManagerDashboard: React.FC = () => {
             <div>
               <div className="relative">
                 <select
+                  aria-label="Filter bookings by warehouse"
                   value={selectedWarehouseId}
                   onChange={(e) => setSelectedWarehouseId(e.target.value)}
                   className="w-full h-9 rounded-md border border-gray-300 pl-3 pr-8 text-xs bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#2F4F4F] focus:border-[#2F4F4F]"
@@ -604,7 +618,10 @@ export const DockManagerDashboard: React.FC = () => {
                     </option>
                   ))}
                 </select>
-                <ChevronDown className="w-3.5 h-3.5 text-gray-400 absolute right-2.5 top-3 pointer-events-none" />
+                <ChevronDown
+                  className="w-3.5 h-3.5 text-gray-400 absolute right-2.5 top-3 pointer-events-none"
+                  aria-hidden="true"
+                />
               </div>
             </div>
 
@@ -612,6 +629,7 @@ export const DockManagerDashboard: React.FC = () => {
             <div>
               <div className="relative">
                 <select
+                  aria-label="Filter bookings by status"
                   value={selectedStatusFilter}
                   onChange={(e) => setSelectedStatusFilter(e.target.value)}
                   className="w-full h-9 rounded-md border border-gray-300 pl-3 pr-8 text-xs bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#2F4F4F] focus:border-[#2F4F4F]"
@@ -623,7 +641,10 @@ export const DockManagerDashboard: React.FC = () => {
                   <option value="NO_SHOW">NO_SHOW</option>
                   <option value="CANCELLED">CANCELLED</option>
                 </select>
-                <Filter className="w-3.5 h-3.5 text-gray-400 absolute right-2.5 top-3 pointer-events-none" />
+                <Filter
+                  className="w-3.5 h-3.5 text-gray-400 absolute right-2.5 top-3 pointer-events-none"
+                  aria-hidden="true"
+                />
               </div>
             </div>
           </div>
@@ -631,8 +652,15 @@ export const DockManagerDashboard: React.FC = () => {
 
         <CardContent className="p-0">
           {isLoadingBookings ? (
-            <div className="py-16 flex flex-col items-center justify-center space-y-3 text-gray-500">
-              <div className="w-8 h-8 border-4 border-[#2F4F4F] border-t-transparent rounded-full animate-spin" />
+            <div
+              role="status"
+              aria-live="polite"
+              className="py-16 flex flex-col items-center justify-center space-y-3 text-gray-500"
+            >
+              <div
+                aria-hidden="true"
+                className="w-8 h-8 border-4 border-[#2F4F4F] border-t-transparent rounded-full animate-spin"
+              />
               <p className="text-sm font-medium">Loading warehouse bookings...</p>
             </div>
           ) : filteredBookings.length === 0 ? (
@@ -648,17 +676,18 @@ export const DockManagerDashboard: React.FC = () => {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
+                <caption className="sr-only">Warehouse dock bookings</caption>
                 <thead>
                   <tr className="bg-gray-50/80 border-b border-gray-200 text-gray-600 font-semibold uppercase tracking-wider">
-                    <th className="py-3 px-4">Booking ID</th>
-                    <th className="py-3 px-4">Carrier Name</th>
-                    <th className="py-3 px-4">Dock Bay</th>
-                    <th className="py-3 px-4">Scheduled Window</th>
-                    <th className="py-3 px-4">Truck Plate</th>
-                    <th className="py-3 px-4">Driver Details</th>
-                    <th className="py-3 px-4">Cargo Note</th>
-                    <th className="py-3 px-4">Current Status</th>
-                    <th className="py-3 px-4 text-right">Actions</th>
+                    <th scope="col" className="py-3 px-4">Booking ID</th>
+                    <th scope="col" className="py-3 px-4">Carrier Name</th>
+                    <th scope="col" className="py-3 px-4">Dock Bay</th>
+                    <th scope="col" className="py-3 px-4">Scheduled Window</th>
+                    <th scope="col" className="py-3 px-4">Truck Plate</th>
+                    <th scope="col" className="py-3 px-4">Driver Details</th>
+                    <th scope="col" className="py-3 px-4">Cargo Note</th>
+                    <th scope="col" className="py-3 px-4">Current Status</th>
+                    <th scope="col" className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -775,8 +804,15 @@ export const DockManagerDashboard: React.FC = () => {
                             </Button>
 
                             {isActionLoading ? (
-                              <div className="inline-flex items-center space-x-1 text-gray-400 text-xs py-1">
-                                <div className="w-3.5 h-3.5 border-2 border-[#2F4F4F] border-t-transparent rounded-full animate-spin" />
+                              <div
+                                role="status"
+                                aria-live="polite"
+                                className="inline-flex items-center space-x-1 text-gray-400 text-xs py-1"
+                              >
+                                <div
+                                  aria-hidden="true"
+                                  className="w-3.5 h-3.5 border-2 border-[#2F4F4F] border-t-transparent rounded-full animate-spin"
+                                />
                                 <span>Updating...</span>
                               </div>
                             ) : isBooked ? (
@@ -842,9 +878,12 @@ export const DockManagerDashboard: React.FC = () => {
       {/* Close Dock / Schedule Maintenance Modal */}
       {isClosureModalOpen && (
         <div
+          ref={closureDialogRef}
+          tabIndex={-1}
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 overflow-y-auto bg-black/50 flex items-center justify-center p-4"
+          aria-labelledby="closure-dialog-title"
+          className="fixed inset-0 z-50 overflow-y-auto bg-black/50 flex items-center justify-center p-4 outline-none"
         >
           <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full border border-gray-300 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             {/* Modal Header */}
@@ -854,7 +893,7 @@ export const DockManagerDashboard: React.FC = () => {
                   <Wrench className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base text-gray-900 leading-tight">
+                  <h3 id="closure-dialog-title" className="font-bold text-base text-gray-900 leading-tight">
                     Schedule Dock Maintenance Closure
                   </h3>
                   <p className="text-[11px] text-gray-500">
@@ -865,9 +904,10 @@ export const DockManagerDashboard: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsClosureModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                aria-label="Close maintenance dialog"
+                className="text-gray-400 hover:text-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] rounded"
               >
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5" aria-hidden="true" />
               </button>
             </div>
 
@@ -875,10 +915,14 @@ export const DockManagerDashboard: React.FC = () => {
             <form onSubmit={handleSubmitClosure} className="p-5 space-y-4">
               {closureError && (
                 <div
+                  id="closure-error"
                   role="alert"
                   className="p-3 bg-red-50 border border-red-200 rounded-md text-xs text-red-800 flex items-start space-x-2"
                 >
-                  <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+                  <AlertCircle
+                    className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5"
+                    aria-hidden="true"
+                  />
                   <div className="flex-1 font-medium">{closureError}</div>
                 </div>
               )}
@@ -898,6 +942,8 @@ export const DockManagerDashboard: React.FC = () => {
                   }}
                   required
                   disabled={isSubmittingClosure}
+                  aria-invalid={Boolean(closureError)}
+                  aria-describedby={closureError ? 'closure-error' : undefined}
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#2F4F4F] focus:border-[#2F4F4F]"
                 >
                   {allDocks.map((dock) => {
@@ -917,7 +963,9 @@ export const DockManagerDashboard: React.FC = () => {
               {/* 2. Select Maintenance Date (Days with bookings are DISABLED) */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <Label required>Maintenance Date</Label>
+                  <Label id="closure-date-label" required>
+                    Maintenance Date
+                  </Label>
                   <span className="text-[11px] text-amber-700 font-medium flex items-center">
                     <CalendarX className="w-3 h-3 mr-1" />
                     Days with bookings are disabled
@@ -925,7 +973,11 @@ export const DockManagerDashboard: React.FC = () => {
                 </div>
 
                 {/* Quick 14-day selector grid */}
-                <div className="grid grid-cols-7 gap-1.5 p-2 bg-gray-50 border border-gray-200 rounded-lg max-h-48 overflow-y-auto">
+                <div
+                  role="group"
+                  aria-labelledby="closure-date-label"
+                  className="grid grid-cols-7 gap-1.5 p-2 bg-gray-50 border border-gray-200 rounded-lg max-h-48 overflow-y-auto"
+                >
                   {upcomingDays.map((d) => {
                     const isBooked = bookedDatesForSelectedDock.has(d.dateStr);
                     const bookingCount = bookedDatesForSelectedDock.get(d.dateStr) || 0;
@@ -936,8 +988,10 @@ export const DockManagerDashboard: React.FC = () => {
                         key={d.dateStr}
                         type="button"
                         disabled={isBooked || isSubmittingClosure}
+                        aria-pressed={isSelected}
+                        aria-label={`${d.dateStr}${isBooked ? `, unavailable, ${bookingCount} active booking(s)` : isSelected ? ', selected' : ', available'}`}
                         onClick={() => handleSelectClosureDate(d.dateStr)}
-                        className={`p-1.5 rounded-md text-center flex flex-col items-center justify-center transition-all ${
+                        className={`p-1.5 rounded-md text-center flex flex-col items-center justify-center transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] ${
                           isSelected
                             ? 'bg-[#2F4F4F] text-white font-bold ring-2 ring-[#2F4F4F] shadow-sm'
                             : isBooked
@@ -971,6 +1025,7 @@ export const DockManagerDashboard: React.FC = () => {
                   <span className="text-xs text-gray-500 whitespace-nowrap">Or pick date:</span>
                   <input
                     type="date"
+                    aria-label="Choose a custom maintenance date"
                     min={new Date().toISOString().slice(0, 10)}
                     value={selectedClosureDate}
                     onChange={(e) => handleSelectClosureDate(e.target.value)}
@@ -984,8 +1039,11 @@ export const DockManagerDashboard: React.FC = () => {
                 </div>
 
                 {isSelectedDateBooked && (
-                  <div className="mt-2 p-2.5 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-800 flex items-start space-x-2">
-                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <div
+                    role="alert"
+                    className="mt-2 p-2.5 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-800 flex items-start space-x-2"
+                  >
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" aria-hidden="true" />
                     <span>
                       <strong>Day Blocked:</strong> Dock bay has{' '}
                       <strong>{bookedDatesForSelectedDock.get(selectedClosureDate)} active booking(s)</strong> scheduled on{' '}
@@ -1008,6 +1066,8 @@ export const DockManagerDashboard: React.FC = () => {
                     value={closureStartTimeOnly}
                     onChange={(e) => handleStartTimeChange(e.target.value)}
                     disabled={isSubmittingClosure}
+                    aria-invalid={Boolean(closureError)}
+                    aria-describedby={closureError ? 'closure-error' : undefined}
                     className="w-full text-xs px-3 py-2 border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-[#2F4F4F]"
                   />
                 </div>
@@ -1023,6 +1083,8 @@ export const DockManagerDashboard: React.FC = () => {
                     value={closureEndTimeOnly}
                     onChange={(e) => handleEndTimeChange(e.target.value)}
                     disabled={isSubmittingClosure}
+                    aria-invalid={Boolean(closureError)}
+                    aria-describedby={closureError ? 'closure-error' : undefined}
                     className="w-full text-xs px-3 py-2 border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-[#2F4F4F]"
                   />
                 </div>
@@ -1042,6 +1104,8 @@ export const DockManagerDashboard: React.FC = () => {
                   onChange={(e) => setClosureReason(e.target.value)}
                   disabled={isSubmittingClosure}
                   hasError={Boolean(closureError && !closureReason.trim())}
+                  aria-invalid={Boolean(closureError)}
+                  aria-describedby={closureError ? 'closure-error' : undefined}
                 />
                 {closureError && !closureReason.trim() && (
                   <p className="text-[11px] text-red-600 mt-1">

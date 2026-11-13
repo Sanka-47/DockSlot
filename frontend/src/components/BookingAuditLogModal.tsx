@@ -14,6 +14,7 @@ import {
   Building2,
 } from 'lucide-react';
 import { Button } from './ui/button';
+import { useDialogA11y } from '../hooks/useDialogA11y';
 import { bookingAuditLogModalService } from '../services/bookingAuditLogModal.service';
 import { getApiErrorMessage } from '../services/errors';
 import type { Booking, BookingAuditLog } from '../types/booking.types';
@@ -33,6 +34,7 @@ export const BookingAuditLogModal: React.FC<BookingAuditLogModalProps> = ({
   const [logs, setLogs] = useState<BookingAuditLog[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const dialogRef = useDialogA11y<HTMLDivElement>({ isOpen, onClose });
 
   const fetchAuditLogs = useCallback(async () => {
     if (!booking) return;
@@ -60,17 +62,6 @@ export const BookingAuditLogModal: React.FC<BookingAuditLogModalProps> = ({
       setError(null);
     }
   }, [isOpen, booking, fetchAuditLogs]);
-
-  // Handle escape key to close
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
 
   if (!isOpen || !booking) return null;
 
@@ -151,10 +142,12 @@ export const BookingAuditLogModal: React.FC<BookingAuditLogModalProps> = ({
 
   return (
     <div
+      ref={dialogRef}
+      tabIndex={-1}
       role="dialog"
       aria-modal="true"
       aria-labelledby="audit-log-title"
-      className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5"
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 outline-none"
     >
       <div className="relative bg-white rounded-xl shadow-2xl max-w-2xl w-full border border-gray-200 overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
@@ -184,9 +177,9 @@ export const BookingAuditLogModal: React.FC<BookingAuditLogModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Close dialog"
-            className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors"
+            className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F]"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
@@ -226,13 +219,26 @@ export const BookingAuditLogModal: React.FC<BookingAuditLogModalProps> = ({
         {/* Scrollable Timeline Body */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
           {isLoading ? (
-            <div className="py-16 flex flex-col items-center justify-center space-y-3 text-gray-500">
-              <div className="w-8 h-8 border-3 border-[#2F4F4F] border-t-transparent rounded-full animate-spin" />
+            <div
+              role="status"
+              aria-live="polite"
+              className="py-16 flex flex-col items-center justify-center space-y-3 text-gray-500"
+            >
+              <div
+                aria-hidden="true"
+                className="w-8 h-8 border-3 border-[#2F4F4F] border-t-transparent rounded-full animate-spin"
+              />
               <p className="text-sm font-medium">Loading lifecycle audit trail...</p>
             </div>
           ) : error ? (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800 flex items-start space-x-3">
-              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div
+              role="alert"
+              className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800 flex items-start space-x-3"
+            >
+              <AlertCircle
+                className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5"
+                aria-hidden="true"
+              />
               <div className="flex-1">
                 <p className="font-semibold">Unable to fetch audit log</p>
                 <p className="text-xs text-red-700 mt-1">{error}</p>
@@ -242,7 +248,7 @@ export const BookingAuditLogModal: React.FC<BookingAuditLogModalProps> = ({
                   onClick={fetchAuditLogs}
                   className="mt-3 text-xs border-red-300 text-red-800 hover:bg-red-100"
                 >
-                  <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                  <RefreshCw className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
                   Try Again
                 </Button>
               </div>

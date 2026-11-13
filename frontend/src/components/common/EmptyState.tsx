@@ -10,7 +10,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   description = 'There are no items to display at this time.',
 }) => {
   return (
-    <div className="flex flex-col items-center justify-center p-8 text-center text-gray-500">
+    <div role="status" className="flex flex-col items-center justify-center p-8 text-center text-gray-500">
       <h3 className="text-base font-semibold text-gray-700">{title}</h3>
       <p className="text-sm mt-1">{description}</p>
     </div>

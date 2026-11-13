@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { AlertTriangle, HelpCircle, X } from 'lucide-react';
+import { useDialogA11y } from '../../hooks/useDialogA11y';
 
 export interface ConfirmDialogProps {
   isOpen: boolean;
@@ -28,14 +29,11 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onConfirm,
   onCancel,
 }) => {
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !isLoading) onCancel();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isOpen, isLoading, onCancel]);
+  const dialogRef = useDialogA11y<HTMLDivElement>({
+    isOpen,
+    onClose: onCancel,
+    closeOnEscape: !isLoading,
+  });
 
   if (!isOpen) return null;
 
@@ -43,10 +41,13 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+      ref={dialogRef}
+      tabIndex={-1}
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200 outline-none"
       role="dialog"
       aria-modal="true"
       aria-labelledby="confirm-dialog-title"
+      aria-describedby="confirm-dialog-description"
       onClick={() => {
         if (!isLoading) onCancel();
       }}
@@ -75,13 +76,16 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           </button>
         </div>
 
-        <div className="p-6 text-xs text-gray-700 leading-relaxed">{message}</div>
+        <div id="confirm-dialog-description" className="p-6 text-xs text-gray-700 leading-relaxed">
+          {message}
+        </div>
 
         <div className="px-6 pb-6 flex justify-end space-x-2">
           <button
             type="button"
             onClick={onCancel}
             disabled={isLoading}
+            data-autofocus
             className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
           >
             {cancelLabel}

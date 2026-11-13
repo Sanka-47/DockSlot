@@ -18,7 +18,9 @@ import type {
   UserStatusFilter,
 } from '../services/carrierAdminDashboard.service';
 import { getApiErrorMessage } from '../services/errors';
+import { handleTabListKeyDown } from '../utils/tabKeyboard';
 import { useAuth } from '../hooks/useAuth';
+import { useDialogA11y } from '../hooks/useDialogA11y';
 import { useConfirm } from '../hooks/useConfirm';
 import type { User } from '../types/user.types';
 import toast from 'react-hot-toast';
@@ -40,6 +42,11 @@ export const CarrierAdminDashboard: React.FC = () => {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState<boolean>(false);
   const [inviteEmail, setInviteEmail] = useState<string>('');
   const [isSendingInvite, setIsSendingInvite] = useState<boolean>(false);
+  const inviteDialogRef = useDialogA11y<HTMLDivElement>({
+    isOpen: isInviteModalOpen,
+    onClose: () => setIsInviteModalOpen(false),
+    closeOnEscape: !isSendingInvite,
+  });
 
   // Filter & Search State
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -227,40 +234,66 @@ export const CarrierAdminDashboard: React.FC = () => {
 
       {/* Global Alerts */}
       {errorBanner && (
-        <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs flex items-center justify-between shadow-sm">
+        <div
+          role="alert"
+          className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs flex items-center justify-between shadow-sm"
+        >
           <div className="flex items-center space-x-2">
-            <AlertCircle className="w-4 h-4 shrink-0" />
+            <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
             <span>{errorBanner}</span>
           </div>
-          <button onClick={() => setErrorBanner(null)} className="text-red-500 hover:text-red-700">
-            <X className="w-4 h-4" />
+          <button
+            type="button"
+            onClick={() => setErrorBanner(null)}
+            aria-label="Dismiss error message"
+            className="text-red-500 hover:text-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 rounded"
+          >
+            <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
       )}
 
       {successBanner && (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs flex items-center justify-between shadow-sm">
+        <div
+          role="status"
+          aria-live="polite"
+          className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs flex items-center justify-between shadow-sm"
+        >
           <div className="flex items-center space-x-2">
-            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" aria-hidden="true" />
             <span>{successBanner}</span>
           </div>
-          <button onClick={() => setSuccessBanner(null)} className="text-emerald-500 hover:text-emerald-700">
-            <X className="w-4 h-4" />
+          <button
+            type="button"
+            onClick={() => setSuccessBanner(null)}
+            aria-label="Dismiss success message"
+            className="text-emerald-500 hover:text-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded"
+          >
+            <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
       )}
 
       {/* Navigation Tabs */}
-      <div className="flex border-b border-gray-200 bg-white rounded-t-xl px-4 pt-2 shadow-sm space-x-1 overflow-x-auto">
+      <div
+        role="tablist"
+        aria-label="Carrier administration sections"
+        onKeyDown={handleTabListKeyDown}
+        className="flex border-b border-gray-200 bg-white rounded-t-xl px-4 pt-2 shadow-sm space-x-1 overflow-x-auto"
+      >
         <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'users'}
+          tabIndex={activeTab === 'users' ? 0 : -1}
           onClick={() => setActiveTab('users')}
-          className={`flex items-center space-x-2 px-4 py-3 text-xs font-bold border-b-2 whitespace-nowrap transition-colors ${
+          className={`flex items-center space-x-2 px-4 py-3 text-xs font-bold border-b-2 whitespace-nowrap transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] ${
             activeTab === 'users'
               ? 'border-[#2F4F4F] text-[#2F4F4F]'
               : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
-          <Users className="w-4 h-4" />
+          <Users className="w-4 h-4" aria-hidden="true" />
           <span>User Management</span>
           <span
             className={`ml-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
@@ -274,15 +307,19 @@ export const CarrierAdminDashboard: React.FC = () => {
         </button>
 
         <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'profile'}
+          tabIndex={activeTab === 'profile' ? 0 : -1}
           onClick={() => setActiveTab('profile')}
-          className={`flex items-center space-x-2 px-4 py-3 text-xs font-bold border-b-2 whitespace-nowrap transition-colors ${
+          className={`flex items-center space-x-2 px-4 py-3 text-xs font-bold border-b-2 whitespace-nowrap transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] ${
             activeTab === 'profile'
               ? 'border-[#2F4F4F] text-[#2F4F4F]'
               : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
-          <Building2 className="w-4 h-4" />
-          <span>Carrier Profile & Organization</span>
+          <Building2 className="w-4 h-4" aria-hidden="true" />
+          <span>Carrier Profile &amp; Organization</span>
         </button>
       </div>
 
@@ -343,9 +380,13 @@ export const CarrierAdminDashboard: React.FC = () => {
             <div className="flex flex-wrap items-center gap-2">
               {/* Search Bar */}
               <div className="relative">
-                <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Search
+                  className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"
+                  aria-hidden="true"
+                />
                 <input
-                  type="text"
+                  type="search"
+                  aria-label="Search organization members by email"
                   placeholder="Search by email..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -355,6 +396,7 @@ export const CarrierAdminDashboard: React.FC = () => {
 
               {/* Status Filter */}
               <select
+                aria-label="Filter by account status"
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as any)}
                 className="py-1.5 px-3 text-xs bg-gray-50 border border-gray-300 rounded-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#2F4F4F]"
@@ -366,6 +408,7 @@ export const CarrierAdminDashboard: React.FC = () => {
 
               {/* Role Filter */}
               <select
+                aria-label="Filter by role"
                 value={roleFilter}
                 onChange={(e) => setRoleFilter(e.target.value as any)}
                 className="py-1.5 px-3 text-xs bg-gray-50 border border-gray-300 rounded-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#2F4F4F]"
@@ -379,8 +422,8 @@ export const CarrierAdminDashboard: React.FC = () => {
 
           {/* User List */}
           {isLoadingUsers ? (
-            <div className="py-16 text-center text-xs text-gray-500">
-              <RefreshCw className="w-6 h-6 animate-spin mx-auto text-gray-400 mb-2" />
+            <div role="status" aria-live="polite" className="py-16 text-center text-xs text-gray-500">
+              <RefreshCw className="w-6 h-6 animate-spin mx-auto text-gray-400 mb-2" aria-hidden="true" />
               Loading carrier organization members...
             </div>
           ) : filteredUsers.length === 0 ? (
@@ -453,27 +496,31 @@ export const CarrierAdminDashboard: React.FC = () => {
                         <span className="text-xs text-gray-400 font-medium">Current Session</span>
                       ) : isDeactivated ? (
                         <button
+                          type="button"
                           onClick={() => handleReactivateUser(u)}
                           disabled={reactivatingUserId === u.id}
-                          className="px-3 py-1.5 text-xs font-medium text-emerald-600 hover:text-emerald-700 border border-emerald-200 hover:bg-emerald-50 rounded-lg transition-colors flex items-center space-x-1 disabled:opacity-50"
+                          aria-busy={reactivatingUserId === u.id || undefined}
+                          className="px-3 py-1.5 text-xs font-medium text-emerald-600 hover:text-emerald-700 border border-emerald-200 hover:bg-emerald-50 rounded-lg transition-colors flex items-center space-x-1 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                         >
                           {reactivatingUserId === u.id ? (
-                            <RefreshCw className="w-3 h-3 animate-spin" />
+                            <RefreshCw className="w-3 h-3 animate-spin" aria-hidden="true" />
                           ) : (
-                            <UserCheck className="w-3 h-3" />
+                            <UserCheck className="w-3 h-3" aria-hidden="true" />
                           )}
                           <span>Reactivate</span>
                         </button>
                       ) : (
                         <button
+                          type="button"
                           onClick={() => handleDeactivateUser(u)}
                           disabled={deactivatingUserId === u.id}
-                          className="px-3 py-1.5 text-xs font-medium text-red-600 hover:text-red-700 border border-red-200 hover:bg-red-50 rounded-lg transition-colors flex items-center space-x-1 disabled:opacity-50"
+                          aria-busy={deactivatingUserId === u.id || undefined}
+                          className="px-3 py-1.5 text-xs font-medium text-red-600 hover:text-red-700 border border-red-200 hover:bg-red-50 rounded-lg transition-colors flex items-center space-x-1 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
                         >
                           {deactivatingUserId === u.id ? (
-                            <RefreshCw className="w-3 h-3 animate-spin" />
+                            <RefreshCw className="w-3 h-3 animate-spin" aria-hidden="true" />
                           ) : (
-                            <UserX className="w-3 h-3" />
+                            <UserX className="w-3 h-3" aria-hidden="true" />
                           )}
                           <span>Deactivate</span>
                         </button>
@@ -539,19 +586,27 @@ export const CarrierAdminDashboard: React.FC = () => {
 
       {/* Modal: Invite Team Member */}
       {isInviteModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div
+          ref={inviteDialogRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="carrier-invite-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 outline-none"
+        >
           <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden animate-in zoom-in-95 duration-150">
             <div className="px-6 py-4 bg-[#2F4F4F] text-white flex items-center justify-between">
-              <h3 className="text-sm font-bold flex items-center space-x-2">
-                <UserPlus className="w-4 h-4 text-emerald-400" />
+              <h3 id="carrier-invite-title" className="text-sm font-bold flex items-center space-x-2">
+                <UserPlus className="w-4 h-4 text-emerald-400" aria-hidden="true" />
                 <span>Invite Team Member</span>
               </h3>
               <button
                 onClick={() => setIsInviteModalOpen(false)}
-                className="text-gray-300 hover:text-white"
+                className="text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 rounded"
+                aria-label="Close invite dialog"
                 type="button"
               >
-                <X className="w-4 h-4" />
+                <X className="w-4 h-4" aria-hidden="true" />
               </button>
             </div>
 
@@ -563,10 +618,12 @@ export const CarrierAdminDashboard: React.FC = () => {
                 <input
                   id="carrier-invite-email"
                   type="email"
+                  autoComplete="email"
                   placeholder="dispatcher@swiftlogistics.com"
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
                   required
+                  data-autofocus
                   className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2F4F4F] focus:outline-none"
                 />
                 <p className="text-[11px] text-gray-500 mt-1">
@@ -579,16 +636,19 @@ export const CarrierAdminDashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsInviteModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSendingInvite}
-                  className="px-4 py-2 text-xs font-semibold text-white bg-[#2F4F4F] hover:bg-[#1E3333] disabled:opacity-50 rounded-lg transition-colors flex items-center space-x-1.5"
+                  aria-busy={isSendingInvite || undefined}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-[#2F4F4F] hover:bg-[#1E3333] disabled:opacity-50 rounded-lg transition-colors flex items-center space-x-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] focus-visible:ring-offset-2"
                 >
-                  {isSendingInvite && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                  {isSendingInvite && (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                  )}
                   <span>Send Invitation</span>
                 </button>
               </div>
