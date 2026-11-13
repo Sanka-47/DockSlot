@@ -59,12 +59,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     }
     if (typeof window !== 'undefined') {
       const path = window.location.pathname;
-      const searchParams = new URLSearchParams(window.location.search);
-      if (
-        resetToken ||
-        path.includes('reset-password') ||
-        (searchParams.get('token') && !path.includes('accept-invite') && !path.includes('verify'))
-      ) {
+      if (resetToken || path.includes('reset-password')) {
         return 'reset';
       }
       if (path.includes('forgot-password')) {
@@ -81,12 +76,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
       const path = window.location.pathname;
-      const searchParams = new URLSearchParams(window.location.search);
-      if (
-        resetToken ||
-        path.includes('reset-password') ||
-        (searchParams.get('token') && !path.includes('accept-invite') && !path.includes('verify'))
-      ) {
+      if (resetToken || path.includes('reset-password')) {
         setActiveTab('reset');
       } else if (path.includes('forgot-password')) {
         setActiveTab('forgot');
@@ -109,11 +99,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     return false;
   });
 
-  const effectiveInviteToken =
-    inviteToken ||
-    (typeof window !== 'undefined'
-      ? new URLSearchParams(window.location.search).get('token') || undefined
-      : undefined);
+  // The token is consumed and scrubbed from the URL by App before this renders.
+  const effectiveInviteToken = inviteToken;
 
   // Sync invite modal if showInviteModal or URL changes
   React.useEffect(() => {
@@ -128,7 +115,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({
   const handleInviteSuccess = (registeredEmail?: string, message?: string) => {
     setIsInviteModalOpen(false);
     if (typeof window !== 'undefined') {
-      window.history.pushState(null, '', '/');
+      // Replace the invite entry so Back cannot reopen a consumed token flow.
+      window.history.replaceState(null, '', '/');
     }
     setActiveTab('signin');
     if (registeredEmail) {
@@ -142,7 +130,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
   const handleInviteClose = () => {
     setIsInviteModalOpen(false);
     if (typeof window !== 'undefined') {
-      window.history.pushState(null, '', '/');
+      window.history.replaceState(null, '', '/');
     }
   };
 

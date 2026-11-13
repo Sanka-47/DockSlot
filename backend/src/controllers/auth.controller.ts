@@ -93,8 +93,19 @@ export const refresh = async (req: Request, res: Response): Promise<void> => {
       user: result.user,
     });
   } catch (error: any) {
-    // A stale/invalid cookie should not keep being sent by the browser.
-    clearRefreshTokenCookie(res);
+    const status =
+      typeof error?.status === 'number'
+        ? error.status
+        : typeof error?.statusCode === 'number'
+          ? error.statusCode
+          : 500;
+
+    // Only a stale/invalid/forbidden refresh session should clear the cookie.
+    // A transient 5xx (database/Redis outage) must leave it intact so the
+    // client can retry once the dependency recovers.
+    if (status === 400 || status === 401 || status === 403) {
+      clearRefreshTokenCookie(res);
+    }
     sendError(res, error, 'An error occurred while refreshing the token.');
   }
 };
@@ -248,7 +259,11 @@ export const acceptInvite = async (req: Request, res: Response): Promise<void> =
 
 export const getInvitationDetails = async (req: Request, res: Response): Promise<void> => {
   try {
-    const token = (req.query.token as string) || (req.params.token as string);
+    // Prefer the POST body so invitation tokens never appear in a URL or logs.
+    const token =
+      (req.body?.token as string) ||
+      (req.query.token as string) ||
+      (req.params.token as string);
     const result = await invitationService.getInvitationByToken(token);
     res.status(200).json({
       success: true,
@@ -293,7 +308,8 @@ export const setup2FA = async (req: Request, res: Response): Promise<void> => { 
       return;
     }
 
-    const result = await totpService.setup(userId);
+    const { password } = req.body ?? {};
+    const result = await totpService.setup({ userId, password });
     res.status(200).json({
       success: true,
       message: 'TOTP 2FA secret and QR code generated successfully.',

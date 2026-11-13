@@ -42,6 +42,10 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
   const [isLoadingStatus, setIsLoadingStatus] = useState<boolean>(true);
   const [setupStep, setSetupStep] = useState<SetupStep>('idle');
 
+  // Step-up authentication before a new TOTP secret can be generated.
+  const [showSetupForm, setShowSetupForm] = useState<boolean>(false);
+  const [setupPassword, setSetupPassword] = useState<string>('');
+
   // Generated secret + QR payload, only held while the user is enabling 2FA
   const [secret, setSecret] = useState<string>('');
   const [qrCode, setQrCode] = useState<string>('');
@@ -78,6 +82,8 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
 
   const resetFlow = () => {
     setSetupStep('idle');
+    setShowSetupForm(false);
+    setSetupPassword('');
     setSecret('');
     setQrCode('');
     setOtpauthUrl('');
@@ -93,16 +99,27 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
     setSuccessMessage(null);
   };
 
-  const handleStartSetup = async () => {
+  const handleStartSetup = async (e: React.FormEvent) => {
+    e.preventDefault();
     clearMessages();
+
+    const validationError =
+      twoFactorSettingsService.validateSetupPassword(setupPassword);
+    if (validationError) {
+      setErrorMessage(validationError);
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      const payload = await twoFactorSettingsService.startSetup();
+      const payload = await twoFactorSettingsService.startSetup(setupPassword);
 
       setSecret(payload.secret);
       setQrCode(payload.qrCode);
       setOtpauthUrl(payload.otpauthUrl);
       setVerifyCode('');
+      setSetupPassword('');
+      setShowSetupForm(false);
       setSetupStep('scan');
     } catch (err: unknown) {
       setErrorMessage(
@@ -345,20 +362,69 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
         {/* -------------------- Disabled, idle -------------------- */}
         {!isLoadingStatus && !isEnabled && setupStep === 'idle' && (
           <div className="space-y-3">
-            <p className="text-xs text-gray-600 leading-snug">
-              2FA is currently off. Enable it to require a time-based one-time password whenever
-              you sign in.
-            </p>
-            <Button
-              type="button"
-              variant="primary"
-              size="sm"
-              onClick={handleStartSetup}
-              isLoading={isSubmitting}
-            >
-              <Smartphone className="w-3.5 h-3.5 mr-1.5" />
-              Enable 2FA
-            </Button>
+            {!showSetupForm ? (
+              <>
+                <p className="text-xs text-gray-600 leading-snug">
+                  2FA is currently off. Enable it to require a time-based one-time password whenever
+                  you sign in.
+                </p>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={() => {
+                    clearMessages();
+                    setShowSetupForm(true);
+                  }}
+                  isLoading={isSubmitting}
+                >
+                  <Smartphone className="w-3.5 h-3.5 mr-1.5" />
+                  Enable 2FA
+                </Button>
+              </>
+            ) : (
+              <form onSubmit={handleStartSetup} className="space-y-3" noValidate>
+                <p className="text-xs text-gray-600 leading-snug">
+                  For security, confirm your current account password before generating a new
+                  authenticator secret.
+                </p>
+
+                <div>
+                  <Label htmlFor="setup-2fa-password" required>
+                    Current Password
+                  </Label>
+                  <Input
+                    id="setup-2fa-password"
+                    type="password"
+                    autoComplete="current-password"
+                    placeholder="Enter your account password"
+                    icon={<Lock className="w-4 h-4" />}
+                    value={setupPassword}
+                    onChange={(e) => setSetupPassword(e.target.value)}
+                    disabled={isSubmitting}
+                  />
+                </div>
+
+                <div className="flex items-center space-x-2 pt-1">
+                  <Button type="submit" variant="primary" size="sm" isLoading={isSubmitting}>
+                    Continue
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setShowSetupForm(false);
+                      setSetupPassword('');
+                      clearMessages();
+                    }}
+                    disabled={isSubmitting}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            )}
           </div>
         )}
 

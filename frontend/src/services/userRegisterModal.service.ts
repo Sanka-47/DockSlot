@@ -7,16 +7,8 @@ export interface InvitationDetails {
   organizationName?: string;
 }
 
-/** Reads the invitation token from the current URL (?token=...). */
-export function getInviteTokenFromUrl(): string {
-  if (typeof window === 'undefined') return '';
-  return new URLSearchParams(window.location.search).get('token') || '';
-}
-
 /** Business rules and API orchestration for the invitation registration modal. */
 export const userRegisterModalService = {
-  getTokenFromUrl: getInviteTokenFromUrl,
-
   /** Returns a user-facing validation message, or null when the input is valid. */
   validateRegistration(
     token: string,

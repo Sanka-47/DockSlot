@@ -1,9 +1,11 @@
 import React, { createContext, useState, useEffect, type ReactNode } from 'react';
+import toast from 'react-hot-toast';
 import type { User } from '../types/user.types';
 import {
   authToken,
   clearSessionLoggedOut,
   markSessionLoggedOut,
+  subscribeToSessionLogout,
 } from '../utils/authToken';
 import { authContextService } from '../services/authContext.service';
 import {
@@ -15,7 +17,7 @@ export interface AuthContextType {
   user: User | null;
   token: string | null;
   login: (token: string, user: User) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
   logoutAll: () => Promise<void>;
   /** Re-reads the current user from the server (e.g. after a 2FA change). */
   refreshUser: () => Promise<void>;
@@ -61,10 +63,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const handleTokenRefreshed = (event: Event) => {
-      const detail = (event as CustomEvent<{ token?: string }>).detail;
-      if (detail?.token) {
-        setToken(detail.token);
+    const handleTokenRefreshed = () => {
+      const nextToken = authToken.getToken();
+      if (nextToken) {
+        setToken(nextToken);
       }
     };
 
@@ -82,6 +84,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
   }, []);
 
+  // A logout in another tab must not leave this tab holding a live in-memory
+  // access token. The storage event covers browsers without BroadcastChannel;
+  // the channel covers private-mode/storage-blocked contexts.
+  useEffect(
+    () =>
+      subscribeToSessionLogout(() => {
+        authToken.clear();
+        setToken(null);
+        setUser(null);
+      }),
+    []
+  );
+
   const login = (newToken: string, newUser: User) => {
     clearSessionLoggedOut();
     authToken.setToken(newToken);
@@ -89,14 +104,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setUser(newUser);
   };
 
-  const logout = () => {
-    // Best-effort: clear the server-side HttpOnly refresh cookie. The marker
-    // ensures a reload does not silently restore the session if this fails.
+  const logout = async () => {
+    // Clear the local session immediately; the marker prevents a reload from
+    // silently restoring the session if the server cannot be reached.
     markSessionLoggedOut();
-    void authContextService.logout();
     authToken.clear();
     setToken(null);
     setUser(null);
+
+    try {
+      await authContextService.logout();
+    } catch {
+      toast.error(
+        'Signed out on this device, but the server could not be reached. The refresh cookie will expire automatically.'
+      );
+    }
   };
 
   const logoutAll = async () => {
@@ -106,7 +128,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // revocation can complete.
       await authContextService.logoutAll();
     } catch {
-      // Continue client cleanup even if network fails
+      toast.error(
+        'Your local session was cleared, but the server could not be reached. Other devices may still be signed in.'
+      );
     } finally {
       markSessionLoggedOut();
       authToken.clear();

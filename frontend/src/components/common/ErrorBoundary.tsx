@@ -34,7 +34,11 @@ export class ErrorBoundary extends React.Component<
   }
 
   public componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
-    console.error('Unhandled UI error:', error, errorInfo);
+    // Production bundles must not dump error objects that could contain API
+    // payloads or token material into the browser console.
+    if (import.meta.env.DEV) {
+      console.error('Unhandled UI error:', error, errorInfo);
+    }
   }
 
   private handleRetry = (): void => {

@@ -58,6 +58,26 @@ The backend container applies the schema and loads the demo data on boot
 (`prisma db push` + `prisma db seed`). See `docker-compose.yml` for the services
 and host port overrides.
 
+### Frontend
+
+```sh
+cd frontend
+cp .env.example .env.local   # Windows: copy .env.example .env.local
+npm ci
+npm run dev
+```
+
+`VITE_API_URL` is the absolute API base URL and must include the API path
+(`http://localhost:5000/api` in development). Production builds require an
+explicit HTTPS value; `npm run build` fails fast if it is missing or insecure.
+`vite.config.ts` also applies CSP, HSTS (preview/production), frame denial,
+`nosniff`, `Referrer-Policy: no-referrer`, and a restrictive
+`Permissions-Policy` to the dev and preview servers. A production static host or
+reverse proxy must apply the same headers to the built `dist/` files. It should
+also avoid logging query strings for `/reset-password` and `/accept-invite`
+(or redact `token=`); the SPA scrubs the token immediately, but the initial
+document request still reaches the static host.
+
 ## Seeded demo accounts
 
 All seeded accounts are pre-verified and share the same password: `12345678`

@@ -20,6 +20,7 @@ import {
   get2FAStatus,
 } from '../controllers/auth.controller';
 import { authenticate } from '../middleware/auth.middleware';
+import { requireTrustedOrigin } from '../middleware/origin.middleware';
 import {
   authRateLimiter,
   loginRateLimiter,
@@ -177,7 +178,7 @@ router.post('/login', authRateLimiter, loginRateLimiter, login);
  *       429:
  *         description: Too many API requests (rate limit exceeded)
  */
-router.post('/refresh', refreshRateLimiter, refresh);
+router.post('/refresh', requireTrustedOrigin, refreshRateLimiter, refresh);
 
 /**
  * @openapi
@@ -192,7 +193,7 @@ router.post('/refresh', refreshRateLimiter, refresh);
  *       200:
  *         description: Refresh cookie cleared
  */
-router.post('/logout', logout);
+router.post('/logout', requireTrustedOrigin, logout);
 
 /**
  * @openapi
@@ -235,8 +236,32 @@ router.post('/accept-invite', acceptInvite);
 /**
  * @openapi
  * /auth/invitation:
- *   get:
+ *   post:
  *     summary: Retrieve invitation details by token to verify before registering
+ *     description: The token is sent in the request body so it does not appear in URLs, access logs, or Referer headers.
+ *     tags:
+ *       - Authentication
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - token
+ *             properties:
+ *               token:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Invitation details retrieved successfully
+ *       400:
+ *         description: Invalid or expired token
+ *       404:
+ *         description: Invitation not found
+ *   get:
+ *     deprecated: true
+ *     summary: Retrieve invitation details by token (deprecated; use POST)
  *     tags:
  *       - Authentication
  *     parameters:
@@ -253,6 +278,9 @@ router.post('/accept-invite', acceptInvite);
  *       404:
  *         description: Invitation not found
  */
+router.post('/invitation', authRateLimiter, getInvitationDetails);
+
+// Kept for older clients only; the frontend uses POST so tokens stay out of URLs.
 router.get('/invitation', getInvitationDetails);
 
 /**
@@ -432,7 +460,7 @@ router.post('/change-password', authenticate, changePassword);
  *       401:
  *         description: Unauthorized. Missing or invalid token.
  */
-router.post('/logout-all', authenticate, logoutAll);
+router.post('/logout-all', requireTrustedOrigin, authenticate, logoutAll);
 
 /**
  * @openapi
@@ -476,13 +504,27 @@ router.get('/2fa/status', authenticate, get2FAStatus);
  *     summary: Generate a new TOTP secret and QR code for authenticator apps
  *     description: |
  *       Generates a base32 TOTP secret for the authenticated user and returns a QR code data URL,
- *       the base32 secret string, and the otpauth:// provisioning URI. The secret is persisted on the
- *       user record but 2FA stays disabled until POST /auth/2fa/verify-and-enable confirms a valid code.
+ *       the base32 secret string, and the otpauth:// provisioning URI. The current account password is
+ *       required as step-up proof before the secret is generated or rotated. The secret is persisted on
+ *       the user record but 2FA stays disabled until POST /auth/2fa/verify-and-enable confirms a valid code.
  *       Re-invoking this endpoint rotates the secret (any previously scanned QR code becomes invalid).
  *     tags:
  *       - Two-Factor Authentication
  *     security:
  *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - password
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 description: Current account password
  *     responses:
  *       200:
  *         description: Secret and QR code generated successfully
@@ -517,12 +559,14 @@ router.get('/2fa/status', authenticate, get2FAStatus);
  *                   type: string
  *                 otpauthUrl:
  *                   type: string
+ *       400:
+ *         description: Current password was not supplied
  *       401:
- *         description: Unauthorized. Missing or invalid token.
+ *         description: Unauthorized, or the current password does not match
  *       404:
  *         description: User not found
  */
-router.post('/2fa/setup', authenticate, setup2FA);
+router.post('/2fa/setup', authenticate, twoFactorRateLimiter, setup2FA);
 
 /**
  * @openapi

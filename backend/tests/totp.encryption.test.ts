@@ -53,10 +53,24 @@ describe('TOTP secret encryption in the 2FA flow', () => {
       tokenVersion: user.tokenVersion,
     });
 
-    const setup = await request(app)
+    const missingPassword = await request(app)
       .post('/api/auth/2fa/setup')
       .set('Authorization', `Bearer ${accessToken}`)
       .send({});
+
+    expect(missingPassword.status).toBe(400);
+
+    const wrongPassword = await request(app)
+      .post('/api/auth/2fa/setup')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ password: 'WrongPassword123!' });
+
+    expect(wrongPassword.status).toBe(401);
+
+    const setup = await request(app)
+      .post('/api/auth/2fa/setup')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ password });
 
     expect(setup.status).toBe(200);
     const secret: string = setup.body.data.secret;

@@ -11,6 +11,19 @@ import { TeamManagementModal } from './components/TeamManagementModal';
 import { SecuritySettingsModal } from './components/SecuritySettingsModal';
 import { Warehouse, LogOut, Users, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
+import {
+  consumeAuthTokenFromUrl,
+  isAcceptInvitePath,
+  isForgotPasswordPath,
+  isResetPasswordPath,
+} from './utils/urlToken';
+
+/**
+ * Email-link tokens are read and removed from the address bar exactly once,
+ * before any component renders. Keeping the value in module scope avoids
+ * React StrictMode's double-invoked state initializers.
+ */
+const initialAuthToken = consumeAuthTokenFromUrl();
 
 const AppContent: React.FC = () => {
   const { user, isAuthenticated, logout, logoutAll, refreshUser, isLoading } = useAuth();
@@ -31,19 +44,11 @@ const AppContent: React.FC = () => {
 
   // Handle URL paths for Password Reset & Forgot Password
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
-  const searchParams =
-    typeof window !== 'undefined'
-      ? new URLSearchParams(window.location.search)
-      : new URLSearchParams();
-  const urlToken = searchParams.get('token') || undefined;
 
-  if (
-    pathname.includes('reset-password') ||
-    (urlToken && !pathname.includes('accept-invite') && !pathname.includes('verify'))
-  ) {
+  if (isResetPasswordPath(pathname)) {
     return (
       <ResetPasswordPage
-        token={urlToken}
+        token={initialAuthToken}
         onBackToSignIn={() => {
           if (typeof window !== 'undefined') {
             window.location.href = '/';
@@ -58,7 +63,7 @@ const AppContent: React.FC = () => {
     );
   }
 
-  if (pathname.includes('forgot-password')) {
+  if (isForgotPasswordPath(pathname)) {
     return (
       <ForgotPasswordPage
         onBackToSignIn={() => {
@@ -71,11 +76,11 @@ const AppContent: React.FC = () => {
   }
 
   // Handle invitation link: /accept-invite?token=...
-  if (pathname.includes('accept-invite')) {
+  if (isAcceptInvitePath(pathname)) {
     return (
       <AuthPage
         initialTab="signin"
-        inviteToken={urlToken}
+        inviteToken={initialAuthToken}
         showInviteModal={true}
         onNavigate={(route) => setActiveView(route)}
       />
@@ -83,12 +88,7 @@ const AppContent: React.FC = () => {
   }
 
   if (!isAuthenticated || !user) {
-    return (
-      <AuthPage
-        resetToken={urlToken}
-        onNavigate={(route) => setActiveView(route)}
-      />
-    );
+    return <AuthPage onNavigate={(route) => setActiveView(route)} />;
   }
 
   // Determine dashboard based on user role and organization

@@ -15,16 +15,32 @@ export interface RestoredSession {
  */
 let restorePromise: Promise<RestoredSession | null> | null = null;
 
+function getHttpStatus(error: unknown): number | undefined {
+  return (error as { response?: { status?: number } } | null | undefined)?.response?.status;
+}
+
+function isTerminalRefreshFailure(error: unknown): boolean {
+  const status = getHttpStatus(error);
+  return status === 400 || status === 401 || status === 403;
+}
+
 async function fetchRestoredSession(): Promise<RestoredSession | null> {
   // Respect an explicit logout even if the server call could not reach the API.
   if (isSessionLoggedOut()) {
     return null;
   }
 
+  const epochAtStart = authToken.getEpoch();
+
   try {
     const response = await authApi.refresh();
     const token = response.token ?? response.data?.token;
     const user = response.user ?? response.data?.user;
+
+    // Logout (or another tab's logout) may have happened during the request.
+    if (isSessionLoggedOut() || authToken.getEpoch() !== epochAtStart) {
+      return null;
+    }
 
     if (!token || !user) {
       authToken.clear();
@@ -33,10 +49,12 @@ async function fetchRestoredSession(): Promise<RestoredSession | null> {
 
     authToken.setToken(token);
     return { token, user };
-  } catch {
-    // No valid refresh cookie, or it was revoked/expired. The backend also
-    // clears the stale cookie, so the browser simply remains signed out.
-    authToken.clear();
+  } catch (error: unknown) {
+    // Only a terminal refresh failure should invalidate the local session. A
+    // network outage or 5xx must not destroy a session that may still be valid.
+    if (isTerminalRefreshFailure(error)) {
+      authToken.clear();
+    }
     return null;
   }
 }
@@ -61,13 +79,9 @@ export const authContextService = {
     return response.data ?? null;
   },
 
-  /** Best-effort server logout; local cleanup is the caller's responsibility. */
+  /** Server logout. Local cleanup is the caller's responsibility. */
   async logout(): Promise<void> {
-    try {
-      await authApi.logout();
-    } catch {
-      // The local session is cleared regardless of network/server failures.
-    }
+    await authApi.logout();
   },
 
   async logoutAll(): Promise<void> {
