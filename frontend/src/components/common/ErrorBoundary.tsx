@@ -79,9 +79,9 @@ export class ErrorBoundary extends React.Component<
             <button
               type="button"
               onClick={this.handleReload}
-              className="mt-2 inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-[#2F4F4F] transition-colors hover:bg-gray-50"
+              className="mt-2 inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-[#2F4F4F] transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F]"
             >
-              <RefreshCw className="h-4 w-4" />
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
               Reload page
             </button>
           </div>

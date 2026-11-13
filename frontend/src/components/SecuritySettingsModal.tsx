@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, ShieldCheck } from 'lucide-react';
 import { TwoFactorSettings } from './TwoFactorSettings';
+import { useDialogA11y } from '../hooks/useDialogA11y';
 import type { User } from '../types/user.types';
 
 export interface SecuritySettingsModalProps {
@@ -21,14 +22,18 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
   user,
   onStatusChange,
 }) => {
+  const dialogRef = useDialogA11y<HTMLDivElement>({ isOpen, onClose });
+
   if (!isOpen) return null;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 overflow-y-auto"
+      ref={dialogRef}
+      tabIndex={-1}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 overflow-y-auto outline-none"
       role="dialog"
       aria-modal="true"
-      aria-label="Account security settings"
+      aria-labelledby="security-settings-title"
     >
       <div className="bg-white rounded-lg shadow-xl w-full max-w-lg my-8 overflow-hidden">
         {/* Header */}
@@ -38,16 +43,19 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
               <ShieldCheck className="w-4.5 h-4.5" />
             </div>
             <div className="min-w-0">
-              <h2 className="text-sm font-bold tracking-tight">Account Settings</h2>
+              <h2 id="security-settings-title" className="text-sm font-bold tracking-tight">
+                Account Settings
+              </h2>
               <p className="text-[11px] text-gray-200 truncate">
                 {user?.email || 'Signed in user'}
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             aria-label="Close account settings"
-            className="p-1.5 rounded-md hover:bg-white/15 transition-colors focus:outline-none shrink-0"
+            className="p-1.5 rounded-md hover:bg-white/15 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
@@ -71,8 +79,9 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
         {/* Footer */}
         <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 flex justify-end">
           <button
+            type="button"
             onClick={onClose}
-            className="px-3.5 py-1.5 text-xs font-semibold text-gray-700 bg-white border border-gray-300 hover:bg-gray-100 rounded-md transition-colors"
+            className="px-3.5 py-1.5 text-xs font-semibold text-gray-700 bg-white border border-gray-300 hover:bg-gray-100 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F]"
           >
             Done
           </button>

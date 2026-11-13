@@ -44,6 +44,7 @@ import {
   validateBookingInput,
 } from "../services/dispatcherDashboard.service";
 import { getApiErrorMessage, isSlotConflictError } from "../services/errors";
+import { useDialogA11y } from "../hooks/useDialogA11y";
 import { BookingAuditLogModal } from "../components/BookingAuditLogModal";
 import type {
   Warehouse,
@@ -164,6 +165,22 @@ export const DispatcherDashboard: React.FC = () => {
   const [cancelReason, setCancelReason] = useState<string>("");
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [isSubmittingCancel, setIsSubmittingCancel] = useState<boolean>(false);
+
+  const bookingDialogRef = useDialogA11y<HTMLDivElement>({
+    isOpen: isBookingModalOpen,
+    onClose: () => setIsBookingModalOpen(false),
+    closeOnEscape: !isSubmittingBooking,
+  });
+  const rescheduleDialogRef = useDialogA11y<HTMLDivElement>({
+    isOpen: isRescheduleModalOpen,
+    onClose: () => setIsRescheduleModalOpen(false),
+    closeOnEscape: !isSubmittingReschedule,
+  });
+  const cancelDialogRef = useDialogA11y<HTMLDivElement>({
+    isOpen: isCancelModalOpen,
+    onClose: () => setIsCancelModalOpen(false),
+    closeOnEscape: !isSubmittingCancel,
+  });
 
   // ---------------------------------------------------------------------------
   // Audit Log Modal State
@@ -806,7 +823,7 @@ export const DispatcherDashboard: React.FC = () => {
                 <span className="flex items-center space-x-1">
                   <Building className="w-3.5 h-3.5 text-gray-500 shrink-0" />
                   <span>
-                    Target Warehouse <span className="text-red-500">*</span>
+                    Target Warehouse <span className="text-red-500" aria-hidden="true">*</span>
                   </span>
                 </span>
                 {selectedWarehouse?.timezone && (
@@ -845,7 +862,7 @@ export const DispatcherDashboard: React.FC = () => {
               >
                 <Calendar className="w-3.5 h-3.5 text-gray-500 shrink-0" />
                 <span>
-                  Appointment Date <span className="text-red-500">*</span>
+                  Appointment Date <span className="text-red-500" aria-hidden="true">*</span>
                 </span>
               </Label>
               <Input
@@ -905,8 +922,15 @@ export const DispatcherDashboard: React.FC = () => {
 
           {/* Available Slots Display */}
           {isSearchingSlots ? (
-            <div className="py-10 sm:py-12 flex flex-col items-center justify-center space-y-2 text-gray-500 text-center px-3">
-              <div className="w-6 h-6 border-2 border-[#2F4F4F] border-t-transparent rounded-full animate-spin" />
+            <div
+              role="status"
+              aria-live="polite"
+              className="py-10 sm:py-12 flex flex-col items-center justify-center space-y-2 text-gray-500 text-center px-3"
+            >
+              <div
+                aria-hidden="true"
+                className="w-6 h-6 border-2 border-[#2F4F4F] border-t-transparent rounded-full animate-spin"
+              />
               <p className="text-xs font-medium">
                 Querying warehouse schedule and calculating available slots...
               </p>
@@ -1254,6 +1278,7 @@ export const DispatcherDashboard: React.FC = () => {
               {/* Desktop Table View */}
               <div className="hidden md:block overflow-x-auto border border-gray-200 rounded-lg">
                 <table className="w-full text-left text-xs divide-y divide-gray-200">
+                  <caption className="sr-only">Carrier bookings</caption>
                   <thead className="bg-gray-50 text-gray-600 font-semibold uppercase tracking-wider">
                     <tr>
                       <th scope="col" className="px-4 py-3">
@@ -1470,13 +1495,20 @@ export const DispatcherDashboard: React.FC = () => {
       {/* MODAL 1: Create Booking Modal                                             */}
       {/* ========================================================================= */}
       {isBookingModalOpen && selectedSlotForBooking && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200">
+        <div
+          ref={bookingDialogRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="create-booking-title"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200 outline-none"
+        >
           <div className="bg-white rounded-t-xl sm:rounded-lg shadow-xl border border-gray-300 max-w-lg w-full max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
             {/* Modal Header */}
             <div className="bg-[#2F4F4F] text-white px-4 sm:px-5 py-3.5 sm:py-4 flex items-center justify-between shrink-0">
               <div className="flex items-center space-x-2">
                 <CalendarCheck className="w-5 h-5 text-emerald-400 shrink-0" />
-                <h3 className="font-bold text-sm sm:text-base">
+                <h3 id="create-booking-title" className="font-bold text-sm sm:text-base">
                   Book Warehouse Dock Slot
                 </h3>
               </div>
@@ -1524,8 +1556,15 @@ export const DispatcherDashboard: React.FC = () => {
               </div>
 
               {bookingModalError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-md text-xs text-red-800 flex items-start space-x-2">
-                  <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+                <div
+                  id="booking-modal-error"
+                  role="alert"
+                  className="p-3 bg-red-50 border border-red-200 rounded-md text-xs text-red-800 flex items-start space-x-2"
+                >
+                  <AlertCircle
+                    className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5"
+                    aria-hidden="true"
+                  />
                   <span>{bookingModalError}</span>
                 </div>
               )}
@@ -1538,7 +1577,7 @@ export const DispatcherDashboard: React.FC = () => {
                 >
                   <Truck className="w-3.5 h-3.5 text-gray-500" />
                   <span>
-                    Truck License Plate <span className="text-red-500">*</span>
+                    Truck License Plate <span className="text-red-500" aria-hidden="true">*</span>
                   </span>
                 </Label>
                 <Input
@@ -1552,6 +1591,9 @@ export const DispatcherDashboard: React.FC = () => {
                     })
                   }
                   required
+                  hasError={Boolean(bookingModalError)}
+                  aria-invalid={Boolean(bookingModalError)}
+                  aria-describedby={bookingModalError ? 'booking-modal-error' : undefined}
                   className="text-base sm:text-sm font-mono uppercase min-h-[42px] sm:min-h-[38px]"
                 />
               </div>
@@ -1565,7 +1607,7 @@ export const DispatcherDashboard: React.FC = () => {
                   >
                     <User className="w-3.5 h-3.5 text-gray-500" />
                     <span>
-                      Driver Name <span className="text-red-500">*</span>
+                      Driver Name <span className="text-red-500" aria-hidden="true">*</span>
                     </span>
                   </Label>
                   <Input
@@ -1579,6 +1621,9 @@ export const DispatcherDashboard: React.FC = () => {
                       })
                     }
                     required
+                    hasError={Boolean(bookingModalError)}
+                    aria-invalid={Boolean(bookingModalError)}
+                    aria-describedby={bookingModalError ? 'booking-modal-error' : undefined}
                     className="text-base sm:text-sm min-h-[42px] sm:min-h-[38px]"
                   />
                 </div>
@@ -1590,7 +1635,7 @@ export const DispatcherDashboard: React.FC = () => {
                   >
                     <Phone className="w-3.5 h-3.5 text-gray-500" />
                     <span>
-                      Driver Phone <span className="text-red-500">*</span>
+                      Driver Phone <span className="text-red-500" aria-hidden="true">*</span>
                     </span>
                   </Label>
                   <Input
@@ -1604,6 +1649,9 @@ export const DispatcherDashboard: React.FC = () => {
                       })
                     }
                     required
+                    hasError={Boolean(bookingModalError)}
+                    aria-invalid={Boolean(bookingModalError)}
+                    aria-describedby={bookingModalError ? 'booking-modal-error' : undefined}
                     className="text-base sm:text-sm min-h-[42px] sm:min-h-[38px]"
                   />
                 </div>
@@ -1629,6 +1677,8 @@ export const DispatcherDashboard: React.FC = () => {
                       cargoNote: e.target.value,
                     })
                   }
+                  aria-invalid={Boolean(bookingModalError)}
+                  aria-describedby={bookingModalError ? 'booking-modal-error' : undefined}
                   className="w-full text-base sm:text-xs rounded-md border border-gray-300 p-2.5 sm:p-2 text-gray-900 shadow-sm focus:border-[#2F4F4F] focus:outline-none focus:ring-1 focus:ring-[#2F4F4F]"
                 />
               </div>
@@ -1665,13 +1715,20 @@ export const DispatcherDashboard: React.FC = () => {
       {/* MODAL 2: Reschedule Booking Modal                                         */}
       {/* ========================================================================= */}
       {isRescheduleModalOpen && bookingToReschedule && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200">
+        <div
+          ref={rescheduleDialogRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reschedule-booking-title"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200 outline-none"
+        >
           <div className="bg-white rounded-t-xl sm:rounded-lg shadow-xl border border-gray-300 max-w-xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
             {/* Modal Header */}
             <div className="bg-[#2F4F4F] text-white px-4 sm:px-5 py-3.5 sm:py-4 flex items-center justify-between shrink-0">
               <div className="flex items-center space-x-2">
                 <RotateCcw className="w-5 h-5 text-amber-400 shrink-0" />
-                <h3 className="font-bold text-sm sm:text-base">
+                <h3 id="reschedule-booking-title" className="font-bold text-sm sm:text-base">
                   Reschedule Booking #{bookingToReschedule.id}
                 </h3>
               </div>
@@ -1716,8 +1773,15 @@ export const DispatcherDashboard: React.FC = () => {
               </div>
 
               {rescheduleError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-md text-xs text-red-800 flex items-start space-x-2">
-                  <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+                <div
+                  id="reschedule-modal-error"
+                  role="alert"
+                  className="p-3 bg-red-50 border border-red-200 rounded-md text-xs text-red-800 flex items-start space-x-2"
+                >
+                  <AlertCircle
+                    className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5"
+                    aria-hidden="true"
+                  />
                   <span>{rescheduleError}</span>
                 </div>
               )}
@@ -1747,7 +1811,7 @@ export const DispatcherDashboard: React.FC = () => {
                 >
                   <Calendar className="w-3.5 h-3.5 text-gray-500 shrink-0" />
                   <span>
-                    Select New Date <span className="text-red-500">*</span>
+                    Select New Date <span className="text-red-500" aria-hidden="true">*</span>
                     {isInsideLockWindow(bookingToReschedule) && (
                       <span className="ml-1 text-[11px] font-normal text-amber-700">
                         (Locked to same day for emergency reschedule)
@@ -1772,23 +1836,36 @@ export const DispatcherDashboard: React.FC = () => {
                   value={rescheduleDate}
                   onChange={(e) => handleRescheduleDateChange(e.target.value)}
                   required
+                  hasError={Boolean(rescheduleError)}
+                  aria-invalid={Boolean(rescheduleError)}
+                  aria-describedby={rescheduleError ? 'reschedule-modal-error' : undefined}
                   className="text-base sm:text-sm min-h-[42px] sm:min-h-[38px] disabled:bg-gray-100 disabled:text-gray-600 disabled:cursor-not-allowed"
                 />
               </div>
 
               {/* Available Slots for this Date */}
               <div>
-                <Label className="text-xs font-semibold text-gray-700 mb-1.5 flex items-center space-x-1">
-                  <Clock className="w-3.5 h-3.5 text-gray-500" />
+                <Label
+                  id="reschedule-slot-label"
+                  className="text-xs font-semibold text-gray-700 mb-1.5 flex items-center space-x-1"
+                >
+                  <Clock className="w-3.5 h-3.5 text-gray-500" aria-hidden="true" />
                   <span>
                     Choose an Available Time Slot{" "}
-                    <span className="text-red-500">*</span>
+                    <span className="text-red-500" aria-hidden="true">*</span>
                   </span>
                 </Label>
 
                 {isLoadingRescheduleSlots ? (
-                  <div className="py-6 flex flex-col items-center justify-center space-y-2 text-gray-500">
-                    <div className="w-5 h-5 border-2 border-[#2F4F4F] border-t-transparent rounded-full animate-spin" />
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className="py-6 flex flex-col items-center justify-center space-y-2 text-gray-500"
+                  >
+                    <div
+                      aria-hidden="true"
+                      className="w-5 h-5 border-2 border-[#2F4F4F] border-t-transparent rounded-full animate-spin"
+                    />
                     <p className="text-xs">
                       Fetching open slots for {rescheduleDate}...
                     </p>
@@ -1800,7 +1877,11 @@ export const DispatcherDashboard: React.FC = () => {
                     No free slots found on this date. Please pick another date.
                   </div>
                 ) : (
-                  <div className="max-h-48 overflow-y-auto space-y-3 border border-gray-200 p-2.5 rounded-md bg-gray-50">
+                  <div
+                    role="group"
+                    aria-labelledby="reschedule-slot-label"
+                    className="max-h-48 overflow-y-auto space-y-3 border border-gray-200 p-2.5 rounded-md bg-gray-50"
+                  >
                     {rescheduleSlots.map((dockGroup) => (
                       <div key={dockGroup.dockId} className="space-y-1.5">
                         <div className="text-xs font-bold text-gray-800 flex items-center space-x-1">
@@ -1835,7 +1916,8 @@ export const DispatcherDashboard: React.FC = () => {
                                       localEndTime: slot.localEndTime,
                                     })
                                   }
-                                  className={`min-h-[40px] px-2 py-2 rounded text-[11px] sm:text-xs font-semibold border transition-all text-center touch-manipulation ${
+                                  aria-pressed={isSelected}
+                                  className={`min-h-[40px] px-2 py-2 rounded text-[11px] sm:text-xs font-semibold border transition-all text-center touch-manipulation focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] ${
                                     isSelected
                                       ? "bg-[#2F4F4F] text-white border-[#2F4F4F] ring-2 ring-[#2F4F4F]/30"
                                       : "bg-white text-gray-800 border-gray-200 hover:border-gray-400"
@@ -1867,6 +1949,9 @@ export const DispatcherDashboard: React.FC = () => {
                   placeholder="e.g. Driver caught in interstate traffic"
                   value={rescheduleReason}
                   onChange={(e) => setRescheduleReason(e.target.value)}
+                  hasError={Boolean(rescheduleError)}
+                  aria-invalid={Boolean(rescheduleError)}
+                  aria-describedby={rescheduleError ? 'reschedule-modal-error' : undefined}
                   className="text-base sm:text-xs min-h-[42px] sm:min-h-[38px]"
                 />
               </div>
@@ -1904,13 +1989,20 @@ export const DispatcherDashboard: React.FC = () => {
       {/* MODAL 3: Cancel Booking Modal                                             */}
       {/* ========================================================================= */}
       {isCancelModalOpen && bookingToCancel && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200">
+        <div
+          ref={cancelDialogRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cancel-booking-title"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200 outline-none"
+        >
           <div className="bg-white rounded-t-xl sm:rounded-lg shadow-xl border border-gray-300 max-w-md w-full max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
             {/* Modal Header */}
             <div className="bg-rose-700 text-white px-4 sm:px-5 py-3.5 sm:py-4 flex items-center justify-between shrink-0">
               <div className="flex items-center space-x-2">
                 <XCircle className="w-5 h-5 text-white shrink-0" />
-                <h3 className="font-bold text-sm sm:text-base">
+                <h3 id="cancel-booking-title" className="font-bold text-sm sm:text-base">
                   Cancel Booking #{bookingToCancel.id}
                 </h3>
               </div>
@@ -1962,8 +2054,15 @@ export const DispatcherDashboard: React.FC = () => {
               </div>
 
               {cancelError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-md text-xs text-red-800 flex items-start space-x-2">
-                  <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+                <div
+                  id="cancel-modal-error"
+                  role="alert"
+                  className="p-3 bg-red-50 border border-red-200 rounded-md text-xs text-red-800 flex items-start space-x-2"
+                >
+                  <AlertCircle
+                    className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5"
+                    aria-hidden="true"
+                  />
                   <span>{cancelError}</span>
                 </div>
               )}
@@ -2000,6 +2099,9 @@ export const DispatcherDashboard: React.FC = () => {
                   value={cancelReason}
                   onChange={(e) => setCancelReason(e.target.value)}
                   disabled={isInsideLockWindow(bookingToCancel)}
+                  hasError={Boolean(cancelError)}
+                  aria-invalid={Boolean(cancelError)}
+                  aria-describedby={cancelError ? 'cancel-modal-error' : undefined}
                   className="text-base sm:text-xs min-h-[42px] sm:min-h-[38px] disabled:bg-gray-100 disabled:text-gray-500"
                 />
               </div>

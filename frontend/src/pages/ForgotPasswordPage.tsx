@@ -68,7 +68,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#D9D9D9] flex flex-col justify-center items-center p-4 sm:p-6 lg:p-8">
+    <main className="min-h-screen bg-[#D9D9D9] flex flex-col justify-center items-center p-4 sm:p-6 lg:p-8">
       {/* Brand Header */}
       <div className="mb-6 text-center">
         <div className="inline-flex items-center justify-center space-x-2 mb-2">
@@ -101,6 +101,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
           {/* Error Banner */}
           {errorMessage && (
             <div
+              id="forgot-password-error"
               role="alert"
               className="mb-4 flex items-start space-x-3 p-3.5 bg-red-50 border border-red-200 rounded-md text-red-800 text-sm animate-in fade-in duration-200"
             >
@@ -113,9 +114,13 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
 
           {isSubmitted ? (
             /* Success Confirmation View */
-            <div className="space-y-5 text-center py-2 animate-in fade-in duration-200">
+            <div
+              role="status"
+              aria-live="polite"
+              className="space-y-5 text-center py-2 animate-in fade-in duration-200"
+            >
               <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
-                <CheckCircle2 className="w-7 h-7" />
+                <CheckCircle2 className="w-7 h-7" aria-hidden="true" />
               </div>
 
               <div className="space-y-1">
@@ -163,9 +168,9 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
                 <button
                   type="button"
                   onClick={handleResetForm}
-                  className="inline-flex items-center text-xs text-gray-600 hover:text-gray-900 font-medium py-1.5 transition-colors"
+                  className="inline-flex items-center text-xs text-gray-600 hover:text-gray-900 font-medium py-1.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] rounded"
                 >
-                  <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+                  <RotateCcw className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
                   <span>Send to a different email address</span>
                 </button>
               </div>
@@ -188,6 +193,8 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={isLoading}
                   hasError={!!errorMessage}
+                  aria-invalid={Boolean(errorMessage)}
+                  aria-describedby={errorMessage ? 'forgot-password-error' : undefined}
                 />
               </div>
 
@@ -207,17 +214,17 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
                     type="button"
                     onClick={onBackToSignIn}
                     disabled={isLoading}
-                    className="inline-flex items-center text-xs font-semibold text-[#2F4F4F] hover:underline"
+                    className="inline-flex items-center text-xs font-semibold text-[#2F4F4F] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] rounded disabled:opacity-50"
                   >
-                    <ArrowLeft className="w-3.5 h-3.5 mr-1.5" />
+                    <ArrowLeft className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
                     <span>Back to Sign In</span>
                   </button>
                 ) : (
                   <a
                     href="/login"
-                    className="inline-flex items-center text-xs font-semibold text-[#2F4F4F] hover:underline"
+                    className="inline-flex items-center text-xs font-semibold text-[#2F4F4F] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] rounded"
                   >
-                    <ArrowLeft className="w-3.5 h-3.5 mr-1.5" />
+                    <ArrowLeft className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
                     <span>Back to Sign In</span>
                   </a>
                 )}
@@ -231,7 +238,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
       <div className="mt-8 text-center text-xs text-gray-500">
         &copy; {new Date().getFullYear()} DockSlot Inc. Multi-tenant Logistics Platform.
       </div>
-    </div>
+    </main>
   );
 };
 

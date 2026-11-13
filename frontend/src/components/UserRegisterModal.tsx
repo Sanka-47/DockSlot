@@ -13,6 +13,7 @@ import {
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
+import { useDialogA11y } from '../hooks/useDialogA11y';
 import { userRegisterModalService } from '../services/userRegisterModal.service';
 import { getApiErrorMessage } from '../services/errors';
 
@@ -47,6 +48,7 @@ export const UserRegisterModal: React.FC<UserRegisterModalProps> = ({
   const [isVerifyingToken, setIsVerifyingToken] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const dialogRef = useDialogA11y<HTMLDivElement>({ isOpen, onClose });
 
   // The invitation token is consumed and scrubbed from the URL by App.
   useEffect(() => {
@@ -144,7 +146,14 @@ export const UserRegisterModal: React.FC<UserRegisterModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+    <div
+      ref={dialogRef}
+      tabIndex={-1}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="invite-register-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200 outline-none"
+    >
       <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden border border-gray-200 animate-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="px-6 py-4 bg-[#2F4F4F] text-white flex items-center justify-between">
@@ -153,14 +162,17 @@ export const UserRegisterModal: React.FC<UserRegisterModalProps> = ({
               <UserCheck className="w-5 h-5 text-emerald-400" />
             </div>
             <div>
-              <h2 className="text-base font-bold tracking-tight">Complete User Registration</h2>
+              <h2 id="invite-register-title" className="text-base font-bold tracking-tight">
+                Complete User Registration
+              </h2>
               <p className="text-xs text-gray-300">Set your password to activate your account</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-gray-300 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
+            className="p-1.5 text-gray-300 hover:text-white rounded-lg hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
             title="Close and return to Sign In"
+            aria-label="Close registration dialog"
             type="button"
           >
             <X className="w-5 h-5" />
@@ -201,6 +213,7 @@ export const UserRegisterModal: React.FC<UserRegisterModalProps> = ({
           {/* Error Message */}
           {errorMessage && (
             <div
+              id="invite-register-error"
               role="alert"
               className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs flex items-start space-x-2 animate-in fade-in duration-150"
             >
@@ -237,18 +250,24 @@ export const UserRegisterModal: React.FC<UserRegisterModalProps> = ({
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={isLoading || isVerifyingToken}
+                hasError={Boolean(errorMessage)}
+                aria-invalid={Boolean(errorMessage)}
+                aria-describedby={
+                  errorMessage ? 'invite-register-error register-password-hint' : 'register-password-hint'
+                }
+                data-autofocus
                 rightElement={
                   <button
                     type="button"
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                     onClick={() => setShowPassword(!showPassword)}
-                    className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                    className="text-gray-400 hover:text-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] rounded"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 }
               />
-              <span className="text-[11px] text-gray-500 mt-0.5 block">
+              <span id="register-password-hint" className="text-[11px] text-gray-500 mt-0.5 block">
                 Must be at least 8 characters long
               </span>
             </div>
@@ -268,12 +287,15 @@ export const UserRegisterModal: React.FC<UserRegisterModalProps> = ({
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 disabled={isLoading || isVerifyingToken}
+                hasError={Boolean(errorMessage)}
+                aria-invalid={Boolean(errorMessage)}
+                aria-describedby={errorMessage ? 'invite-register-error' : undefined}
                 rightElement={
                   <button
                     type="button"
                     aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                    className="text-gray-400 hover:text-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] rounded"
                   >
                     {showConfirmPassword ? (
                       <EyeOff className="w-4 h-4" />

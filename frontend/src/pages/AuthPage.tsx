@@ -376,7 +376,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
   }
 
   return (
-    <div className="min-h-screen bg-[#D9D9D9] flex flex-col justify-center items-center p-4 sm:p-6 lg:p-8">
+    <main className="min-h-screen bg-[#D9D9D9] flex flex-col justify-center items-center p-4 sm:p-6 lg:p-8">
       {/* Brand Header */}
       <div className="mb-6 text-center">
         <div className="inline-flex items-center justify-center space-x-2 mb-2">
@@ -416,6 +416,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
               <Tabs
                 activeTab={activeTab}
                 onChange={handleTabChange}
+                ariaLabel="Authentication"
                 tabs={[
                   { id: 'signin', label: 'Sign In' },
                   { id: 'register', label: 'Register Org' },
@@ -429,6 +430,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
           {/* Error Banner */}
           {errorMessage && (
             <div
+              id="auth-error"
               role="alert"
               className="mb-4 flex items-start space-x-3 p-3.5 bg-red-50 border border-red-200 rounded-md text-red-800 text-sm animate-in fade-in duration-200"
             >
@@ -443,6 +445,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
           {successMessage && (
             <div
               role="status"
+              aria-live="polite"
               className="mb-4 flex items-start space-x-3 p-3.5 bg-emerald-50 border border-emerald-200 rounded-md text-emerald-800 text-sm animate-in fade-in duration-200"
             >
               <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
@@ -485,6 +488,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   value={totpCode}
                   onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                   disabled={isLoading}
+                  hasError={Boolean(errorMessage)}
+                  aria-invalid={Boolean(errorMessage)}
+                  aria-describedby={errorMessage ? 'auth-error' : undefined}
                   className="tracking-[0.4em] font-mono text-base"
                 />
                 <p className="text-[11px] text-gray-500 mt-1.5 flex items-center space-x-1">
@@ -505,9 +511,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                 type="button"
                 onClick={handleCancel2FA}
                 disabled={isLoading}
-                className="w-full flex items-center justify-center space-x-1.5 text-xs text-gray-500 hover:text-[#2F4F4F] font-medium focus:outline-none disabled:opacity-50"
+                className="w-full flex items-center justify-center space-x-1.5 text-xs text-gray-500 hover:text-[#2F4F4F] font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] rounded disabled:opacity-50"
               >
-                <ArrowLeft className="w-3.5 h-3.5" />
+                <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
                 <span>Back to sign in</span>
               </button>
             </form>
@@ -530,6 +536,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   value={signInEmail}
                   onChange={(e) => setSignInEmail(e.target.value)}
                   disabled={isLoading}
+                  hasError={Boolean(errorMessage)}
+                  aria-invalid={Boolean(errorMessage)}
+                  aria-describedby={errorMessage ? 'auth-error' : undefined}
                 />
               </div>
 
@@ -541,7 +550,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   <button
                     type="button"
                     onClick={() => handleTabChange('forgot')}
-                    className="text-xs text-[#2F4F4F] hover:underline font-medium focus:outline-none"
+                    className="text-xs text-[#2F4F4F] hover:underline font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] rounded"
                   >
                     Forgot password?
                   </button>
@@ -556,12 +565,15 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   value={signInPassword}
                   onChange={(e) => setSignInPassword(e.target.value)}
                   disabled={isLoading}
+                  hasError={Boolean(errorMessage)}
+                  aria-invalid={Boolean(errorMessage)}
+                  aria-describedby={errorMessage ? 'auth-error' : undefined}
                   rightElement={
                     <button
                       type="button"
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                       onClick={() => setShowPassword(!showPassword)}
-                      className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                      className="text-gray-400 hover:text-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] rounded"
                     >
                       {showPassword ? (
                         <EyeOff className="w-4 h-4" />
@@ -603,7 +615,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                     onChange={(e) =>
                       setRegisterOrgType(e.target.value as OrganizationType)
                     }
+                    required
                     disabled={isLoading}
+                    aria-invalid={Boolean(errorMessage)}
+                    aria-describedby={errorMessage ? 'auth-error' : undefined}
                     className="w-full rounded-md border border-gray-300 pl-10 pr-8 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#2F4F4F] focus:border-[#2F4F4F] transition-colors"
                   >
                     <option value="CARRIER">
@@ -647,6 +662,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   value={registerOrgName}
                   onChange={(e) => setRegisterOrgName(e.target.value)}
                   disabled={isLoading}
+                  hasError={Boolean(errorMessage)}
+                  aria-invalid={Boolean(errorMessage)}
+                  aria-describedby={errorMessage ? 'auth-error' : undefined}
                 />
               </div>
 
@@ -665,6 +683,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   value={registerEmail}
                   onChange={(e) => setRegisterEmail(e.target.value)}
                   disabled={isLoading}
+                  hasError={Boolean(errorMessage)}
+                  aria-invalid={Boolean(errorMessage)}
+                  aria-describedby={errorMessage ? 'auth-error' : undefined}
                 />
               </div>
 
@@ -683,12 +704,15 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   value={registerPassword}
                   onChange={(e) => setRegisterPassword(e.target.value)}
                   disabled={isLoading}
+                  hasError={Boolean(errorMessage)}
+                  aria-invalid={Boolean(errorMessage)}
+                  aria-describedby={errorMessage ? 'auth-error' : undefined}
                   rightElement={
                     <button
                       type="button"
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                       onClick={() => setShowPassword(!showPassword)}
-                      className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                      className="text-gray-400 hover:text-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] rounded"
                     >
                       {showPassword ? (
                         <EyeOff className="w-4 h-4" />
@@ -726,7 +750,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
         onClose={handleInviteClose}
         onSuccess={handleInviteSuccess}
       />
-    </div>
+    </main>
   );
 };
 

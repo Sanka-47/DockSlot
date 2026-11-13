@@ -22,11 +22,12 @@ export const CarrierDashboard: React.FC = () => {
           <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 sm:pl-2">
             Carrier View:
           </span>
-          <div className="grid grid-cols-2 sm:inline-flex rounded-md shadow-sm w-full sm:w-auto">
+          <div role="group" aria-label="Carrier view" className="grid grid-cols-2 sm:inline-flex rounded-md shadow-sm w-full sm:w-auto">
             <button
               type="button"
+              aria-pressed={viewMode === 'admin'}
               onClick={() => setViewMode('admin')}
-              className={`inline-flex items-center justify-center px-2.5 sm:px-3.5 py-2 sm:py-1.5 rounded-l-md text-xs font-medium border transition-colors ${
+              className={`inline-flex items-center justify-center px-2.5 sm:px-3.5 py-2 sm:py-1.5 rounded-l-md text-xs font-medium border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] ${
                 viewMode === 'admin'
                   ? 'bg-[#2F4F4F] text-white border-[#2F4F4F]'
                   : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
@@ -37,8 +38,9 @@ export const CarrierDashboard: React.FC = () => {
             </button>
             <button
               type="button"
+              aria-pressed={viewMode === 'operations'}
               onClick={() => setViewMode('operations')}
-              className={`inline-flex items-center justify-center px-2.5 sm:px-3.5 py-2 sm:py-1.5 rounded-r-md text-xs font-medium border-t border-b border-r transition-colors ${
+              className={`inline-flex items-center justify-center px-2.5 sm:px-3.5 py-2 sm:py-1.5 rounded-r-md text-xs font-medium border-t border-b border-r transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] ${
                 viewMode === 'operations'
                   ? 'bg-[#2F4F4F] text-white border-[#2F4F4F]'
                   : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'

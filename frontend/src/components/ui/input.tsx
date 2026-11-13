@@ -17,6 +17,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         )}
         <input
           ref={ref}
+          aria-invalid={hasError || undefined}
           className={`w-full rounded-md border text-sm transition-colors placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:cursor-not-allowed disabled:bg-gray-50 ${
             icon ? 'pl-10' : 'pl-3'
           } ${rightElement ? 'pr-10' : 'pr-3'} py-2 ${

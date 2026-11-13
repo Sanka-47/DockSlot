@@ -14,6 +14,7 @@ import { teamManagementModalService } from '../services/teamManagementModal.serv
 import { getApiErrorMessage } from '../services/errors';
 import type { User } from '../types/user.types';
 import { useConfirm } from '../hooks/useConfirm';
+import { useDialogA11y } from '../hooks/useDialogA11y';
 import toast from 'react-hot-toast';
 
 interface TeamManagementModalProps {
@@ -40,6 +41,7 @@ export const TeamManagementModal: React.FC<TeamManagementModalProps> = ({
   const [isInviting, setIsInviting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const dialogRef = useDialogA11y<HTMLDivElement>({ isOpen, onClose });
 
   const fetchUsers = async () => {
     setIsLoading(true);
@@ -157,22 +159,33 @@ export const TeamManagementModal: React.FC<TeamManagementModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+    <div
+      ref={dialogRef}
+      tabIndex={-1}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="team-management-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 outline-none"
+    >
       <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="px-6 py-4 bg-[#2F4F4F] text-white flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
             <Users className="w-5 h-5 text-emerald-400" />
             <div>
-              <h2 className="text-base font-bold tracking-tight">Organization Team & Access Control</h2>
+              <h2 id="team-management-title" className="text-base font-bold tracking-tight">
+                Organization Team &amp; Access Control
+              </h2>
               <p className="text-xs text-gray-300">
                 {organizationName || 'Workspace'} • {currentUserRole}
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 text-gray-300 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
+            aria-label="Close team management dialog"
+            className="p-1.5 text-gray-300 hover:text-white rounded-lg hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
           >
             <X className="w-5 h-5" />
           </button>
@@ -181,15 +194,23 @@ export const TeamManagementModal: React.FC<TeamManagementModalProps> = ({
         {/* Banners */}
         <div className="p-6 overflow-y-auto space-y-5 flex-1">
           {errorMessage && (
-            <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs flex items-center space-x-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
+            <div
+              id="team-management-error"
+              role="alert"
+              className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs flex items-center space-x-2"
+            >
+              <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
               <span>{errorMessage}</span>
             </div>
           )}
 
           {successMessage && (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-xs flex items-center space-x-2">
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <div
+              role="status"
+              aria-live="polite"
+              className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-xs flex items-center space-x-2"
+            >
+              <CheckCircle2 className="w-4 h-4 shrink-0" aria-hidden="true" />
               <span>{successMessage}</span>
             </div>
           )}
@@ -201,20 +222,30 @@ export const TeamManagementModal: React.FC<TeamManagementModalProps> = ({
               <span>Invite New Team Member</span>
             </h3>
             <form onSubmit={handleInvite} className="flex gap-2">
+              <label htmlFor="team-invite-email" className="sr-only">
+                Team member email address
+              </label>
               <input
+                id="team-invite-email"
                 type="email"
+                autoComplete="email"
                 placeholder="colleague@organization.com"
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
                 required
+                aria-invalid={Boolean(errorMessage)}
+                aria-describedby={errorMessage ? 'team-management-error' : undefined}
                 className="flex-1 px-3 py-2 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2F4F4F]"
               />
               <button
                 type="submit"
                 disabled={isInviting || !inviteEmail.trim()}
-                className="px-4 py-2 text-xs font-semibold text-white bg-[#2F4F4F] hover:bg-[#1E3333] disabled:opacity-50 rounded-md transition-colors flex items-center space-x-1.5"
+                aria-busy={isInviting || undefined}
+                className="px-4 py-2 text-xs font-semibold text-white bg-[#2F4F4F] hover:bg-[#1E3333] disabled:opacity-50 rounded-md transition-colors flex items-center space-x-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] focus-visible:ring-offset-2"
               >
-                {isInviting && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                {isInviting && (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                )}
                 <span>Send Invite</span>
               </button>
             </form>
@@ -228,18 +259,23 @@ export const TeamManagementModal: React.FC<TeamManagementModalProps> = ({
                 <span>Active & Deactivated Members</span>
               </h3>
               <button
+                type="button"
                 onClick={fetchUsers}
                 disabled={isLoading}
-                className="text-xs text-[#2F4F4F] hover:underline flex items-center space-x-1"
+                aria-busy={isLoading || undefined}
+                className="text-xs text-[#2F4F4F] hover:underline flex items-center space-x-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] rounded disabled:opacity-50"
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`}
+                  aria-hidden="true"
+                />
                 <span>Refresh</span>
               </button>
             </div>
 
             {isLoading && users.length === 0 ? (
-              <div className="py-8 text-center text-xs text-gray-500">
-                <RefreshCw className="w-6 h-6 animate-spin mx-auto text-gray-400 mb-2" />
+              <div role="status" aria-live="polite" className="py-8 text-center text-xs text-gray-500">
+                <RefreshCw className="w-6 h-6 animate-spin mx-auto text-gray-400 mb-2" aria-hidden="true" />
                 Loading team members...
               </div>
             ) : users.length === 0 ? (
@@ -307,27 +343,31 @@ export const TeamManagementModal: React.FC<TeamManagementModalProps> = ({
                           <span className="text-[11px] text-gray-400">Current Session</span>
                         ) : isDeactivated ? (
                           <button
+                            type="button"
                             onClick={() => handleReactivate(u)}
                             disabled={reactivatingId === u.id}
-                            className="px-2.5 py-1 text-xs font-medium text-emerald-600 hover:text-emerald-700 border border-emerald-200 hover:border-emerald-300 hover:bg-emerald-50 rounded transition-colors disabled:opacity-50 flex items-center space-x-1"
+                            aria-busy={reactivatingId === u.id || undefined}
+                            className="px-2.5 py-1 text-xs font-medium text-emerald-600 hover:text-emerald-700 border border-emerald-200 hover:border-emerald-300 hover:bg-emerald-50 rounded transition-colors disabled:opacity-50 flex items-center space-x-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                           >
                             {reactivatingId === u.id ? (
-                              <RefreshCw className="w-3 h-3 animate-spin" />
+                              <RefreshCw className="w-3 h-3 animate-spin" aria-hidden="true" />
                             ) : (
-                              <UserCheck className="w-3 h-3" />
+                              <UserCheck className="w-3 h-3" aria-hidden="true" />
                             )}
                             <span>Reactivate</span>
                           </button>
                         ) : (
                           <button
+                            type="button"
                             onClick={() => handleDeactivate(u)}
                             disabled={deactivatingId === u.id}
-                            className="px-2.5 py-1 text-xs font-medium text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 hover:bg-red-50 rounded transition-colors disabled:opacity-50 flex items-center space-x-1"
+                            aria-busy={deactivatingId === u.id || undefined}
+                            className="px-2.5 py-1 text-xs font-medium text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 hover:bg-red-50 rounded transition-colors disabled:opacity-50 flex items-center space-x-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
                           >
                             {deactivatingId === u.id ? (
-                              <RefreshCw className="w-3 h-3 animate-spin" />
+                              <RefreshCw className="w-3 h-3 animate-spin" aria-hidden="true" />
                             ) : (
-                              <UserX className="w-3 h-3" />
+                              <UserX className="w-3 h-3" aria-hidden="true" />
                             )}
                             <span>Deactivate</span>
                           </button>
@@ -344,8 +384,9 @@ export const TeamManagementModal: React.FC<TeamManagementModalProps> = ({
         {/* Footer */}
         <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex justify-end">
           <button
+            type="button"
             onClick={onClose}
-            className="px-4 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200 rounded-md transition-colors"
+            className="px-4 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F]"
           >
             Close
           </button>

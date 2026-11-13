@@ -86,7 +86,7 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#D9D9D9] flex flex-col justify-center items-center p-4 sm:p-6 lg:p-8">
+    <main className="min-h-screen bg-[#D9D9D9] flex flex-col justify-center items-center p-4 sm:p-6 lg:p-8">
       {/* Brand Header */}
       <div className="mb-6 text-center">
         <div className="inline-flex items-center justify-center space-x-2 mb-2">
@@ -122,6 +122,7 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
           {/* Missing Token Alert */}
           {!token && !isSuccess && (
             <div
+              id="reset-token-alert"
               role="alert"
               className="mb-4 flex items-start space-x-3 p-3.5 bg-amber-50 border border-amber-200 rounded-md text-amber-900 text-xs"
             >
@@ -135,6 +136,7 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
           {/* Error Banner */}
           {errorMessage && (
             <div
+              id="reset-password-error"
               role="alert"
               className="mb-4 flex items-start space-x-3 p-3.5 bg-red-50 border border-red-200 rounded-md text-red-800 text-sm animate-in fade-in duration-200"
             >
@@ -147,9 +149,13 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
 
           {isSuccess ? (
             /* Success Confirmation Screen */
-            <div className="space-y-5 text-center py-2 animate-in fade-in duration-200">
+            <div
+              role="status"
+              aria-live="polite"
+              className="space-y-5 text-center py-2 animate-in fade-in duration-200"
+            >
               <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
-                <CheckCircle2 className="w-7 h-7" />
+                <CheckCircle2 className="w-7 h-7" aria-hidden="true" />
               </div>
 
               <div className="space-y-1">
@@ -188,6 +194,7 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
                     value={token}
                     onChange={(e) => setToken(e.target.value)}
                     disabled={isLoading}
+                    aria-describedby={!token ? 'reset-token-alert' : undefined}
                   />
                 </div>
               )}
@@ -207,12 +214,14 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
                   onChange={(e) => setNewPassword(e.target.value)}
                   disabled={isLoading}
                   hasError={!!errorMessage}
+                  aria-invalid={Boolean(errorMessage)}
+                  aria-describedby={errorMessage ? 'reset-password-error' : undefined}
                   rightElement={
                     <button
                       type="button"
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                       onClick={() => setShowPassword(!showPassword)}
-                      className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                      className="text-gray-400 hover:text-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] rounded"
                     >
                       {showPassword ? (
                         <EyeOff className="w-4 h-4" />
@@ -239,6 +248,8 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   disabled={isLoading}
                   hasError={!!errorMessage}
+                  aria-invalid={Boolean(errorMessage)}
+                  aria-describedby={errorMessage ? 'reset-password-error' : undefined}
                   rightElement={
                     <button
                       type="button"
@@ -246,7 +257,7 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
                         showConfirmPassword ? 'Hide password' : 'Show password'
                       }
                       onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                      className="text-gray-400 hover:text-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] rounded"
                     >
                       {showConfirmPassword ? (
                         <EyeOff className="w-4 h-4" />
@@ -273,9 +284,9 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
                   type="button"
                   onClick={handleNavigateToSignIn}
                   disabled={isLoading}
-                  className="inline-flex items-center text-xs font-semibold text-[#2F4F4F] hover:underline"
+                  className="inline-flex items-center text-xs font-semibold text-[#2F4F4F] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] rounded disabled:opacity-50"
                 >
-                  <ArrowLeft className="w-3.5 h-3.5 mr-1.5" />
+                  <ArrowLeft className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
                   <span>Back to Sign In</span>
                 </button>
               </div>
@@ -288,7 +299,7 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
       <div className="mt-8 text-center text-xs text-gray-500">
         &copy; {new Date().getFullYear()} DockSlot Inc. Multi-tenant Logistics Platform.
       </div>
-    </div>
+    </main>
   );
 };
 
