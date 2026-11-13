@@ -14,8 +14,8 @@ export const twoFactorSettingsService = {
     return response.data ?? null;
   },
 
-  async startSetup(): Promise<TwoFactorSetupPayload> {
-    const response = await authApi.setup2FA();
+  async startSetup(password: string): Promise<TwoFactorSetupPayload> {
+    const response = await authApi.setup2FA(password);
     const payload = response.data;
 
     const secret = payload?.secret || response.secret || '';
@@ -50,6 +50,12 @@ export const twoFactorSettingsService = {
     return {
       message: response.message || 'Two-factor authentication has been disabled.',
     };
+  },
+
+  validateSetupPassword(password: string): string | null {
+    return password.trim()
+      ? null
+      : 'Enter your current account password to continue.';
   },
 
   validateVerificationCode(code: string): string | null {

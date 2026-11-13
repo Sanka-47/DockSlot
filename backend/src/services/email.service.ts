@@ -25,7 +25,9 @@ export class EmailService {
         html: options.html,
         text: options.text,
       });
-      console.log(`[EmailService] Email sent to ${options.to}: ${options.subject}`);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[EmailService] Email sent to ${options.to}: ${options.subject}`);
+      }
       return true;
     } catch (error: any) {
       const isConnRefused =
@@ -50,13 +52,11 @@ export class EmailService {
   public async sendVerificationEmail(email: string, token: string): Promise<boolean> {
     const verificationUrl = `${mailConfig.appUrl}/api/auth/verify?token=${token}`;
 
-    console.log(`\n============== [EMAIL VERIFICATION: DEV PREVIEW] ==============`);
-    console.log(`To:                ${email}`);
-    console.log(`Verification Link: ${verificationUrl}`);
-    console.log(`================================================================\n`);
-
     if (process.env.NODE_ENV !== 'production') {
-      console.log(`[EmailService:DevPreview] Verification link for ${email}: ${verificationUrl}`);
+      console.log(`\n============== [EMAIL VERIFICATION: DEV PREVIEW] ==============`);
+      console.log(`To:                ${email}`);
+      console.log(`Verification Link: ${verificationUrl}`);
+      console.log(`================================================================\n`);
     }
 
     const subject = 'Verify your DockSlot account';
@@ -85,13 +85,11 @@ export class EmailService {
   public async sendPasswordResetEmail(email: string, token: string): Promise<boolean> {
     const resetUrl = `${mailConfig.frontendUrl}/reset-password?token=${token}`;
 
-    console.log(`\n================ [PASSWORD RESET: DEV PREVIEW] ================`);
-    console.log(`To:                ${email}`);
-    console.log(`Reset Link:        ${resetUrl}`);
-    console.log(`================================================================\n`);
-
     if (process.env.NODE_ENV !== 'production') {
-      console.log(`[EmailService:DevPreview] Password reset link for ${email}: ${resetUrl}`);
+      console.log(`\n================ [PASSWORD RESET: DEV PREVIEW] ================`);
+      console.log(`To:                ${email}`);
+      console.log(`Reset Link:        ${resetUrl}`);
+      console.log(`================================================================\n`);
     }
 
     const subject = 'Reset your DockSlot password';
@@ -126,15 +124,13 @@ export class EmailService {
   ): Promise<boolean> {
     const inviteUrl = `${mailConfig.frontendUrl}/accept-invite?token=${token}`;
 
-    console.log(`\n================== [INVITATION EMAIL: DEV PREVIEW] ==================`);
-    console.log(`To:               ${email}`);
-    console.log(`Organization:     ${organizationName}`);
-    console.log(`Assigned Role:    ${role}`);
-    console.log(`Invitation Link:  ${inviteUrl}`);
-    console.log(`====================================================================\n`);
-
     if (process.env.NODE_ENV !== 'production') {
-      console.log(`[EmailService:DevPreview] Invitation link for ${email}: ${inviteUrl}`);
+      console.log(`\n================== [INVITATION EMAIL: DEV PREVIEW] ==================`);
+      console.log(`To:               ${email}`);
+      console.log(`Organization:     ${organizationName}`);
+      console.log(`Assigned Role:    ${role}`);
+      console.log(`Invitation Link:  ${inviteUrl}`);
+      console.log(`====================================================================\n`);
     }
 
     const subject = `You're invited to join ${organizationName} on DockSlot`;

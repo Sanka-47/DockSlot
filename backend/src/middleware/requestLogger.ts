@@ -45,6 +45,35 @@ const MAX_REQUEST_ID_LENGTH = 128;
  */
 const ACCEPTED_REQUEST_ID = /^[A-Za-z0-9._:+-]+$/;
 
+/**
+ * Query parameters that carry credentials or one-time tokens. Request URLs are
+ * logged for tracing, but these values must never be written to the log stream
+ * or forwarded to a log aggregator.
+ */
+const SENSITIVE_QUERY_PARAM =
+  /^(token|access_token|refresh_token|id_token|temp_?token|code|password|secret|api_?key)$/i;
+
+/** Returns a log-safe URL with sensitive query values replaced by `REDACTED`. */
+export function sanitizeUrlForLogging(rawUrl: string): string {
+  try {
+    const url = new URL(rawUrl, 'http://localhost');
+    let redacted = false;
+
+    for (const key of Array.from(url.searchParams.keys())) {
+      if (SENSITIVE_QUERY_PARAM.test(key)) {
+        url.searchParams.set(key, 'REDACTED');
+        redacted = true;
+      }
+    }
+
+    if (!redacted) return rawUrl;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    // If parsing fails, drop the query string rather than risk logging it.
+    return rawUrl.split('?')[0];
+  }
+}
+
 /** The inbound correlation id if it is trustworthy, otherwise a new UUID. */
 export function resolveRequestId(req: Request): string {
   const header = req.headers[REQUEST_ID_HEADER.toLowerCase()];
@@ -73,10 +102,12 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction): 
   const log = childLogger({ requestId });
   const startedAt = process.hrtime.bigint();
 
+  const safeUrl = sanitizeUrlForLogging(req.originalUrl);
+
   log.info(
     {
       method: req.method,
-      url: req.originalUrl,
+      url: safeUrl,
       ip: req.ip,
       userAgent: req.get('user-agent'),
     },
@@ -97,7 +128,7 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction): 
 
     const fields = {
       method: req.method,
-      url: req.originalUrl,
+      url: safeUrl,
       status,
       durationMs,
       userId: req.user?.userId,
@@ -105,7 +136,7 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction): 
       aborted: event === 'close' && !res.writableFinished,
     };
 
-    const message = `HTTP ${req.method} ${req.originalUrl} -> ${status} in ${durationMs}ms`;
+    const message = `HTTP ${req.method} ${safeUrl} -> ${status} in ${durationMs}ms`;
 
     if (status >= 500) {
       log.error(fields, message);

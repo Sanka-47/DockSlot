@@ -29,7 +29,7 @@ export const UserRegisterModal: React.FC<UserRegisterModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  // Extract token from props or URL (?token=...)
+  // App consumes and scrubs the invitation token before this modal opens.
   const [token, setToken] = useState<string>(propToken || '');
   const [password, setPassword] = useState<string>('');
   const [confirmPassword, setConfirmPassword] = useState<string>('');
@@ -48,9 +48,15 @@ export const UserRegisterModal: React.FC<UserRegisterModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Sync token from URL or props
+  // The invitation token is consumed and scrubbed from the URL by App.
   useEffect(() => {
-    const activeToken = propToken || userRegisterModalService.getTokenFromUrl();
+    if (!isOpen) {
+      setToken('');
+      setInvitationInfo(null);
+      return;
+    }
+
+    const activeToken = propToken || '';
     setToken(activeToken);
 
     if (isOpen && activeToken) {
@@ -90,8 +96,7 @@ export const UserRegisterModal: React.FC<UserRegisterModalProps> = ({
     e.preventDefault();
     setErrorMessage(null);
 
-    const activeToken =
-      token.trim() || userRegisterModalService.getTokenFromUrl();
+    const activeToken = token.trim();
 
     const validationError = userRegisterModalService.validateRegistration(
       activeToken,
@@ -110,12 +115,19 @@ export const UserRegisterModal: React.FC<UserRegisterModalProps> = ({
         password
       );
 
+      const registeredEmail = invitationInfo?.email || result.email;
       setSuccessMessage(result.message);
+
+      // The invitation token is single-use; clear it from component memory.
+      setToken('');
+      setInvitationInfo(null);
+      setPassword('');
+      setConfirmPassword('');
 
       // Brief delay to display the success confirmation, then redirect
       setTimeout(() => {
         onSuccess(
-          invitationInfo?.email || result.email,
+          registeredEmail,
           'Account created successfully! Please sign in with your password.'
         );
       }, 700);

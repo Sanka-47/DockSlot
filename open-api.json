@@ -2139,8 +2139,45 @@
             }
         },
         "/auth/invitation": {
-            "get": {
+            "post": {
                 "summary": "Retrieve invitation details by token to verify before registering",
+                "description": "The token is sent in the request body so it does not appear in URLs, access logs, or Referer headers.",
+                "tags": [
+                    "Authentication"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "token"
+                                ],
+                                "properties": {
+                                    "token": {
+                                        "type": "string"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Invitation details retrieved successfully"
+                    },
+                    "400": {
+                        "description": "Invalid or expired token"
+                    },
+                    "404": {
+                        "description": "Invitation not found"
+                    }
+                }
+            },
+            "get": {
+                "deprecated": true,
+                "summary": "Retrieve invitation details by token (deprecated; use POST)",
                 "tags": [
                     "Authentication"
                 ],
@@ -2636,7 +2673,7 @@
         "/auth/2fa/setup": {
             "post": {
                 "summary": "Generate a new TOTP secret and QR code for authenticator apps",
-                "description": "Generates a base32 TOTP secret for the authenticated user and returns a QR code data URL, the base32 secret string, and the otpauth:// provisioning URI. The secret is persisted on the user record but 2FA stays disabled until POST /auth/2fa/verify-and-enable confirms a valid code. Re-invoking this endpoint rotates the secret, invalidating any previously scanned QR code.",
+                "description": "Generates a base32 TOTP secret for the authenticated user and returns a QR code data URL, the base32 secret string, and the otpauth:// provisioning URI. The current account password is required as step-up proof. The secret is persisted on the user record but 2FA stays disabled until POST /auth/2fa/verify-and-enable confirms a valid code. Re-invoking this endpoint rotates the secret, invalidating any previously scanned QR code.",
                 "tags": [
                     "Two-Factor Authentication"
                 ],
@@ -2645,6 +2682,26 @@
                         "bearerAuth": []
                     }
                 ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "password"
+                                ],
+                                "properties": {
+                                    "password": {
+                                        "type": "string",
+                                        "format": "password",
+                                        "description": "Current account password"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
                 "responses": {
                     "200": {
                         "description": "Secret and QR code generated successfully",
@@ -2697,8 +2754,11 @@
                             }
                         }
                     },
+                    "400": {
+                        "description": "Current password was not supplied"
+                    },
                     "401": {
-                        "description": "Unauthorized. Missing or invalid token."
+                        "description": "Unauthorized, or the current password does not match"
                     },
                     "404": {
                         "description": "User not found"

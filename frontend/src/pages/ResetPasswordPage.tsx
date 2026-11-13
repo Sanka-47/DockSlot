@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Lock,
   ArrowLeft,
@@ -28,7 +28,7 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
   onSuccess,
   onBackToSignIn,
 }) => {
-  // Extract token from props or URL query parameter (?token=...)
+  // App consumes and scrubs the email token before rendering this page.
   const [token, setToken] = useState<string>(propToken || '');
   const [newPassword, setNewPassword] = useState<string>('');
   const [confirmPassword, setConfirmPassword] = useState<string>('');
@@ -38,15 +38,6 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (!token) {
-      const queryToken = resetPasswordPageService.getTokenFromUrl();
-      if (queryToken) {
-        setToken(queryToken);
-      }
-    }
-  }, [token]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,6 +56,11 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
     try {
       setIsLoading(true);
       await resetPasswordPageService.resetPassword(token, newPassword);
+
+      // The token is single-use; do not keep it in component memory.
+      setToken('');
+      setNewPassword('');
+      setConfirmPassword('');
       setIsSuccess(true);
       if (onSuccess) {
         onSuccess();
@@ -178,8 +174,8 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
           ) : (
             /* Form View */
             <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-              {/* Optional Token input field if token was not in URL */}
-              {!propToken && !new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '').get('token') && (
+              {/* Optional token field when the email link did not include one. */}
+              {!propToken && (
                 <div>
                   <Label htmlFor="reset-token" required>
                     Reset Token

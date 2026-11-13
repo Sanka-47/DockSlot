@@ -1,16 +1,8 @@
 import { authApi } from '../api/auth.api';
 import { validatePassword } from '../utils/passwordPolicy';
 
-/** Reads the reset token from the current URL (?token=...). */
-export function getResetTokenFromUrl(): string | null {
-  if (typeof window === 'undefined') return null;
-  return new URLSearchParams(window.location.search).get('token');
-}
-
 /** Business rules and API orchestration for the reset-password page. */
 export const resetPasswordPageService = {
-  getTokenFromUrl: getResetTokenFromUrl,
-
   /** Returns a user-facing validation message, or null when the input is valid. */
   validateResetInput(
     token: string,

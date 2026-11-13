@@ -68,7 +68,8 @@ export const authApi = {
   getInvitationDetails: async (
     token: string
   ): Promise<{ success: boolean; data: { email: string; role: string; organizationName?: string } }> => {
-    const response = await apiClient.get('/auth/invitation', { params: { token } });
+    // POST keeps the invitation token out of URLs, access logs, and Referer data.
+    const response = await apiClient.post('/auth/invitation', { token });
     return response.data;
   },
 
@@ -79,7 +80,7 @@ export const authApi = {
     return response.data;
   },
 
-  setup2FA: async (): Promise<{
+  setup2FA: async (password: string): Promise<{
     success: boolean;
     message: string;
     data: TwoFactorSetupResponse;
@@ -87,7 +88,7 @@ export const authApi = {
     qrCode?: string;
     otpauthUrl?: string;
   }> => {
-    const response = await apiClient.post('/auth/2fa/setup');
+    const response = await apiClient.post('/auth/2fa/setup', { password });
     return response.data;
   },
 

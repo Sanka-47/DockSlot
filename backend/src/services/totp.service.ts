@@ -16,6 +16,12 @@ export interface Setup2FAResponse {
   otpauthUrl: string;
 }
 
+export interface Setup2FAInput {
+  userId: number;
+  /** Current account password: step-up proof before rotating the TOTP secret. */
+  password?: string;
+}
+
 export interface VerifyAndEnableInput {
   userId: number;
   token: string;
@@ -82,11 +88,24 @@ export class TotpService {
   /**
    * Generates a new TOTP secret for the authenticated user and returns QR code data URL and secret string.
    */
-  public async setup(userId: number): Promise<Setup2FAResponse> {
+  public async setup(input: Setup2FAInput): Promise<Setup2FAResponse> {
+    const { userId, password } = input;
     const user = await totpRepository.findById(userId);
 
     if (!user) {
       throw { status: 404, message: 'User not found.' };
+    }
+
+    if (!password || typeof password !== 'string') {
+      throw {
+        status: 400,
+        message: 'Your current account password is required to enable two-factor authentication.',
+      };
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+    if (!isPasswordValid) {
+      throw { status: 401, message: 'Current password does not match.' };
     }
 
     // Generate standard 20-byte base32 secret
