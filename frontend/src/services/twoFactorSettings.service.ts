@@ -32,16 +32,11 @@ export const twoFactorSettingsService = {
   async verifyAndEnable(code: string): Promise<{ message: string }> {
     const response = await authApi.verifyAndEnable2FA({ token: code.trim() });
     return {
-      message:
-        response.message ||
-        'Two-factor authentication is now enabled for your account.',
+      message: response.message || 'Two-factor authentication is now enabled for your account.',
     };
   },
 
-  async disable(input: {
-    password?: string;
-    token?: string;
-  }): Promise<{ message: string }> {
+  async disable(input: { password?: string; token?: string }): Promise<{ message: string }> {
     const response = await authApi.disable2FA({
       password: input.password || undefined,
       token: input.token?.trim() || undefined,
@@ -53,9 +48,7 @@ export const twoFactorSettingsService = {
   },
 
   validateSetupPassword(password: string): string | null {
-    return password.trim()
-      ? null
-      : 'Enter your current account password to continue.';
+    return password.trim() ? null : 'Enter your current account password to continue.';
   },
 
   validateVerificationCode(code: string): string | null {

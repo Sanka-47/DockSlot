@@ -26,10 +26,9 @@ import { useAuth } from '../hooks/useAuth';
 import { ForgotPasswordPage } from './ForgotPasswordPage';
 import { ResetPasswordPage } from './ResetPasswordPage';
 import { UserRegisterModal } from '../components/UserRegisterModal';
-import type {
-  OrganizationType,
-  User,
-} from '../types/user.types';
+import type { OrganizationType, User } from '../types/user.types';
+
+const CURRENT_YEAR = new Date().getFullYear();
 
 export type AuthTab = 'signin' | 'register' | 'forgot' | 'reset';
 
@@ -72,18 +71,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({
   // Tab State: 'signin' | 'register' | 'forgot' | 'reset'
   const [activeTab, setActiveTab] = useState<AuthTab>(getInitialTab);
 
-  // Sync tab if URL or resetToken changes
-  React.useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const path = window.location.pathname;
-      if (resetToken || path.includes('reset-password')) {
-        setActiveTab('reset');
-      } else if (path.includes('forgot-password')) {
-        setActiveTab('forgot');
-      }
-    }
-  }, [resetToken]);
-
   // Common UI State
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -106,7 +93,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({
   React.useEffect(() => {
     if (showInviteModal) {
       setIsInviteModalOpen(true);
-    } else if (typeof window !== 'undefined' && window.location.pathname.includes('accept-invite')) {
+    } else if (
+      typeof window !== 'undefined' &&
+      window.location.pathname.includes('accept-invite')
+    ) {
       setIsInviteModalOpen(true);
     }
   }, [showInviteModal]);
@@ -123,7 +113,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
       setSignInEmail(registeredEmail);
     }
     setSuccessMessage(
-      message || 'Registration completed successfully! Please sign in with your new password.'
+      message || 'Registration completed successfully! Please sign in with your new password.',
     );
   };
 
@@ -204,10 +194,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     setErrorMessage(null);
     setSuccessMessage(null);
 
-    const validationError = authPageService.validateSignIn(
-      signInEmail,
-      signInPassword
-    );
+    const validationError = authPageService.validateSignIn(signInEmail, signInPassword);
     if (validationError) {
       setErrorMessage(validationError);
       return;
@@ -226,18 +213,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({
         return;
       }
 
-      completeSignIn(
-        result.token,
-        result.user,
-        'Login successful! Redirecting to dashboard...'
-      );
+      completeSignIn(result.token, result.user, 'Login successful! Redirecting to dashboard...');
     } catch (err: unknown) {
-      setErrorMessage(
-        getApiErrorMessage(
-          err,
-          'Login failed. Please check your credentials.'
-        )
-      );
+      setErrorMessage(getApiErrorMessage(err, 'Login failed. Please check your credentials.'));
     } finally {
       setIsLoading(false);
     }
@@ -265,17 +243,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
     try {
       setIsLoading(true);
-      const session = await authPageService.verifyTwoFactor(
-        pendingTempToken,
-        totpCode
-      );
+      const session = await authPageService.verifyTwoFactor(pendingTempToken, totpCode);
 
       setPendingTempToken(null);
       setTotpCode('');
       completeSignIn(
         session.token,
         session.user,
-        'Two-factor verification successful! Redirecting to dashboard...'
+        'Two-factor verification successful! Redirecting to dashboard...',
       );
     } catch (err: unknown) {
       // An expired temp token cannot be retried — send the user back to the password step.
@@ -285,10 +260,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
         setErrorMessage('Your 2FA session expired. Please sign in again.');
       } else {
         setErrorMessage(
-          getApiErrorMessage(
-            err,
-            'That verification code was not accepted. Please try again.'
-          )
+          getApiErrorMessage(err, 'That verification code was not accepted. Please try again.'),
         );
       }
     } finally {
@@ -346,23 +318,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({
         handleDashboardRedirect(session.user);
       }, 600);
     } catch (err: unknown) {
-      setErrorMessage(
-        getApiErrorMessage(
-          err,
-          'Registration failed. Please check your details.'
-        )
-      );
+      setErrorMessage(getApiErrorMessage(err, 'Registration failed. Please check your details.'));
     } finally {
       setIsLoading(false);
     }
   };
 
   if (activeTab === 'forgot') {
-    return (
-      <ForgotPasswordPage
-        onBackToSignIn={() => handleTabChange('signin')}
-      />
-    );
+    return <ForgotPasswordPage onBackToSignIn={() => handleTabChange('signin')} />;
   }
 
   if (activeTab === 'reset') {
@@ -383,9 +346,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
           <div className="p-2.5 bg-[#2F4F4F] rounded-lg text-white shadow-md">
             <Warehouse className="w-6 h-6" />
           </div>
-          <span className="text-3xl font-extrabold tracking-tight text-[#2F4F4F]">
-            DockSlot
-          </span>
+          <span className="text-3xl font-extrabold tracking-tight text-[#2F4F4F]">DockSlot</span>
         </div>
         <p className="text-sm font-medium text-gray-600">
           Intelligent Warehouse Dock Scheduling & Carrier Logistics
@@ -435,9 +396,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
               className="mb-4 flex items-start space-x-3 p-3.5 bg-red-50 border border-red-200 rounded-md text-red-800 text-sm animate-in fade-in duration-200"
             >
               <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-              <div className="flex-1 font-medium leading-tight">
-                {errorMessage}
-              </div>
+              <div className="flex-1 font-medium leading-tight">{errorMessage}</div>
             </div>
           )}
 
@@ -449,9 +408,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
               className="mb-4 flex items-start space-x-3 p-3.5 bg-emerald-50 border border-emerald-200 rounded-md text-emerald-800 text-sm animate-in fade-in duration-200"
             >
               <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
-              <div className="flex-1 font-medium leading-tight">
-                {successMessage}
-              </div>
+              <div className="flex-1 font-medium leading-tight">{successMessage}</div>
             </div>
           )}
 
@@ -461,11 +418,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({
               <div className="flex items-start space-x-3 p-3 bg-[#2F4F4F]/5 border border-[#2F4F4F]/15 rounded-md">
                 <ShieldCheck className="w-5 h-5 text-[#2F4F4F] flex-shrink-0 mt-0.5" />
                 <div className="text-xs text-gray-700 leading-snug">
-                  <p className="font-semibold text-[#2F4F4F]">
-                    Password verified — one more step
-                  </p>
+                  <p className="font-semibold text-[#2F4F4F]">Password verified — one more step</p>
                   <p className="mt-0.5">
-                    Open <strong>Google Authenticator</strong> and enter the current 6-digit code for
+                    Open <strong>Google Authenticator</strong> and enter the current 6-digit code
+                    for
                     <span className="font-medium"> {pendingEmail || 'your account'}</span>.
                   </p>
                 </div>
@@ -575,22 +531,13 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                       onClick={() => setShowPassword(!showPassword)}
                       className="text-gray-400 hover:text-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] rounded"
                     >
-                      {showPassword ? (
-                        <EyeOff className="w-4 h-4" />
-                      ) : (
-                        <Eye className="w-4 h-4" />
-                      )}
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   }
                 />
               </div>
 
-              <Button
-                type="submit"
-                variant="primary"
-                className="w-full mt-2"
-                isLoading={isLoading}
-              >
+              <Button type="submit" variant="primary" className="w-full mt-2" isLoading={isLoading}>
                 <span>Sign In</span>
                 {!isLoading && <ArrowRight className="w-4 h-4 ml-2" />}
               </Button>
@@ -612,18 +559,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   <select
                     id="register-org-type"
                     value={registerOrgType}
-                    onChange={(e) =>
-                      setRegisterOrgType(e.target.value as OrganizationType)
-                    }
+                    onChange={(e) => setRegisterOrgType(e.target.value as OrganizationType)}
                     required
                     disabled={isLoading}
                     aria-invalid={Boolean(errorMessage)}
                     aria-describedby={errorMessage ? 'auth-error' : undefined}
                     className="w-full rounded-md border border-gray-300 pl-10 pr-8 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#2F4F4F] focus:border-[#2F4F4F] transition-colors"
                   >
-                    <option value="CARRIER">
-                      Carrier / Fleet Operator (CARRIER)
-                    </option>
+                    <option value="CARRIER">Carrier / Fleet Operator (CARRIER)</option>
                     <option value="WAREHOUSE_OPERATOR">
                       Warehouse Operator (WAREHOUSE_OPERATOR)
                     </option>
@@ -633,12 +576,16 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   {registerOrgType === 'CARRIER' ? (
                     <>
                       <Truck className="w-3.5 h-3.5 text-[#2F4F4F] inline mr-1" />
-                      <span>Grants CARRIER_ADMIN role to manage trucks, dispatchers & bookings.</span>
+                      <span>
+                        Grants CARRIER_ADMIN role to manage trucks, dispatchers & bookings.
+                      </span>
                     </>
                   ) : (
                     <>
                       <Warehouse className="w-3.5 h-3.5 text-[#2F4F4F] inline mr-1" />
-                      <span>Grants WAREHOUSE_ADMIN role to configure docks, slots & maintenance.</span>
+                      <span>
+                        Grants WAREHOUSE_ADMIN role to configure docks, slots & maintenance.
+                      </span>
                     </>
                   )}
                 </p>
@@ -714,22 +661,13 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                       onClick={() => setShowPassword(!showPassword)}
                       className="text-gray-400 hover:text-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] rounded"
                     >
-                      {showPassword ? (
-                        <EyeOff className="w-4 h-4" />
-                      ) : (
-                        <Eye className="w-4 h-4" />
-                      )}
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   }
                 />
               </div>
 
-              <Button
-                type="submit"
-                variant="primary"
-                className="w-full mt-2"
-                isLoading={isLoading}
-              >
+              <Button type="submit" variant="primary" className="w-full mt-2" isLoading={isLoading}>
                 <span>Register Organization</span>
                 {!isLoading && <ArrowRight className="w-4 h-4 ml-2" />}
               </Button>
@@ -740,7 +678,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
       {/* Footer Info */}
       <div className="mt-8 text-center text-xs text-gray-500">
-        &copy; {new Date().getFullYear()} DockSlot Inc. Multi-tenant Logistics Platform.
+        &copy; {CURRENT_YEAR} DockSlot Inc. Multi-tenant Logistics Platform.
       </div>
 
       {/* User Registration Modal for Invitations */}

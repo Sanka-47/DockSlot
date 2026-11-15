@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Calendar,
   Clock,
@@ -21,16 +21,11 @@ import {
   Globe,
   Warehouse as WarehouseIcon,
   History,
-} from "lucide-react";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-} from "../components/ui/card";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
+} from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 import {
   dispatcherDashboardService,
   filterBookings,
@@ -42,22 +37,14 @@ import {
   isInsideLockWindow,
   removeSlotFromGroups,
   validateBookingInput,
-} from "../services/dispatcherDashboard.service";
-import { getApiErrorMessage, isSlotConflictError } from "../services/errors";
-import { useDialogA11y } from "../hooks/useDialogA11y";
-import { BookingAuditLogModal } from "../components/BookingAuditLogModal";
-import type {
-  Warehouse,
-  Dock,
-  AvailableDockSlots,
-  AvailableSlot,
-} from "../types/warehouse.types";
-import type {
-  Booking,
-  BookingStatus,
-  CreateBookingRequest,
-} from "../types/booking.types";
-import { formatDateTime } from "../utils/formatters";
+} from '../services/dispatcherDashboard.service';
+import { getApiErrorMessage, isRequestCanceled, isSlotConflictError } from '../services/errors';
+import { useDialogA11y } from '../hooks/useDialogA11y';
+import { useNow } from '../hooks/useNow';
+import { BookingAuditLogModal } from '../components/BookingAuditLogModal';
+import type { Warehouse, Dock, AvailableDockSlots, AvailableSlot } from '../types/warehouse.types';
+import type { Booking, BookingStatus, CreateBookingRequest } from '../types/booking.types';
+import { formatDateTime } from '../utils/formatters';
 
 interface SelectedSlotInfo {
   warehouseId: number;
@@ -83,8 +70,7 @@ export const DispatcherDashboard: React.FC = () => {
   const [isLoadingInitial, setIsLoadingInitial] = useState<boolean>(true);
   const [isLoadingBookings, setIsLoadingBookings] = useState<boolean>(false);
   const [isSearchingSlots, setIsSearchingSlots] = useState<boolean>(false);
-  const [isSubmittingBooking, setIsSubmittingBooking] =
-    useState<boolean>(false);
+  const [isSubmittingBooking, setIsSubmittingBooking] = useState<boolean>(false);
 
   // Global Feedback Banners
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -93,16 +79,12 @@ export const DispatcherDashboard: React.FC = () => {
   // ---------------------------------------------------------------------------
   // Slot Search & Filter State
   // ---------------------------------------------------------------------------
-  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>("");
-  const [targetDate, setTargetDate] = useState<string>(() =>
-    getTodayDateString(),
-  );
-  const [selectedDockId, setSelectedDockId] = useState<string>("ALL");
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>('');
+  const [targetDate, setTargetDate] = useState<string>(() => getTodayDateString());
+  const [selectedDockId, setSelectedDockId] = useState<string>('ALL');
 
   // Available Slots State
-  const [searchedSlots, setSearchedSlots] = useState<
-    AvailableDockSlots[] | null
-  >(null);
+  const [searchedSlots, setSearchedSlots] = useState<AvailableDockSlots[] | null>(null);
   const [hasSearchedSlots, setHasSearchedSlots] = useState<boolean>(false);
   // Date the currently displayed results were fetched for (kept separate from
   // the form input so editing the date does not relabel stale results).
@@ -112,38 +94,30 @@ export const DispatcherDashboard: React.FC = () => {
   // Booking Creation Modal State
   // ---------------------------------------------------------------------------
   const [isBookingModalOpen, setIsBookingModalOpen] = useState<boolean>(false);
-  const [selectedSlotForBooking, setSelectedSlotForBooking] =
-    useState<SelectedSlotInfo | null>(null);
+  const [selectedSlotForBooking, setSelectedSlotForBooking] = useState<SelectedSlotInfo | null>(
+    null,
+  );
   const [bookingFormData, setBookingFormData] = useState<{
     truckPlate: string;
     driverName: string;
     driverPhone: string;
     cargoNote: string;
   }>({
-    truckPlate: "",
-    driverName: "",
-    driverPhone: "",
-    cargoNote: "",
+    truckPlate: '',
+    driverName: '',
+    driverPhone: '',
+    cargoNote: '',
   });
-  const [bookingModalError, setBookingModalError] = useState<string | null>(
-    null,
-  );
+  const [bookingModalError, setBookingModalError] = useState<string | null>(null);
 
   // ---------------------------------------------------------------------------
   // Reschedule Modal State
   // ---------------------------------------------------------------------------
-  const [isRescheduleModalOpen, setIsRescheduleModalOpen] =
-    useState<boolean>(false);
-  const [bookingToReschedule, setBookingToReschedule] =
-    useState<Booking | null>(null);
-  const [rescheduleDate, setRescheduleDate] = useState<string>(() =>
-    getTodayDateString(),
-  );
-  const [rescheduleSlots, setRescheduleSlots] = useState<
-    AvailableDockSlots[] | null
-  >(null);
-  const [isLoadingRescheduleSlots, setIsLoadingRescheduleSlots] =
-    useState<boolean>(false);
+  const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState<boolean>(false);
+  const [bookingToReschedule, setBookingToReschedule] = useState<Booking | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState<string>(() => getTodayDateString());
+  const [rescheduleSlots, setRescheduleSlots] = useState<AvailableDockSlots[] | null>(null);
+  const [isLoadingRescheduleSlots, setIsLoadingRescheduleSlots] = useState<boolean>(false);
   const [selectedRescheduleSlot, setSelectedRescheduleSlot] = useState<{
     dockId: number;
     dockName: string;
@@ -152,19 +126,23 @@ export const DispatcherDashboard: React.FC = () => {
     localStartTime?: string;
     localEndTime?: string;
   } | null>(null);
-  const [rescheduleReason, setRescheduleReason] = useState<string>("");
+  const [rescheduleReason, setRescheduleReason] = useState<string>('');
   const [rescheduleError, setRescheduleError] = useState<string | null>(null);
-  const [isSubmittingReschedule, setIsSubmittingReschedule] =
-    useState<boolean>(false);
+  const [isSubmittingReschedule, setIsSubmittingReschedule] = useState<boolean>(false);
 
   // ---------------------------------------------------------------------------
   // Cancel Modal State
   // ---------------------------------------------------------------------------
   const [isCancelModalOpen, setIsCancelModalOpen] = useState<boolean>(false);
   const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
-  const [cancelReason, setCancelReason] = useState<string>("");
+  const [cancelReason, setCancelReason] = useState<string>('');
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [isSubmittingCancel, setIsSubmittingCancel] = useState<boolean>(false);
+
+  const now = useNow();
+  const slotSearchRequestRef = useRef<AbortController | null>(null);
+  const rescheduleRequestRef = useRef<AbortController | null>(null);
+  const rescheduleDebounceRef = useRef<number | null>(null);
 
   const bookingDialogRef = useDialogA11y<HTMLDivElement>({
     isOpen: isBookingModalOpen,
@@ -185,8 +163,7 @@ export const DispatcherDashboard: React.FC = () => {
   // ---------------------------------------------------------------------------
   // Audit Log Modal State
   // ---------------------------------------------------------------------------
-  const [selectedBookingForAudit, setSelectedBookingForAudit] =
-    useState<Booking | null>(null);
+  const [selectedBookingForAudit, setSelectedBookingForAudit] = useState<Booking | null>(null);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState<boolean>(false);
 
   const handleOpenAuditModal = (booking: Booking) => {
@@ -197,61 +174,85 @@ export const DispatcherDashboard: React.FC = () => {
   // ---------------------------------------------------------------------------
   // Bookings Table Filters & Search
   // ---------------------------------------------------------------------------
-  const [bookingSearchQuery, setBookingSearchQuery] = useState<string>("");
-  const [bookingStatusFilter, setBookingStatusFilter] = useState<string>("ALL");
+  const [bookingSearchQuery, setBookingSearchQuery] = useState<string>('');
+  const [bookingStatusFilter, setBookingStatusFilter] = useState<string>('ALL');
 
   // ---------------------------------------------------------------------------
   // Fetch Initial Data (Warehouses and Carrier Bookings)
   // ---------------------------------------------------------------------------
-  const fetchBookings = useCallback(async () => {
+  const fetchBookings = useCallback(async (signal?: AbortSignal) => {
     setIsLoadingBookings(true);
     try {
-      setBookings(await dispatcherDashboardService.fetchBookings());
+      const nextBookings = await dispatcherDashboardService.fetchBookings(signal);
+      if (!signal?.aborted) setBookings(nextBookings);
     } catch (err: unknown) {
-      setErrorMessage(
-        getApiErrorMessage(err, "Failed to fetch carrier bookings.")
-      );
+      if (!signal?.aborted && !isRequestCanceled(err)) {
+        setErrorMessage(getApiErrorMessage(err, 'Failed to fetch carrier bookings.'));
+      }
     } finally {
-      setIsLoadingBookings(false);
+      if (!signal?.aborted) setIsLoadingBookings(false);
     }
   }, []);
 
-  const fetchInitialData = useCallback(async () => {
-    setIsLoadingInitial(true);
-    setErrorMessage(null);
+  const fetchInitialData = useCallback(async (signal?: AbortSignal) => {
     try {
-      const data = await dispatcherDashboardService.loadDashboardData();
+      const data = await dispatcherDashboardService.loadDashboardData(signal);
+      if (signal?.aborted) return;
+
       setBookings(data.bookings);
       setWarehouses(data.warehouses);
 
-      if (data.warehouses.length > 0) {
-        setSelectedWarehouseId(String(data.warehouses[0].id));
+      const firstWarehouse = data.warehouses[0];
+      if (firstWarehouse) {
+        setSelectedWarehouseId(String(firstWarehouse.id));
+        const warehouseToday = getTodayDateString(firstWarehouse.timezone);
+        setTargetDate((prev) => (prev < warehouseToday ? warehouseToday : prev));
       }
 
       if (data.errorMessage) {
         setErrorMessage(data.errorMessage);
       }
+    } catch (err: unknown) {
+      if (!signal?.aborted && !isRequestCanceled(err)) {
+        setErrorMessage(
+          getApiErrorMessage(err, 'Failed to load dispatcher dashboard data. Please try again.'),
+        );
+      }
     } finally {
-      setIsLoadingInitial(false);
+      if (!signal?.aborted) setIsLoadingInitial(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchInitialData();
+    const controller = new AbortController();
+    fetchInitialData(controller.signal);
+    return () => controller.abort();
   }, [fetchInitialData]);
+
+  useEffect(() => {
+    return () => {
+      slotSearchRequestRef.current?.abort();
+      rescheduleRequestRef.current?.abort();
+      if (rescheduleDebounceRef.current !== null) {
+        window.clearTimeout(rescheduleDebounceRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isRescheduleModalOpen) {
+      if (rescheduleDebounceRef.current !== null) {
+        window.clearTimeout(rescheduleDebounceRef.current);
+        rescheduleDebounceRef.current = null;
+      }
+      rescheduleRequestRef.current?.abort();
+    }
+  }, [isRescheduleModalOpen]);
 
   const selectedWarehouse = useMemo<Warehouse | undefined>(() => {
     if (!selectedWarehouseId) return undefined;
     return warehouses.find((w) => w.id === Number(selectedWarehouseId));
   }, [warehouses, selectedWarehouseId]);
-
-  // Keep targetDate aligned to at least today's date in the selected warehouse's timezone
-  useEffect(() => {
-    if (selectedWarehouse?.timezone) {
-      const whToday = getTodayDateString(selectedWarehouse.timezone);
-      setTargetDate((prev) => (prev < whToday ? whToday : prev));
-    }
-  }, [selectedWarehouse?.timezone]);
 
   // Available docks for currently selected warehouse
   const currentWarehouseDocks = useMemo<Dock[]>(() => {
@@ -261,94 +262,110 @@ export const DispatcherDashboard: React.FC = () => {
   // Browser Local Timezone
   const browserTimezone = useMemo<string>(() => {
     try {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Local";
-      const offsetMinutes = -new Date().getTimezoneOffset();
-      const sign = offsetMinutes >= 0 ? "+" : "-";
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local';
+      const offsetMinutes = -new Date(now).getTimezoneOffset();
+      const sign = offsetMinutes >= 0 ? '+' : '-';
       const absMinutes = Math.abs(offsetMinutes);
-      const hours = String(Math.floor(absMinutes / 60)).padStart(2, "0");
-      const mins = String(absMinutes % 60).padStart(2, "0");
+      const hours = String(Math.floor(absMinutes / 60)).padStart(2, '0');
+      const mins = String(absMinutes % 60).padStart(2, '0');
       return `${tz} (UTC${sign}${hours}:${mins})`;
     } catch {
-      return "UTC";
+      return 'UTC';
     }
-  }, []);
+  }, [now]);
 
   // Format IANA timezone string with UTC offset
-  const formatTimezoneLabel = useCallback((tz?: string): string => {
-    if (!tz) return "UTC";
-    try {
-      const parts = new Intl.DateTimeFormat("en-US", {
-        timeZone: tz,
-        timeZoneName: "shortOffset",
-      }).formatToParts(new Date());
-      const offsetPart = parts.find((p) => p.type === "timeZoneName")?.value;
-      if (offsetPart && offsetPart !== tz) {
-        return `${tz} (${offsetPart.replace("GMT", "UTC")})`;
+  const formatTimezoneLabel = useCallback(
+    (tz?: string): string => {
+      if (!tz) return 'UTC';
+      try {
+        const parts = new Intl.DateTimeFormat('en-US', {
+          timeZone: tz,
+          timeZoneName: 'shortOffset',
+        }).formatToParts(new Date(now));
+        const offsetPart = parts.find((p) => p.type === 'timeZoneName')?.value;
+        if (offsetPart && offsetPart !== tz) {
+          return `${tz} (${offsetPart.replace('GMT', 'UTC')})`;
+        }
+        return tz;
+      } catch {
+        return tz;
       }
-      return tz;
-    } catch {
-      return tz;
-    }
-  }, []);
+    },
+    [now],
+  );
 
   // ---------------------------------------------------------------------------
   // Slot Search Handlers
   // ---------------------------------------------------------------------------
-  const handleSearchSlots = async (
-    e?: React.FormEvent,
-    options?: { preserveError?: boolean },
-  ) => {
+  const handleSearchSlots = async (e?: React.FormEvent, options?: { preserveError?: boolean }) => {
     if (e) e.preventDefault();
     if (!selectedWarehouseId) {
-      setErrorMessage("Please select a target warehouse.");
+      setErrorMessage('Please select a target warehouse.');
       return;
     }
     if (!targetDate) {
-      setErrorMessage("Please select a target date.");
+      setErrorMessage('Please select a target date.');
       return;
     }
+
+    slotSearchRequestRef.current?.abort();
+    const controller = new AbortController();
+    slotSearchRequestRef.current = controller;
 
     setIsSearchingSlots(true);
     if (!options?.preserveError) {
       setErrorMessage(null);
+      setSearchedSlots(null);
     }
     setHasSearchedSlots(true);
     setSearchedDate(targetDate);
 
     try {
       const warehouseIdNum = Number(selectedWarehouseId);
-      const dockIdFilter =
-        selectedDockId !== "ALL" ? Number(selectedDockId) : undefined;
+      const dockIdFilter = selectedDockId !== 'ALL' ? Number(selectedDockId) : undefined;
 
       const normalized = await dispatcherDashboardService.searchAvailableSlots(
         warehouseIdNum,
         targetDate,
         dockIdFilter,
+        controller.signal,
       );
-      setSearchedSlots(normalized);
+      if (!controller.signal.aborted) {
+        setSearchedSlots(normalized);
+      }
     } catch (err: unknown) {
+      if (controller.signal.aborted || isRequestCanceled(err)) return;
       if (!options?.preserveError) {
-        setErrorMessage(
-          getApiErrorMessage(err, "Failed to search available slots.")
-        );
+        setErrorMessage(getApiErrorMessage(err, 'Failed to search available slots.'));
         setSearchedSlots([]);
       }
     } finally {
-      setIsSearchingSlots(false);
+      if (slotSearchRequestRef.current === controller) {
+        setIsSearchingSlots(false);
+      }
+    }
+  };
+
+  const handleWarehouseChange = (warehouseId: string) => {
+    setSelectedWarehouseId(warehouseId);
+    setSelectedDockId('ALL');
+
+    const warehouse = warehouses.find((item) => item.id === Number(warehouseId));
+    if (warehouse?.timezone) {
+      const warehouseToday = getTodayDateString(warehouse.timezone);
+      setTargetDate((prev) => (prev < warehouseToday ? warehouseToday : prev));
     }
   };
 
   // ---------------------------------------------------------------------------
   // Booking Creation Handlers
   // ---------------------------------------------------------------------------
-  const handleOpenBookingModal = (
-    dock: { id: number; name: string },
-    slot: AvailableSlot,
-  ) => {
+  const handleOpenBookingModal = (dock: { id: number; name: string }, slot: AvailableSlot) => {
     const wh = warehouses.find((w) => w.id === Number(selectedWarehouseId));
     setSelectedSlotForBooking({
       warehouseId: wh?.id || Number(selectedWarehouseId),
-      warehouseName: wh?.name || "Selected Warehouse",
+      warehouseName: wh?.name || 'Selected Warehouse',
       warehouseTimezone: wh?.timezone,
       slotDate: searchedDate || targetDate,
       dockId: dock.id,
@@ -359,10 +376,10 @@ export const DispatcherDashboard: React.FC = () => {
       localEndTime: slot.localEndTime,
     });
     setBookingFormData({
-      truckPlate: "",
-      driverName: "",
-      driverPhone: "",
-      cargoNote: "",
+      truckPlate: '',
+      driverName: '',
+      driverPhone: '',
+      cargoNote: '',
     });
     setBookingModalError(null);
     setIsBookingModalOpen(true);
@@ -419,7 +436,10 @@ export const DispatcherDashboard: React.FC = () => {
       );
     } catch (err: unknown) {
       if (isSlotConflictError(err)) {
-        const slotWindowLabel = formatSlotWindow(selectedSlotForBooking);
+        const slotWindowLabel = formatSlotWindow(
+          selectedSlotForBooking,
+          selectedSlotForBooking.warehouseTimezone,
+        );
         const clearConflictMessage = `The selected slot (${slotWindowLabel} on ${selectedSlotForBooking.dockName}) was just booked by another carrier while you were viewing it. Available slots have been updated — please select another open slot.`;
 
         // Immediately remove the taken slot from current view
@@ -438,9 +458,7 @@ export const DispatcherDashboard: React.FC = () => {
         // Fetch fresh updated slots from backend while preserving the clear alert message
         await handleSearchSlots(undefined, { preserveError: true });
       } else {
-        setBookingModalError(
-          getApiErrorMessage(err, "Failed to create booking.")
-        );
+        setBookingModalError(getApiErrorMessage(err, 'Failed to create booking.'));
       }
     } finally {
       setIsSubmittingBooking(false);
@@ -452,12 +470,12 @@ export const DispatcherDashboard: React.FC = () => {
   // ---------------------------------------------------------------------------
   const handleOpenRescheduleModal = async (booking: Booking) => {
     setBookingToReschedule(booking);
-    setRescheduleReason("");
+    setRescheduleReason('');
     setRescheduleError(null);
     setSelectedRescheduleSlot(null);
+    setRescheduleSlots(null);
 
-    const whTimezone =
-      booking.dock?.warehouse?.timezone || selectedWarehouse?.timezone;
+    const whTimezone = booking.dock?.warehouse?.timezone || selectedWarehouse?.timezone;
 
     // Default reschedule date: same date as current booking in warehouse timezone, or today in warehouse timezone
     const bDate = booking.slotStartTime
@@ -470,6 +488,8 @@ export const DispatcherDashboard: React.FC = () => {
     const warehouseId = booking.dock?.warehouseId;
     if (warehouseId) {
       await fetchRescheduleSlots(warehouseId, bDate);
+    } else {
+      setIsLoadingRescheduleSlots(false);
     }
   };
 
@@ -478,6 +498,14 @@ export const DispatcherDashboard: React.FC = () => {
     dateStr: string,
     options?: { preserveError?: boolean },
   ) => {
+    if (rescheduleDebounceRef.current !== null) {
+      window.clearTimeout(rescheduleDebounceRef.current);
+      rescheduleDebounceRef.current = null;
+    }
+    rescheduleRequestRef.current?.abort();
+    const controller = new AbortController();
+    rescheduleRequestRef.current = controller;
+
     setIsLoadingRescheduleSlots(true);
     if (!options?.preserveError) {
       setRescheduleError(null);
@@ -486,29 +514,48 @@ export const DispatcherDashboard: React.FC = () => {
       const normalized = await dispatcherDashboardService.fetchRescheduleSlots(
         warehouseId,
         dateStr,
+        controller.signal,
       );
-      setRescheduleSlots(normalized);
+      if (!controller.signal.aborted) {
+        setRescheduleSlots(normalized);
+      }
     } catch (err: unknown) {
+      if (controller.signal.aborted || isRequestCanceled(err)) return;
       if (!options?.preserveError) {
-        setRescheduleError(
-          getApiErrorMessage(
-            err,
-            "Failed to fetch slots for rescheduling."
-          )
-        );
+        setRescheduleError(getApiErrorMessage(err, 'Failed to fetch slots for rescheduling.'));
         setRescheduleSlots([]);
       }
     } finally {
-      setIsLoadingRescheduleSlots(false);
+      if (rescheduleRequestRef.current === controller) {
+        setIsLoadingRescheduleSlots(false);
+      }
     }
   };
 
-  const handleRescheduleDateChange = async (newDate: string) => {
+  const handleRescheduleDateChange = (newDate: string) => {
     setRescheduleDate(newDate);
     setSelectedRescheduleSlot(null);
-    if (bookingToReschedule?.dock?.warehouseId) {
-      await fetchRescheduleSlots(bookingToReschedule.dock.warehouseId, newDate);
+    setRescheduleSlots(null);
+
+    if (rescheduleDebounceRef.current !== null) {
+      window.clearTimeout(rescheduleDebounceRef.current);
     }
+
+    // Stop an in-flight request for the previous date before the debounce
+    // window so its response cannot repopulate stale slots.
+    rescheduleRequestRef.current?.abort();
+    rescheduleRequestRef.current = null;
+
+    if (!bookingToReschedule?.dock?.warehouseId) {
+      setIsLoadingRescheduleSlots(false);
+      return;
+    }
+
+    setIsLoadingRescheduleSlots(true);
+    const warehouseId = bookingToReschedule.dock.warehouseId;
+    rescheduleDebounceRef.current = window.setTimeout(() => {
+      void fetchRescheduleSlots(warehouseId, newDate);
+    }, 250);
   };
 
   const handleRescheduleSubmit = async (e: React.FormEvent) => {
@@ -516,7 +563,7 @@ export const DispatcherDashboard: React.FC = () => {
     if (!bookingToReschedule) return;
 
     if (!selectedRescheduleSlot) {
-      setRescheduleError("Please select a new available time slot.");
+      setRescheduleError('Please select a new available time slot.');
       return;
     }
 
@@ -531,15 +578,14 @@ export const DispatcherDashboard: React.FC = () => {
       );
 
       // Update bookings list
-      setBookings((prev) =>
-        prev.map((b) => (b.id === updatedBooking.id ? updatedBooking : b)),
-      );
+      setBookings((prev) => prev.map((b) => (b.id === updatedBooking.id ? updatedBooking : b)));
 
       setIsRescheduleModalOpen(false);
       setSuccessBanner(
         `Booking #${bookingToReschedule.id} rescheduled successfully to ${formatDateTime(
           selectedRescheduleSlot.slotStartTime,
-          "PPp",
+          'PPp',
+          bookingToReschedule.dock?.warehouse?.timezone,
         )}.`,
       );
 
@@ -550,22 +596,19 @@ export const DispatcherDashboard: React.FC = () => {
     } catch (err: unknown) {
       if (isSlotConflictError(err) && selectedRescheduleSlot) {
         const takenSlot = selectedRescheduleSlot;
-        const slotWindowLabel = formatSlotWindow(takenSlot);
+        const slotWindowLabel = formatSlotWindow(
+          takenSlot,
+          bookingToReschedule.dock?.warehouse?.timezone,
+        );
         const clearConflictMessage = `The selected slot (${slotWindowLabel} on ${takenSlot.dockName}) was just booked by another carrier while you were viewing it. Available slots have been updated — please choose another open slot.`;
 
         setSelectedRescheduleSlot(null);
         setRescheduleSlots((prev) =>
-          removeSlotFromGroups(
-            prev,
-            takenSlot.dockId,
-            takenSlot.slotStartTime,
-          ),
+          removeSlotFromGroups(prev, takenSlot.dockId, takenSlot.slotStartTime),
         );
         setRescheduleError(clearConflictMessage);
 
-        const warehouseId =
-          bookingToReschedule.dock?.warehouseId ||
-          Number(selectedWarehouseId);
+        const warehouseId = bookingToReschedule.dock?.warehouseId || Number(selectedWarehouseId);
         if (warehouseId) {
           await fetchRescheduleSlots(warehouseId, rescheduleDate, {
             preserveError: true,
@@ -575,9 +618,7 @@ export const DispatcherDashboard: React.FC = () => {
           await handleSearchSlots(undefined, { preserveError: true });
         }
       } else {
-        setRescheduleError(
-          getApiErrorMessage(err, "Failed to reschedule booking.")
-        );
+        setRescheduleError(getApiErrorMessage(err, 'Failed to reschedule booking.'));
       }
     } finally {
       setIsSubmittingReschedule(false);
@@ -589,7 +630,7 @@ export const DispatcherDashboard: React.FC = () => {
   // ---------------------------------------------------------------------------
   const handleOpenCancelModal = (booking: Booking) => {
     setBookingToCancel(booking);
-    setCancelReason("");
+    setCancelReason('');
     setCancelError(null);
     setIsCancelModalOpen(true);
   };
@@ -609,22 +650,18 @@ export const DispatcherDashboard: React.FC = () => {
 
       // Update state locally
       setBookings((prev) =>
-        prev.map((b) =>
-          b.id === updatedBooking.id ? { ...b, status: "CANCELLED" } : b,
-        ),
+        prev.map((b) => (b.id === updatedBooking.id ? { ...b, status: 'CANCELLED' } : b)),
       );
 
       setIsCancelModalOpen(false);
-      setSuccessBanner(
-        `Booking #${bookingToCancel.id} has been cancelled and slot released.`,
-      );
+      setSuccessBanner(`Booking #${bookingToCancel.id} has been cancelled and slot released.`);
 
       // Refresh searched slots if matching
       if (hasSearchedSlots) {
         handleSearchSlots();
       }
     } catch (err: unknown) {
-      setCancelError(getApiErrorMessage(err, "Failed to cancel booking."));
+      setCancelError(getApiErrorMessage(err, 'Failed to cancel booking.'));
     } finally {
       setIsSubmittingCancel(false);
     }
@@ -644,35 +681,35 @@ export const DispatcherDashboard: React.FC = () => {
   // Helper for status badge rendering
   const renderStatusBadge = (status: BookingStatus) => {
     switch (status) {
-      case "BOOKED":
+      case 'BOOKED':
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
             <Clock className="w-3 h-3 mr-1" />
             BOOKED
           </span>
         );
-      case "ARRIVED":
+      case 'ARRIVED':
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
             <Truck className="w-3 h-3 mr-1" />
             ARRIVED
           </span>
         );
-      case "COMPLETED":
+      case 'COMPLETED':
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
             <CheckCircle2 className="w-3 h-3 mr-1" />
             COMPLETED
           </span>
         );
-      case "NO_SHOW":
+      case 'NO_SHOW':
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
             <AlertCircle className="w-3 h-3 mr-1" />
             NO-SHOW
           </span>
         );
-      case "CANCELLED":
+      case 'CANCELLED':
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 border border-gray-300">
             <XCircle className="w-3 h-3 mr-1" />
@@ -691,10 +728,7 @@ export const DispatcherDashboard: React.FC = () => {
   // Helper: Count total available slots in current search
   const totalSlotsCount = useMemo(() => {
     if (!searchedSlots) return 0;
-    return searchedSlots.reduce(
-      (acc, curr) => acc + (curr.slots?.length || 0),
-      0,
-    );
+    return searchedSlots.reduce((acc, curr) => acc + (curr.slots?.length || 0), 0);
   }, [searchedSlots]);
 
   return (
@@ -711,22 +745,20 @@ export const DispatcherDashboard: React.FC = () => {
             </h1>
           </div>
           <p className="text-xs sm:text-sm text-gray-500 mt-1">
-            Search available warehouse time slots, book dock appointments, and
-            manage carrier shipments.
+            Search available warehouse time slots, book dock appointments, and manage carrier
+            shipments.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2">
           {/* Browser Local Timezone Badge */}
           <div
-            className="inline-flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-xs text-slate-700 shadow-xs max-w-full"
+            className="inline-flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-xs text-slate-700 shadow-sm max-w-full"
             title="Your browser's local timezone"
           >
             <Globe className="w-3.5 h-3.5 text-[#2F4F4F] shrink-0" />
             <span className="text-slate-500 font-medium">Local Timezone:</span>
-            <strong className="font-bold text-slate-900 truncate">
-              {browserTimezone}
-            </strong>
+            <strong className="font-bold text-slate-900 truncate">{browserTimezone}</strong>
           </div>
 
           <Button
@@ -791,8 +823,8 @@ export const DispatcherDashboard: React.FC = () => {
               <span>Search & Filter Available Dock Slots</span>
             </CardTitle>
             <p className="text-xs text-gray-500 mt-0.5">
-              Select a target warehouse, appointment date, and optional dock bay
-              to query open time windows.
+              Select a target warehouse, appointment date, and optional dock bay to query open time
+              windows.
             </p>
           </div>
 
@@ -800,7 +832,7 @@ export const DispatcherDashboard: React.FC = () => {
             <div className="inline-flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-md bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 self-start sm:self-auto max-w-full">
               <Clock className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
               <span className="truncate">
-                {selectedWarehouse.name} Timezone:{" "}
+                {selectedWarehouse.name} Timezone:{' '}
                 <strong className="font-bold">
                   {formatTimezoneLabel(selectedWarehouse.timezone)}
                 </strong>
@@ -823,7 +855,10 @@ export const DispatcherDashboard: React.FC = () => {
                 <span className="flex items-center space-x-1">
                   <Building className="w-3.5 h-3.5 text-gray-500 shrink-0" />
                   <span>
-                    Target Warehouse <span className="text-red-500" aria-hidden="true">*</span>
+                    Target Warehouse{' '}
+                    <span className="text-red-500" aria-hidden="true">
+                      *
+                    </span>
                   </span>
                 </span>
                 {selectedWarehouse?.timezone && (
@@ -835,10 +870,7 @@ export const DispatcherDashboard: React.FC = () => {
               <select
                 id="search-warehouse"
                 value={selectedWarehouseId}
-                onChange={(e) => {
-                  setSelectedWarehouseId(e.target.value);
-                  setSelectedDockId("ALL");
-                }}
+                onChange={(e) => handleWarehouseChange(e.target.value)}
                 disabled={isLoadingInitial || warehouses.length === 0}
                 className="w-full min-h-[42px] sm:min-h-[38px] text-base sm:text-sm rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-[#2F4F4F] focus:outline-none focus:ring-1 focus:ring-[#2F4F4F]"
               >
@@ -847,7 +879,7 @@ export const DispatcherDashboard: React.FC = () => {
                 ) : (
                   warehouses.map((wh) => (
                     <option key={wh.id} value={wh.id}>
-                      {wh.name} ({wh.address}) — [{wh.timezone || "UTC"}]
+                      {wh.name} ({wh.address}) — [{wh.timezone || 'UTC'}]
                     </option>
                   ))
                 )}
@@ -862,7 +894,10 @@ export const DispatcherDashboard: React.FC = () => {
               >
                 <Calendar className="w-3.5 h-3.5 text-gray-500 shrink-0" />
                 <span>
-                  Appointment Date <span className="text-red-500" aria-hidden="true">*</span>
+                  Appointment Date{' '}
+                  <span className="text-red-500" aria-hidden="true">
+                    *
+                  </span>
                 </span>
               </Label>
               <Input
@@ -898,8 +933,7 @@ export const DispatcherDashboard: React.FC = () => {
                 <option value="ALL">All Active Docks</option>
                 {currentWarehouseDocks.map((dock) => (
                   <option key={dock.id} value={dock.id}>
-                    {dock.name}{" "}
-                    {dock.status === "MAINTENANCE" ? "(Under Maintenance)" : ""}
+                    {dock.name} {dock.status === 'MAINTENANCE' ? '(Under Maintenance)' : ''}
                   </option>
                 ))}
               </select>
@@ -941,15 +975,13 @@ export const DispatcherDashboard: React.FC = () => {
                 <div className="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center space-x-1.5">
                   <Clock className="w-3.5 h-3.5 text-[#2F4F4F] shrink-0" />
                   <span>
-                    Available Time Slots for {searchedDate || targetDate} (
-                    {totalSlotsCount} open)
+                    Available Time Slots for {searchedDate || targetDate} ({totalSlotsCount} open)
                   </span>
                 </div>
                 {totalSlotsCount > 0 && (
                   <span className="text-xs text-gray-500">
-                    Times in{" "}
-                    {formatTimezoneLabel(selectedWarehouse?.timezone)} · tap a
-                    window to book
+                    Times in {formatTimezoneLabel(selectedWarehouse?.timezone)} · tap a window to
+                    book
                   </span>
                 )}
               </div>
@@ -957,14 +989,11 @@ export const DispatcherDashboard: React.FC = () => {
               {totalSlotsCount === 0 ? (
                 <div className="py-8 sm:py-10 text-center bg-gray-50 border border-dashed border-gray-200 rounded-lg p-4 sm:p-6">
                   <CalendarX className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm font-semibold text-gray-700">
-                    No Available Slots Found
-                  </p>
+                  <p className="text-sm font-semibold text-gray-700">No Available Slots Found</p>
                   <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
-                    The warehouse may be closed on this day, today's earlier
-                    slots may have already started, or all docking intervals
-                    are fully booked or under scheduled maintenance. Try
-                    choosing another date or dock.
+                    The warehouse may be closed on this day, today's earlier slots may have already
+                    started, or all docking intervals are fully booked or under scheduled
+                    maintenance. Try choosing another date or dock.
                   </p>
                 </div>
               ) : (
@@ -987,13 +1016,11 @@ export const DispatcherDashboard: React.FC = () => {
                       </div>
 
                       {dockGroup.slots.length === 0 ? (
-                        <p className="text-xs text-gray-400 italic py-2">
-                          No open intervals
-                        </p>
+                        <p className="text-xs text-gray-400 italic py-2">No open intervals</p>
                       ) : (
                         <div className="grid grid-cols-2 gap-2">
                           {dockGroup.slots.map((slot, index) => {
-                            const timeLabel = formatSlotWindow(slot);
+                            const timeLabel = formatSlotWindow(slot, selectedWarehouse?.timezone);
 
                             return (
                               <button
@@ -1008,7 +1035,7 @@ export const DispatcherDashboard: React.FC = () => {
                                     slot,
                                   )
                                 }
-                                className="group min-h-[48px] flex flex-col items-center justify-center px-2 py-2.5 rounded-md border border-gray-200 bg-white hover:border-[#2F4F4F] hover:bg-[#2F4F4F] hover:text-white active:scale-[0.98] transition-all shadow-xs text-center touch-manipulation"
+                                className="group min-h-[48px] flex flex-col items-center justify-center px-2 py-2.5 rounded-md border border-gray-200 bg-white hover:border-[#2F4F4F] hover:bg-[#2F4F4F] hover:text-white active:scale-[0.98] transition-all shadow-sm text-center touch-manipulation"
                               >
                                 <span className="text-[11px] sm:text-xs font-bold text-gray-900 group-hover:text-white leading-tight">
                                   {timeLabel}
@@ -1029,9 +1056,8 @@ export const DispatcherDashboard: React.FC = () => {
             </div>
           ) : (
             <div className="py-7 sm:py-8 px-4 text-center text-xs text-gray-400 border border-dashed border-gray-200 rounded-lg">
-              Select your warehouse and date above, then tap{" "}
-              <strong>"Find Free Slots"</strong> to view available booking
-              intervals.
+              Select your warehouse and date above, then tap <strong>"Find Free Slots"</strong> to
+              view available booking intervals.
             </div>
           )}
         </CardContent>
@@ -1071,7 +1097,7 @@ export const DispatcherDashboard: React.FC = () => {
               />
               {bookingSearchQuery && (
                 <button
-                  onClick={() => setBookingSearchQuery("")}
+                  onClick={() => setBookingSearchQuery('')}
                   className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600 p-0.5"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -1081,21 +1107,14 @@ export const DispatcherDashboard: React.FC = () => {
 
             {/* Status Tabs */}
             <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 sm:pb-0 -mx-1 px-1">
-              {[
-                "ALL",
-                "BOOKED",
-                "ARRIVED",
-                "COMPLETED",
-                "CANCELLED",
-                "NO_SHOW",
-              ].map((status) => (
+              {['ALL', 'BOOKED', 'ARRIVED', 'COMPLETED', 'CANCELLED', 'NO_SHOW'].map((status) => (
                 <button
                   key={status}
                   onClick={() => setBookingStatusFilter(status)}
                   className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap touch-manipulation ${
                     bookingStatusFilter === status
-                      ? "bg-[#2F4F4F] text-white"
-                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      ? 'bg-[#2F4F4F] text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
                 >
                   {status}
@@ -1113,13 +1132,11 @@ export const DispatcherDashboard: React.FC = () => {
           ) : filteredBookings.length === 0 ? (
             <div className="py-10 sm:py-12 px-4 text-center text-gray-500 border border-dashed border-gray-200 rounded-lg">
               <CalendarX className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-              <p className="text-sm font-semibold text-gray-700">
-                No Bookings Found
-              </p>
+              <p className="text-sm font-semibold text-gray-700">No Bookings Found</p>
               <p className="text-xs text-gray-500 mt-1">
                 {bookings.length === 0
-                  ? "Your organization has not created any bookings yet. Search for open slots above to book."
-                  : "No bookings match your selected search or status filters."}
+                  ? 'Your organization has not created any bookings yet. Search for open slots above to book.'
+                  : 'No bookings match your selected search or status filters.'}
               </p>
             </div>
           ) : (
@@ -1127,14 +1144,14 @@ export const DispatcherDashboard: React.FC = () => {
               {/* Mobile Card View (Phone / Small Screens) */}
               <div className="md:hidden space-y-3">
                 {filteredBookings.map((b) => {
-                  const isActionable = b.status === "BOOKED";
+                  const isActionable = b.status === 'BOOKED';
                   const insideLock = isActionable ? isInsideLockWindow(b) : false;
                   const bookingWarehouseTz = getBookingWarehouseTimezone(b, warehouses);
 
                   return (
                     <div
                       key={b.id}
-                      className="rounded-lg border border-gray-200 bg-white p-3.5 shadow-xs space-y-3"
+                      className="rounded-lg border border-gray-200 bg-white p-3.5 shadow-sm space-y-3"
                     >
                       {/* Top row: Booking ID, Warehouse & Status */}
                       <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-gray-100">
@@ -1144,7 +1161,7 @@ export const DispatcherDashboard: React.FC = () => {
                               #{b.id}
                             </span>
                             <span className="font-semibold text-sm text-gray-900 truncate">
-                              {b.dock?.warehouse?.name || "Warehouse"}
+                              {b.dock?.warehouse?.name || 'Warehouse'}
                             </span>
                           </div>
                           <div className="text-xs text-gray-500 flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
@@ -1161,9 +1178,7 @@ export const DispatcherDashboard: React.FC = () => {
                             </span>
                           </div>
                         </div>
-                        <div className="shrink-0">
-                          {renderStatusBadge(b.status)}
-                        </div>
+                        <div className="shrink-0">{renderStatusBadge(b.status)}</div>
                       </div>
 
                       {/* Middle Details Grid */}
@@ -1174,9 +1189,9 @@ export const DispatcherDashboard: React.FC = () => {
                             <span>Time:</span>
                           </span>
                           <span className="font-semibold text-gray-900 text-right">
-                            {formatDateTime(b.slotStartTime, "MMM dd, yyyy")} •{" "}
-                            {formatDateTime(b.slotStartTime, "h:mm a")} –{" "}
-                            {formatDateTime(b.slotEndTime, "h:mm a")}
+                            {formatDateTime(b.slotStartTime, 'MMM dd, yyyy', bookingWarehouseTz)} •{' '}
+                            {formatDateTime(b.slotStartTime, 'h:mm a', bookingWarehouseTz)} –{' '}
+                            {formatDateTime(b.slotEndTime, 'h:mm a', bookingWarehouseTz)}
                           </span>
                         </div>
 
@@ -1186,16 +1201,14 @@ export const DispatcherDashboard: React.FC = () => {
                           </span>
                           <div className="inline-flex items-center px-2 py-0.5 rounded bg-gray-100 text-gray-800 font-mono font-bold text-xs border border-gray-300">
                             <Truck className="w-3 h-3 mr-1 text-gray-500 shrink-0" />
-                            <span className="truncate">{b.truckPlate || "N/A"}</span>
+                            <span className="truncate">{b.truckPlate || 'N/A'}</span>
                           </div>
                         </div>
 
                         <div>
-                          <span className="text-[11px] text-gray-500 block mb-0.5">
-                            Driver
-                          </span>
+                          <span className="text-[11px] text-gray-500 block mb-0.5">Driver</span>
                           <div className="font-medium text-gray-900 truncate">
-                            {b.driverName || "N/A"}
+                            {b.driverName || 'N/A'}
                           </div>
                           {b.driverPhone && (
                             <div className="text-[11px] text-gray-500 truncate">
@@ -1233,15 +1246,15 @@ export const DispatcherDashboard: React.FC = () => {
                               onClick={() => handleOpenRescheduleModal(b)}
                               className={`w-full min-h-[38px] text-xs px-2.5 flex items-center justify-center space-x-1 ${
                                 insideLock
-                                  ? "border-amber-400 text-amber-800 bg-amber-50 hover:bg-amber-100 font-semibold"
-                                  : "border-gray-300 text-gray-700 hover:bg-gray-100"
+                                  ? 'border-amber-400 text-amber-800 bg-amber-50 hover:bg-amber-100 font-semibold'
+                                  : 'border-gray-300 text-gray-700 hover:bg-gray-100'
                               }`}
                             >
                               <RotateCcw
-                                className={`w-3.5 h-3.5 shrink-0 ${insideLock ? "text-amber-600" : "text-[#2F4F4F]"}`}
+                                className={`w-3.5 h-3.5 shrink-0 ${insideLock ? 'text-amber-600' : 'text-[#2F4F4F]'}`}
                               />
                               <span className="truncate">
-                                {insideLock ? "Emergency Reschedule" : "Reschedule"}
+                                {insideLock ? 'Emergency Reschedule' : 'Reschedule'}
                               </span>
                             </Button>
 
@@ -1252,12 +1265,12 @@ export const DispatcherDashboard: React.FC = () => {
                               disabled={insideLock}
                               className={`w-full min-h-[38px] text-xs px-2.5 flex items-center justify-center space-x-1 ${
                                 insideLock
-                                  ? "border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed opacity-60"
-                                  : "border-rose-200 text-rose-700 hover:bg-rose-50"
+                                  ? 'border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed opacity-60'
+                                  : 'border-rose-200 text-rose-700 hover:bg-rose-50'
                               }`}
                             >
                               <X
-                                className={`w-3.5 h-3.5 shrink-0 ${insideLock ? "text-gray-400" : "text-rose-600"}`}
+                                className={`w-3.5 h-3.5 shrink-0 ${insideLock ? 'text-gray-400' : 'text-rose-600'}`}
                               />
                               <span>Cancel</span>
                             </Button>
@@ -1312,23 +1325,18 @@ export const DispatcherDashboard: React.FC = () => {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {filteredBookings.map((b) => {
-                      const isActionable = b.status === "BOOKED";
+                      const isActionable = b.status === 'BOOKED';
                       const bookingWarehouseTz = getBookingWarehouseTimezone(b, warehouses);
 
                       return (
-                        <tr
-                          key={b.id}
-                          className="hover:bg-gray-50/80 transition-colors"
-                        >
+                        <tr key={b.id} className="hover:bg-gray-50/80 transition-colors">
                           {/* ID */}
-                          <td className="px-4 py-3 font-bold text-gray-900">
-                            #{b.id}
-                          </td>
+                          <td className="px-4 py-3 font-bold text-gray-900">#{b.id}</td>
 
                           {/* Warehouse & Dock */}
                           <td className="px-4 py-3">
                             <div className="font-semibold text-gray-900">
-                              {b.dock?.warehouse?.name || "Warehouse"}
+                              {b.dock?.warehouse?.name || 'Warehouse'}
                             </div>
                             <div className="text-[11px] text-gray-500 flex items-center space-x-1 mt-0.5">
                               <WarehouseIcon className="w-3 h-3 text-gray-400" />
@@ -1350,11 +1358,11 @@ export const DispatcherDashboard: React.FC = () => {
                           {/* Scheduled Time Window */}
                           <td className="px-4 py-3">
                             <div className="font-medium text-gray-900">
-                              {formatDateTime(b.slotStartTime, "MMM dd, yyyy")}
+                              {formatDateTime(b.slotStartTime, 'MMM dd, yyyy', bookingWarehouseTz)}
                             </div>
                             <div className="text-[11px] text-gray-500 mt-0.5">
-                              {formatDateTime(b.slotStartTime, "h:mm a")} –{" "}
-                              {formatDateTime(b.slotEndTime, "h:mm a")}
+                              {formatDateTime(b.slotStartTime, 'h:mm a', bookingWarehouseTz)} –{' '}
+                              {formatDateTime(b.slotEndTime, 'h:mm a', bookingWarehouseTz)}
                             </div>
                           </td>
 
@@ -1362,7 +1370,7 @@ export const DispatcherDashboard: React.FC = () => {
                           <td className="px-4 py-3">
                             <div className="inline-flex items-center px-2 py-0.5 rounded bg-gray-100 text-gray-800 font-mono font-bold text-xs border border-gray-300">
                               <Truck className="w-3 h-3 mr-1 text-gray-500" />
-                              {b.truckPlate || "N/A"}
+                              {b.truckPlate || 'N/A'}
                             </div>
                           </td>
 
@@ -1370,7 +1378,7 @@ export const DispatcherDashboard: React.FC = () => {
                           <td className="px-4 py-3">
                             <div className="font-medium text-gray-900 flex items-center space-x-1">
                               <User className="w-3 h-3 text-gray-400" />
-                              <span>{b.driverName || "N/A"}</span>
+                              <span>{b.driverName || 'N/A'}</span>
                             </div>
                             {b.driverPhone && (
                               <div className="text-[11px] text-gray-500 flex items-center space-x-1 mt-0.5">
@@ -1383,7 +1391,7 @@ export const DispatcherDashboard: React.FC = () => {
                           {/* Cargo Note */}
                           <td
                             className="px-4 py-3 max-w-[180px] truncate"
-                            title={b.cargoNote || ""}
+                            title={b.cargoNote || ''}
                           >
                             {b.cargoNote ? (
                               <span className="text-gray-700 flex items-center space-x-1">
@@ -1396,9 +1404,7 @@ export const DispatcherDashboard: React.FC = () => {
                           </td>
 
                           {/* Status */}
-                          <td className="px-4 py-3">
-                            {renderStatusBadge(b.status)}
-                          </td>
+                          <td className="px-4 py-3">{renderStatusBadge(b.status)}</td>
 
                           {/* Actions */}
                           <td className="px-4 py-3 text-right">
@@ -1424,27 +1430,23 @@ export const DispatcherDashboard: React.FC = () => {
                                         <Button
                                           variant="outline"
                                           size="sm"
-                                          onClick={() =>
-                                            handleOpenRescheduleModal(b)
-                                          }
+                                          onClick={() => handleOpenRescheduleModal(b)}
                                           className={`h-7 text-xs px-2.5 flex items-center space-x-1 ${
                                             insideLock
-                                              ? "border-amber-400 text-amber-800 bg-amber-50 hover:bg-amber-100 font-semibold"
-                                              : "border-gray-300 text-gray-700 hover:bg-gray-100"
+                                              ? 'border-amber-400 text-amber-800 bg-amber-50 hover:bg-amber-100 font-semibold'
+                                              : 'border-gray-300 text-gray-700 hover:bg-gray-100'
                                           }`}
                                           title={
                                             insideLock
-                                              ? "Emergency same-day rescheduling (within 24-hour lock window)"
-                                              : "Reschedule booking"
+                                              ? 'Emergency same-day rescheduling (within 24-hour lock window)'
+                                              : 'Reschedule booking'
                                           }
                                         >
                                           <RotateCcw
-                                            className={`w-3 h-3 ${insideLock ? "text-amber-600" : "text-[#2F4F4F]"}`}
+                                            className={`w-3 h-3 ${insideLock ? 'text-amber-600' : 'text-[#2F4F4F]'}`}
                                           />
                                           <span>
-                                            {insideLock
-                                              ? "Emergency Reschedule"
-                                              : "Reschedule"}
+                                            {insideLock ? 'Emergency Reschedule' : 'Reschedule'}
                                           </span>
                                         </Button>
 
@@ -1455,17 +1457,17 @@ export const DispatcherDashboard: React.FC = () => {
                                           disabled={insideLock}
                                           className={`h-7 text-xs px-2.5 flex items-center space-x-1 ${
                                             insideLock
-                                              ? "border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed opacity-60"
-                                              : "border-rose-200 text-rose-700 hover:bg-rose-50"
+                                              ? 'border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed opacity-60'
+                                              : 'border-rose-200 text-rose-700 hover:bg-rose-50'
                                           }`}
                                           title={
                                             insideLock
-                                              ? "Cancellations locked within 24 hours of arrival under warehouse policy"
-                                              : "Cancel booking"
+                                              ? 'Cancellations locked within 24 hours of arrival under warehouse policy'
+                                              : 'Cancel booking'
                                           }
                                         >
                                           <X
-                                            className={`w-3 h-3 ${insideLock ? "text-gray-400" : "text-rose-600"}`}
+                                            className={`w-3 h-3 ${insideLock ? 'text-gray-400' : 'text-rose-600'}`}
                                           />
                                           <span>Cancel</span>
                                         </Button>
@@ -1474,9 +1476,7 @@ export const DispatcherDashboard: React.FC = () => {
                                   })()}
                                 </>
                               ) : (
-                                <span className="text-[11px] text-gray-400 italic">
-                                  Locked
-                                </span>
+                                <span className="text-[11px] text-gray-400 italic">Locked</span>
                               )}
                             </div>
                           </td>
@@ -1501,7 +1501,7 @@ export const DispatcherDashboard: React.FC = () => {
           role="dialog"
           aria-modal="true"
           aria-labelledby="create-booking-title"
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200 outline-none"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200 outline-none"
         >
           <div className="bg-white rounded-t-xl sm:rounded-lg shadow-xl border border-gray-300 max-w-lg w-full max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
             {/* Modal Header */}
@@ -1544,13 +1544,14 @@ export const DispatcherDashboard: React.FC = () => {
                 <div className="flex flex-col sm:flex-row sm:justify-between font-medium gap-0.5">
                   <span className="text-gray-500">Time Window:</span>
                   <span className="font-bold text-[#2F4F4F]">
-                    {selectedSlotForBooking.slotDate
-                      ? `${selectedSlotForBooking.slotDate} · `
-                      : ""}
-                    {formatSlotWindow(selectedSlotForBooking)}
+                    {selectedSlotForBooking.slotDate ? `${selectedSlotForBooking.slotDate} · ` : ''}
+                    {formatSlotWindow(
+                      selectedSlotForBooking,
+                      selectedSlotForBooking.warehouseTimezone,
+                    )}
                     {selectedSlotForBooking.warehouseTimezone
                       ? ` (${selectedSlotForBooking.warehouseTimezone})`
-                      : ""}
+                      : ''}
                   </span>
                 </div>
               </div>
@@ -1577,7 +1578,10 @@ export const DispatcherDashboard: React.FC = () => {
                 >
                   <Truck className="w-3.5 h-3.5 text-gray-500" />
                   <span>
-                    Truck License Plate <span className="text-red-500" aria-hidden="true">*</span>
+                    Truck License Plate{' '}
+                    <span className="text-red-500" aria-hidden="true">
+                      *
+                    </span>
                   </span>
                 </Label>
                 <Input
@@ -1607,7 +1611,10 @@ export const DispatcherDashboard: React.FC = () => {
                   >
                     <User className="w-3.5 h-3.5 text-gray-500" />
                     <span>
-                      Driver Name <span className="text-red-500" aria-hidden="true">*</span>
+                      Driver Name{' '}
+                      <span className="text-red-500" aria-hidden="true">
+                        *
+                      </span>
                     </span>
                   </Label>
                   <Input
@@ -1635,7 +1642,10 @@ export const DispatcherDashboard: React.FC = () => {
                   >
                     <Phone className="w-3.5 h-3.5 text-gray-500" />
                     <span>
-                      Driver Phone <span className="text-red-500" aria-hidden="true">*</span>
+                      Driver Phone{' '}
+                      <span className="text-red-500" aria-hidden="true">
+                        *
+                      </span>
                     </span>
                   </Label>
                   <Input
@@ -1721,7 +1731,7 @@ export const DispatcherDashboard: React.FC = () => {
           role="dialog"
           aria-modal="true"
           aria-labelledby="reschedule-booking-title"
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200 outline-none"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200 outline-none"
         >
           <div className="bg-white rounded-t-xl sm:rounded-lg shadow-xl border border-gray-300 max-w-xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
             {/* Modal Header */}
@@ -1752,22 +1762,31 @@ export const DispatcherDashboard: React.FC = () => {
                 <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5">
                   <span className="text-gray-500">Warehouse:</span>
                   <span className="font-semibold text-gray-900">
-                    {bookingToReschedule.dock?.warehouse?.name || "Warehouse"}
+                    {bookingToReschedule.dock?.warehouse?.name || 'Warehouse'}
                   </span>
                 </div>
                 <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5">
                   <span className="text-gray-500">Current Slot:</span>
                   <span className="font-semibold text-gray-900">
                     {bookingToReschedule.dock?.name} (
-                    {formatDateTime(bookingToReschedule.slotStartTime, "PPp")} –{" "}
-                    {formatDateTime(bookingToReschedule.slotEndTime, "p")})
+                    {formatDateTime(
+                      bookingToReschedule.slotStartTime,
+                      'PPp',
+                      bookingToReschedule.dock?.warehouse?.timezone,
+                    )}{' '}
+                    –{' '}
+                    {formatDateTime(
+                      bookingToReschedule.slotEndTime,
+                      'p',
+                      bookingToReschedule.dock?.warehouse?.timezone,
+                    )}
+                    )
                   </span>
                 </div>
                 <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5">
                   <span className="text-gray-500">Truck / Driver:</span>
                   <span className="font-semibold text-gray-900">
-                    {bookingToReschedule.truckPlate} (
-                    {bookingToReschedule.driverName})
+                    {bookingToReschedule.truckPlate} ({bookingToReschedule.driverName})
                   </span>
                 </div>
               </div>
@@ -1790,14 +1809,11 @@ export const DispatcherDashboard: React.FC = () => {
                 <div className="p-3 bg-amber-50 border border-amber-300 rounded-md text-xs text-amber-900 flex items-start space-x-2">
                   <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="font-semibold">
-                      Emergency Same-Day Rescheduling Active
-                    </p>
+                    <p className="font-semibold">Emergency Same-Day Rescheduling Active</p>
                     <p className="mt-0.5 text-amber-800">
-                      This booking is within the 24-hour lock window. Under
-                      warehouse policy, standard cancellations are blocked and
-                      rescheduling is strictly restricted to available time
-                      slots on the same calendar day ({rescheduleDate}).
+                      This booking is within the 24-hour lock window. Under warehouse policy,
+                      standard cancellations are blocked and rescheduling is strictly restricted to
+                      available time slots on the same calendar day ({rescheduleDate}).
                     </p>
                   </div>
                 </div>
@@ -1811,7 +1827,10 @@ export const DispatcherDashboard: React.FC = () => {
                 >
                   <Calendar className="w-3.5 h-3.5 text-gray-500 shrink-0" />
                   <span>
-                    Select New Date <span className="text-red-500" aria-hidden="true">*</span>
+                    Select New Date{' '}
+                    <span className="text-red-500" aria-hidden="true">
+                      *
+                    </span>
                     {isInsideLockWindow(bookingToReschedule) && (
                       <span className="ml-1 text-[11px] font-normal text-amber-700">
                         (Locked to same day for emergency reschedule)
@@ -1823,15 +1842,9 @@ export const DispatcherDashboard: React.FC = () => {
                   id="reschedule-date"
                   type="date"
                   min={
-                    isInsideLockWindow(bookingToReschedule)
-                      ? rescheduleDate
-                      : getTodayDateString()
+                    isInsideLockWindow(bookingToReschedule) ? rescheduleDate : getTodayDateString()
                   }
-                  max={
-                    isInsideLockWindow(bookingToReschedule)
-                      ? rescheduleDate
-                      : undefined
-                  }
+                  max={isInsideLockWindow(bookingToReschedule) ? rescheduleDate : undefined}
                   disabled={isInsideLockWindow(bookingToReschedule)}
                   value={rescheduleDate}
                   onChange={(e) => handleRescheduleDateChange(e.target.value)}
@@ -1851,8 +1864,10 @@ export const DispatcherDashboard: React.FC = () => {
                 >
                   <Clock className="w-3.5 h-3.5 text-gray-500" aria-hidden="true" />
                   <span>
-                    Choose an Available Time Slot{" "}
-                    <span className="text-red-500" aria-hidden="true">*</span>
+                    Choose an Available Time Slot{' '}
+                    <span className="text-red-500" aria-hidden="true">
+                      *
+                    </span>
                   </span>
                 </Label>
 
@@ -1866,9 +1881,7 @@ export const DispatcherDashboard: React.FC = () => {
                       aria-hidden="true"
                       className="w-5 h-5 border-2 border-[#2F4F4F] border-t-transparent rounded-full animate-spin"
                     />
-                    <p className="text-xs">
-                      Fetching open slots for {rescheduleDate}...
-                    </p>
+                    <p className="text-xs">Fetching open slots for {rescheduleDate}...</p>
                   </div>
                 ) : !rescheduleSlots ||
                   rescheduleSlots.length === 0 ||
@@ -1890,17 +1903,13 @@ export const DispatcherDashboard: React.FC = () => {
                         </div>
 
                         {dockGroup.slots.length === 0 ? (
-                          <p className="text-[11px] text-gray-400 italic">
-                            No available slots
-                          </p>
+                          <p className="text-[11px] text-gray-400 italic">No available slots</p>
                         ) : (
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                             {dockGroup.slots.map((slot, sIdx) => {
                               const isSelected =
-                                selectedRescheduleSlot?.dockId ===
-                                  dockGroup.dockId &&
-                                selectedRescheduleSlot?.slotStartTime ===
-                                  slot.slotStartTime;
+                                selectedRescheduleSlot?.dockId === dockGroup.dockId &&
+                                selectedRescheduleSlot?.slotStartTime === slot.slotStartTime;
 
                               return (
                                 <button
@@ -1919,11 +1928,14 @@ export const DispatcherDashboard: React.FC = () => {
                                   aria-pressed={isSelected}
                                   className={`min-h-[40px] px-2 py-2 rounded text-[11px] sm:text-xs font-semibold border transition-all text-center touch-manipulation focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] ${
                                     isSelected
-                                      ? "bg-[#2F4F4F] text-white border-[#2F4F4F] ring-2 ring-[#2F4F4F]/30"
-                                      : "bg-white text-gray-800 border-gray-200 hover:border-gray-400"
+                                      ? 'bg-[#2F4F4F] text-white border-[#2F4F4F] ring-2 ring-[#2F4F4F]/30'
+                                      : 'bg-white text-gray-800 border-gray-200 hover:border-gray-400'
                                   }`}
                                 >
-                                  {formatSlotWindow(slot)}
+                                  {formatSlotWindow(
+                                    slot,
+                                    bookingToReschedule?.dock?.warehouse?.timezone,
+                                  )}
                                 </button>
                               );
                             })}
@@ -1995,7 +2007,7 @@ export const DispatcherDashboard: React.FC = () => {
           role="dialog"
           aria-modal="true"
           aria-labelledby="cancel-booking-title"
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200 outline-none"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200 outline-none"
         >
           <div className="bg-white rounded-t-xl sm:rounded-lg shadow-xl border border-gray-300 max-w-md w-full max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
             {/* Modal Header */}
@@ -2017,20 +2029,11 @@ export const DispatcherDashboard: React.FC = () => {
             </div>
 
             {/* Modal Form */}
-            <form
-              onSubmit={handleCancelSubmit}
-              className="p-4 sm:p-5 space-y-4 overflow-y-auto"
-            >
+            <form onSubmit={handleCancelSubmit} className="p-4 sm:p-5 space-y-4 overflow-y-auto">
               <p className="text-xs text-gray-600 leading-relaxed">
-                Are you sure you want to cancel this booking? This will
-                immediately release the time slot on{" "}
-                <strong className="text-gray-900">
-                  {bookingToCancel.dock?.name}
-                </strong>{" "}
-                at{" "}
-                <strong className="text-gray-900">
-                  {bookingToCancel.dock?.warehouse?.name}
-                </strong>{" "}
+                Are you sure you want to cancel this booking? This will immediately release the time
+                slot on <strong className="text-gray-900">{bookingToCancel.dock?.name}</strong> at{' '}
+                <strong className="text-gray-900">{bookingToCancel.dock?.warehouse?.name}</strong>{' '}
                 for other carriers.
               </p>
 
@@ -2041,7 +2044,8 @@ export const DispatcherDashboard: React.FC = () => {
                   <span className="font-bold">
                     {formatDateTime(
                       bookingToCancel.slotStartTime,
-                      "MMM dd, yyyy, h:mm a",
+                      'MMM dd, yyyy, h:mm a',
+                      bookingToCancel.dock?.warehouse?.timezone,
                     )}
                   </span>
                 </div>
@@ -2071,14 +2075,11 @@ export const DispatcherDashboard: React.FC = () => {
                 <div className="p-3 bg-red-50 border border-red-300 rounded-md text-xs text-red-900 flex items-start space-x-2">
                   <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="font-semibold">
-                      Cancellation Locked (24-Hour Policy Window)
-                    </p>
+                    <p className="font-semibold">Cancellation Locked (24-Hour Policy Window)</p>
                     <p className="mt-0.5 text-red-800">
-                      Under warehouse policy, bookings within 24 hours of
-                      scheduled arrival cannot be cancelled. Please use{" "}
-                      <strong>Emergency Same-Day Rescheduling</strong> if you
-                      need to adjust this appointment.
+                      Under warehouse policy, bookings within 24 hours of scheduled arrival cannot
+                      be cancelled. Please use <strong>Emergency Same-Day Rescheduling</strong> if
+                      you need to adjust this appointment.
                     </p>
                   </div>
                 </div>

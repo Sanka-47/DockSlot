@@ -33,7 +33,7 @@ export function isForgotPasswordPath(pathname: string): boolean {
  * no token is present.
  */
 export function consumeAuthTokenFromUrl(
-  pathname: string = typeof window !== 'undefined' ? window.location.pathname : ''
+  pathname: string = typeof window !== 'undefined' ? window.location.pathname : '',
 ): string | undefined {
   if (typeof window === 'undefined') return undefined;
 
@@ -50,7 +50,7 @@ export function consumeAuthTokenFromUrl(
     window.history.replaceState(
       window.history.state,
       '',
-      `${url.pathname}${url.search}${url.hash}`
+      `${url.pathname}${url.search}${url.hash}`,
     );
   } catch {
     // The token is still held in memory by the caller. A failed history update

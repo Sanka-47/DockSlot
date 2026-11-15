@@ -5,10 +5,7 @@ export const Card: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
   children,
   ...props
 }) => (
-  <div
-    className={`bg-white shadow-xl rounded-lg border border-gray-300 ${className}`}
-    {...props}
-  >
+  <div className={`bg-white shadow-xl rounded-lg border border-gray-300 ${className}`} {...props}>
     {children}
   </div>
 );
@@ -28,10 +25,7 @@ export const CardTitle: React.FC<React.HTMLAttributes<HTMLHeadingElement>> = ({
   children,
   ...props
 }) => (
-  <h2
-    className={`text-2xl font-bold tracking-tight text-gray-900 ${className}`}
-    {...props}
-  >
+  <h2 className={`text-2xl font-bold tracking-tight text-gray-900 ${className}`} {...props}>
     {children}
   </h2>
 );
@@ -61,10 +55,7 @@ export const CardFooter: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
   children,
   ...props
 }) => (
-  <div
-    className={`flex items-center p-6 pt-0 border-t border-gray-100 ${className}`}
-    {...props}
-  >
+  <div className={`flex items-center p-6 pt-0 border-t border-gray-100 ${className}`} {...props}>
     {children}
   </div>
 );

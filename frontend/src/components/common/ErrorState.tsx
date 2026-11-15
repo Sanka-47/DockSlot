@@ -10,7 +10,10 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
   onRetry,
 }) => {
   return (
-    <div role="alert" className="flex flex-col items-center justify-center p-8 text-center text-red-600">
+    <div
+      role="alert"
+      className="flex flex-col items-center justify-center p-8 text-center text-red-600"
+    >
       <p className="text-sm font-medium mb-3">{message}</p>
       {onRetry && (
         <button

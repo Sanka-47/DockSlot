@@ -89,7 +89,7 @@ export default defineConfig(({ command, mode }) => {
 
   if (isProduction && !rawApiUrl) {
     throw new Error(
-      'VITE_API_URL is required for production builds. Set it to the HTTPS API base URL, for example https://api.example.com/api.'
+      'VITE_API_URL is required for production builds. Set it to the HTTPS API base URL, for example https://api.example.com/api.',
     );
   }
 

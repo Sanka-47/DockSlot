@@ -15,6 +15,8 @@ import { Label } from '../components/ui/label';
 import { forgotPasswordPageService } from '../services/forgotPasswordPage.service';
 import { getApiErrorMessage } from '../services/errors';
 
+const CURRENT_YEAR = new Date().getFullYear();
+
 export interface ForgotPasswordPageProps {
   onBackToSignIn?: () => void;
   onSuccess?: (email: string) => void;
@@ -51,10 +53,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
       }
     } catch (err: unknown) {
       setErrorMessage(
-        getApiErrorMessage(
-          err,
-          'An error occurred while sending password reset link.'
-        )
+        getApiErrorMessage(err, 'An error occurred while sending password reset link.'),
       );
     } finally {
       setIsLoading(false);
@@ -75,9 +74,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
           <div className="p-2.5 bg-[#2F4F4F] rounded-lg text-white shadow-md">
             <Warehouse className="w-6 h-6" />
           </div>
-          <span className="text-3xl font-extrabold tracking-tight text-[#2F4F4F]">
-            DockSlot
-          </span>
+          <span className="text-3xl font-extrabold tracking-tight text-[#2F4F4F]">DockSlot</span>
         </div>
         <p className="text-sm font-medium text-gray-600">
           Smart Warehouse Dock Scheduling & Carrier Logistics
@@ -106,9 +103,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
               className="mb-4 flex items-start space-x-3 p-3.5 bg-red-50 border border-red-200 rounded-md text-red-800 text-sm animate-in fade-in duration-200"
             >
               <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-              <div className="flex-1 font-medium leading-tight">
-                {errorMessage}
-              </div>
+              <div className="flex-1 font-medium leading-tight">{errorMessage}</div>
             </div>
           )}
 
@@ -124,18 +119,17 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
               </div>
 
               <div className="space-y-1">
-                <p className="text-sm font-semibold text-gray-900">
-                  Instructions Sent!
-                </p>
+                <p className="text-sm font-semibold text-gray-900">Instructions Sent!</p>
                 <p className="text-xs text-gray-600 leading-relaxed px-4">
                   If an account exists for{' '}
-                  <strong className="text-gray-900">{submittedEmail}</strong>,
-                  you will receive an email shortly with a secure password reset link.
+                  <strong className="text-gray-900">{submittedEmail}</strong>, you will receive an
+                  email shortly with a secure password reset link.
                 </p>
               </div>
 
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-md text-amber-800 text-xs text-left">
-                <strong>Important:</strong> The password reset link expires in 1 hour. Be sure to check your spam or junk folder if you don't see it within a few minutes.
+                <strong>Important:</strong> The password reset link expires in 1 hour. Be sure to
+                check your spam or junk folder if you don't see it within a few minutes.
               </div>
 
               <div className="space-y-2 pt-2">
@@ -198,12 +192,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
                 />
               </div>
 
-              <Button
-                type="submit"
-                variant="primary"
-                className="w-full mt-2"
-                isLoading={isLoading}
-              >
+              <Button type="submit" variant="primary" className="w-full mt-2" isLoading={isLoading}>
                 <span>Send Reset Link</span>
                 {!isLoading && <Send className="w-4 h-4 ml-2" />}
               </Button>
@@ -236,7 +225,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
 
       {/* Footer Info */}
       <div className="mt-8 text-center text-xs text-gray-500">
-        &copy; {new Date().getFullYear()} DockSlot Inc. Multi-tenant Logistics Platform.
+        &copy; {CURRENT_YEAR} DockSlot Inc. Multi-tenant Logistics Platform.
       </div>
     </main>
   );

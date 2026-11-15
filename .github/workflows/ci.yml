@@ -77,3 +77,46 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+  frontend:
+    name: Frontend (typecheck + lint + tests + build)
+    runs-on: ubuntu-latest
+
+    env:
+      # Production builds reject missing, non-HTTPS, and localhost API URLs.
+      VITE_API_URL: https://api.example.com/api
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Check generated Tailwind classes
+        run: npm run check:tailwind
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build
+        run: npm run build

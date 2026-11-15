@@ -34,6 +34,7 @@ export const BookingAuditLogModal: React.FC<BookingAuditLogModalProps> = ({
   const [logs, setLogs] = useState<BookingAuditLog[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const bookingTimezone = booking?.dock?.warehouse?.timezone;
   const dialogRef = useDialogA11y<HTMLDivElement>({ isOpen, onClose });
 
   const fetchAuditLogs = useCallback(async () => {
@@ -43,12 +44,7 @@ export const BookingAuditLogModal: React.FC<BookingAuditLogModalProps> = ({
     try {
       setLogs(await bookingAuditLogModalService.fetchAuditLogs(booking.id));
     } catch (err: unknown) {
-      setError(
-        getApiErrorMessage(
-          err,
-          'Failed to load audit history for this booking.'
-        )
-      );
+      setError(getApiErrorMessage(err, 'Failed to load audit history for this booking.'));
     } finally {
       setIsLoading(false);
     }
@@ -147,21 +143,18 @@ export const BookingAuditLogModal: React.FC<BookingAuditLogModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="audit-log-title"
-      className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 outline-none"
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 outline-none"
     >
       <div className="relative bg-white rounded-xl shadow-2xl max-w-2xl w-full border border-gray-200 overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="flex items-center justify-between p-4 sm:px-6 sm:py-4 border-b border-gray-200 bg-gray-50/80">
           <div className="flex items-center space-x-3">
-            <div className="p-2 bg-[#2F4F4F] text-white rounded-lg shadow-xs">
+            <div className="p-2 bg-[#2F4F4F] text-white rounded-lg shadow-sm">
               <History className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <h3
-                  id="audit-log-title"
-                  className="font-bold text-lg text-gray-900 leading-tight"
-                >
+                <h3 id="audit-log-title" className="font-bold text-lg text-gray-900 leading-tight">
                   Booking Audit Log
                 </h3>
                 <span className="font-mono text-xs font-bold px-2 py-0.5 bg-gray-200 text-gray-800 rounded">
@@ -203,16 +196,13 @@ export const BookingAuditLogModal: React.FC<BookingAuditLogModalProps> = ({
           <div>
             <span className="text-gray-400 block text-[11px]">Truck / Driver</span>
             <span className="font-mono font-medium text-gray-800 truncate block">
-              {booking.truckPlate || '—'}{' '}
-              {booking.driverName ? `• ${booking.driverName}` : ''}
+              {booking.truckPlate || '—'} {booking.driverName ? `• ${booking.driverName}` : ''}
             </span>
           </div>
 
           <div>
             <span className="text-gray-400 block text-[11px]">Current Status</span>
-            <span className="font-bold text-gray-900 block">
-              {booking.status}
-            </span>
+            <span className="font-bold text-gray-900 block">{booking.status}</span>
           </div>
         </div>
 
@@ -226,7 +216,7 @@ export const BookingAuditLogModal: React.FC<BookingAuditLogModalProps> = ({
             >
               <div
                 aria-hidden="true"
-                className="w-8 h-8 border-3 border-[#2F4F4F] border-t-transparent rounded-full animate-spin"
+                className="w-8 h-8 border-[3px] border-[#2F4F4F] border-t-transparent rounded-full animate-spin"
               />
               <p className="text-sm font-medium">Loading lifecycle audit trail...</p>
             </div>
@@ -267,20 +257,19 @@ export const BookingAuditLogModal: React.FC<BookingAuditLogModalProps> = ({
                 const actionMeta = getActionDisplay(log);
                 const actor = log.actor || (log.user as any);
                 const actorName =
-                  actor?.name ||
-                  (actor?.email ? actor.email.split('@')[0] : `User #${log.userId}`);
+                  actor?.name || (actor?.email ? actor.email.split('@')[0] : `User #${log.userId}`);
                 const actorRole = actor?.role || 'USER';
                 const details = log.details || {};
 
                 return (
                   <div key={log.id || index} className="relative group">
                     {/* Timeline bullet dot */}
-                    <div className="absolute -left-[27px] top-1.5 w-6 h-6 rounded-full bg-white border-2 border-gray-300 flex items-center justify-center group-hover:border-[#2F4F4F] transition-colors shadow-xs">
+                    <div className="absolute -left-[27px] top-1.5 w-6 h-6 rounded-full bg-white border-2 border-gray-300 flex items-center justify-center group-hover:border-[#2F4F4F] transition-colors shadow-sm">
                       <div className="w-2 h-2 rounded-full bg-[#2F4F4F]" />
                     </div>
 
                     {/* Log Card */}
-                    <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-xs transition-shadow space-y-3">
+                    <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-sm transition-shadow space-y-3">
                       {/* Top Bar: Action Badge + Timestamp */}
                       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
                         <div className="flex items-center space-x-2">
@@ -298,7 +287,13 @@ export const BookingAuditLogModal: React.FC<BookingAuditLogModalProps> = ({
 
                         <div className="flex items-center text-xs text-gray-500 font-medium">
                           <Clock className="w-3.5 h-3.5 mr-1 text-gray-400" />
-                          <span>{formatDateTime(log.createdAt, 'MMM dd, yyyy • h:mm a')}</span>
+                          <span>
+                            {formatDateTime(
+                              log.createdAt,
+                              'MMM dd, yyyy • h:mm a',
+                              bookingTimezone,
+                            )}
+                          </span>
                         </div>
                       </div>
 
@@ -339,21 +334,35 @@ export const BookingAuditLogModal: React.FC<BookingAuditLogModalProps> = ({
                           {/* Reschedule Details */}
                           {details.newSlotStartTime && (
                             <div className="p-2 rounded bg-amber-50/60 border border-amber-200/70 space-y-1">
-                              {details.oldDockId && details.newDockId && details.oldDockId !== details.newDockId && (
-                                <div className="flex items-center space-x-2">
-                                  <span className="font-semibold text-gray-700">Dock Shift:</span>
-                                  <span>Dock #{details.oldDockId}</span>
-                                  <ArrowRight className="w-3 h-3 text-gray-400" />
-                                  <span className="font-bold text-[#2F4F4F]">Dock #{details.newDockId}</span>
-                                </div>
-                              )}
+                              {details.oldDockId &&
+                                details.newDockId &&
+                                details.oldDockId !== details.newDockId && (
+                                  <div className="flex items-center space-x-2">
+                                    <span className="font-semibold text-gray-700">Dock Shift:</span>
+                                    <span>Dock #{details.oldDockId}</span>
+                                    <ArrowRight className="w-3 h-3 text-gray-400" />
+                                    <span className="font-bold text-[#2F4F4F]">
+                                      Dock #{details.newDockId}
+                                    </span>
+                                  </div>
+                                )}
                               {details.oldSlotStartTime && (
                                 <div className="flex items-center space-x-2">
                                   <span className="font-semibold text-gray-700">Time Shift:</span>
-                                  <span>{formatDateTime(details.oldSlotStartTime, 'MMM dd, h:mm a')}</span>
+                                  <span>
+                                    {formatDateTime(
+                                      details.oldSlotStartTime,
+                                      'MMM dd, h:mm a',
+                                      bookingTimezone,
+                                    )}
+                                  </span>
                                   <ArrowRight className="w-3 h-3 text-gray-400" />
                                   <span className="font-bold text-[#2F4F4F]">
-                                    {formatDateTime(details.newSlotStartTime, 'MMM dd, h:mm a')}
+                                    {formatDateTime(
+                                      details.newSlotStartTime,
+                                      'MMM dd, h:mm a',
+                                      bookingTimezone,
+                                    )}
                                   </span>
                                 </div>
                               )}
@@ -392,7 +401,9 @@ export const BookingAuditLogModal: React.FC<BookingAuditLogModalProps> = ({
                               {details.truckPlate && (
                                 <div>
                                   <span className="text-gray-400">Truck: </span>
-                                  <span className="font-mono font-semibold">{details.truckPlate}</span>
+                                  <span className="font-mono font-semibold">
+                                    {details.truckPlate}
+                                  </span>
                                 </div>
                               )}
                               {details.driverName && (
@@ -405,9 +416,18 @@ export const BookingAuditLogModal: React.FC<BookingAuditLogModalProps> = ({
                                 <div className="col-span-2">
                                   <span className="text-gray-400">Initial Slot: </span>
                                   <span className="font-medium">
-                                    {formatDateTime(details.slotStartTime, 'MMM dd, yyyy h:mm a')} –{' '}
+                                    {formatDateTime(
+                                      details.slotStartTime,
+                                      'MMM dd, yyyy h:mm a',
+                                      bookingTimezone,
+                                    )}{' '}
+                                    –{' '}
                                     {details.slotEndTime
-                                      ? formatDateTime(details.slotEndTime, 'h:mm a')
+                                      ? formatDateTime(
+                                          details.slotEndTime,
+                                          'h:mm a',
+                                          bookingTimezone,
+                                        )
                                       : ''}
                                   </span>
                                 </div>

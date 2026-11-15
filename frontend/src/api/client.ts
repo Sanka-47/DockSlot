@@ -68,7 +68,7 @@ const refreshAccessToken = async (): Promise<string> => {
   const { data } = await axios.post(
     `${apiBaseUrl}/auth/refresh`,
     {},
-    { withCredentials: true, headers: { 'Content-Type': 'application/json' } }
+    { withCredentials: true, headers: { 'Content-Type': 'application/json' } },
   );
 
   // Logout (or another tab's logout) may have happened while the request was in
@@ -92,7 +92,8 @@ const refreshAccessToken = async (): Promise<string> => {
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
-    const original = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
+    const original = error.config as
+      (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
     const status = error.response?.status;
     const url = original?.url || '';
 
@@ -127,9 +128,7 @@ apiClient.interceptors.response.use(
           authToken.clear();
           if (!terminalRefreshHandled) {
             terminalRefreshHandled = true;
-            axios
-              .post(`${apiBaseUrl}/auth/logout`, {}, { withCredentials: true })
-              .catch(() => {});
+            axios.post(`${apiBaseUrl}/auth/logout`, {}, { withCredentials: true }).catch(() => {});
             if (typeof window !== 'undefined') {
               window.dispatchEvent(new Event(AUTH_SESSION_EXPIRED_EVENT));
             }
@@ -142,7 +141,7 @@ apiClient.interceptors.response.use(
     }
 
     return Promise.reject(error);
-  }
+  },
 );
 
 export default apiClient;

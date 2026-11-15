@@ -7,7 +7,7 @@ import type React from 'react';
  */
 export function handleTabListKeyDown(event: React.KeyboardEvent<HTMLElement>): void {
   const tabElements = Array.from(
-    event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+    event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
   );
   const currentIndex = tabElements.indexOf(event.target as HTMLButtonElement);
   if (currentIndex === -1) return;

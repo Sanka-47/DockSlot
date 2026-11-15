@@ -40,7 +40,7 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
         <div className="flex items-center justify-between px-5 py-4 bg-[#2F4F4F] text-white">
           <div className="flex items-center space-x-2.5 min-w-0">
             <div className="p-1.5 bg-white/10 rounded-md shrink-0">
-              <ShieldCheck className="w-4.5 h-4.5" />
+              <ShieldCheck className="w-[18px] h-[18px]" />
             </div>
             <div className="min-w-0">
               <h2 id="security-settings-title" className="text-sm font-bold tracking-tight">
@@ -64,9 +64,7 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
         {/* Body */}
         <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
           <div>
-            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide">
-              Security
-            </h3>
+            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide">Security</h3>
             <p className="text-xs text-gray-500 mt-1 leading-snug">
               Protect your DockSlot account and the bookings, docks and carrier data your workspace
               manages.

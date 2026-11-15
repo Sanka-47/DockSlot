@@ -6,9 +6,7 @@ export const Navbar: React.FC = () => {
       <div className="flex items-center space-x-2">
         <span className="text-xl font-bold text-blue-600">DockSlot</span>
       </div>
-      <div className="flex items-center space-x-4">
-        {/* User profile / actions placeholder */}
-      </div>
+      <div className="flex items-center space-x-4">{/* User profile / actions placeholder */}</div>
     </header>
   );
 };

@@ -14,7 +14,11 @@ export const WarehouseDashboard: React.FC = () => {
           <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 pl-2">
             Warehouse View:
           </span>
-          <div role="group" aria-label="Warehouse view" className="inline-flex rounded-md shadow-sm">
+          <div
+            role="group"
+            aria-label="Warehouse view"
+            className="inline-flex rounded-md shadow-sm"
+          >
             <button
               type="button"
               aria-pressed={viewMode === 'admin'}
@@ -57,4 +61,3 @@ export const WarehouseDashboard: React.FC = () => {
 };
 
 export default WarehouseDashboard;
-

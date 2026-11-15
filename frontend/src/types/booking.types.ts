@@ -2,12 +2,7 @@
  * Booking Types derived from OpenAPI 3.0 Specification
  */
 
-export type BookingStatus =
-  | 'BOOKED'
-  | 'ARRIVED'
-  | 'COMPLETED'
-  | 'CANCELLED'
-  | 'NO_SHOW';
+export type BookingStatus = 'BOOKED' | 'ARRIVED' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
 
 import type { WarehousePolicy } from './warehouse.types';
 

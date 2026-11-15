@@ -17,6 +17,7 @@ import {
   isForgotPasswordPath,
   isResetPasswordPath,
 } from './utils/urlToken';
+import { resolveDashboardView } from './utils/dashboardView';
 
 /**
  * Email-link tokens are read and removed from the address bar exactly once,
@@ -91,13 +92,9 @@ const AppContent: React.FC = () => {
     return <AuthPage onNavigate={(route) => setActiveView(route)} />;
   }
 
-  // Determine dashboard based on user role and organization
-  const isCarrier =
-    activeView === 'carrier' ||
-    (activeView === 'auto' &&
-      (user.role === 'CARRIER_ADMIN' ||
-        user.role === 'DISPATCHER' ||
-        user.organization?.type === 'CARRIER'));
+  // A view requested before sign-in must never override the authenticated
+  // user's actual role capabilities.
+  const dashboardView = resolveDashboardView(user.role, activeView);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -140,8 +137,8 @@ const AppContent: React.FC = () => {
               title="Manage organization team members and deactivations"
             >
               <Users className="w-3.5 h-3.5 shrink-0" />
-              <span className="hidden xs:inline sm:inline">Team & Access</span>
-              <span className="xs:hidden sm:hidden">Team</span>
+              <span className="hidden sm:inline">Team & Access</span>
+              <span className="sm:hidden">Team</span>
             </button>
           )}
 
@@ -161,7 +158,7 @@ const AppContent: React.FC = () => {
             type="button"
             onClick={async () => {
               const confirmed = window.confirm(
-                'Are you sure you want to log out of all devices? This will invalidate all active sessions across every browser and device.'
+                'Are you sure you want to log out of all devices? This will invalidate all active sessions across every browser and device.',
               );
               if (confirmed) {
                 await logoutAll();
@@ -187,10 +184,14 @@ const AppContent: React.FC = () => {
       </header>
 
       {/* Main Dashboard View */}
-      <main id="main-content" tabIndex={-1} className="flex-1 p-3 sm:p-6 max-w-7xl w-full mx-auto outline-none">
-        {isCarrier ? (
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="flex-1 p-3 sm:p-6 max-w-7xl w-full mx-auto outline-none"
+      >
+        {dashboardView === 'carrier' ? (
           <CarrierDashboard />
-        ) : user.role === 'DOCK_MANAGER' ? (
+        ) : dashboardView === 'dock-manager' ? (
           <DockManagerDashboard />
         ) : (
           <WarehouseDashboard />

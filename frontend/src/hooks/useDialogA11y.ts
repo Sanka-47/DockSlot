@@ -44,7 +44,7 @@ function isVisible(element: HTMLElement): boolean {
 
 function getFocusableElements(container: HTMLElement): HTMLElement[] {
   return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
-    (element) => !element.hasAttribute('disabled') && isVisible(element)
+    (element) => !element.hasAttribute('disabled') && isVisible(element),
   );
 }
 

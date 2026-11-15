@@ -103,8 +103,7 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
     e.preventDefault();
     clearMessages();
 
-    const validationError =
-      twoFactorSettingsService.validateSetupPassword(setupPassword);
+    const validationError = twoFactorSettingsService.validateSetupPassword(setupPassword);
     if (validationError) {
       setErrorMessage(validationError);
       return;
@@ -122,9 +121,7 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
       setShowSetupForm(false);
       setSetupStep('scan');
     } catch (err: unknown) {
-      setErrorMessage(
-        getApiErrorMessage(err, 'Failed to start 2FA setup.')
-      );
+      setErrorMessage(getApiErrorMessage(err, 'Failed to start 2FA setup.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -134,8 +131,7 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
     e.preventDefault();
     clearMessages();
 
-    const validationError =
-      twoFactorSettingsService.validateVerificationCode(verifyCode);
+    const validationError = twoFactorSettingsService.validateVerificationCode(verifyCode);
     if (validationError) {
       setErrorMessage(validationError);
       return;
@@ -149,9 +145,7 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
       resetFlow();
       await fetchStatus();
     } catch (err: unknown) {
-      setErrorMessage(
-        getApiErrorMessage(err, 'That code was not accepted. Please try again.')
-      );
+      setErrorMessage(getApiErrorMessage(err, 'That code was not accepted. Please try again.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -163,7 +157,7 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
 
     const validationError = twoFactorSettingsService.validateDisableInput(
       disablePassword,
-      disableCode
+      disableCode,
     );
     if (validationError) {
       setErrorMessage(validationError);
@@ -181,9 +175,7 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
       resetFlow();
       await fetchStatus();
     } catch (err: unknown) {
-      setErrorMessage(
-        getApiErrorMessage(err, 'Failed to disable 2FA. Please try again.')
-      );
+      setErrorMessage(getApiErrorMessage(err, 'Failed to disable 2FA. Please try again.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -217,9 +209,7 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
             {isEnabled ? <ShieldCheck className="w-5 h-5" /> : <ShieldOff className="w-5 h-5" />}
           </div>
           <div className="min-w-0">
-            <h3 className="text-sm font-bold text-[#2F4F4F]">
-              Two-Factor Authentication (2FA)
-            </h3>
+            <h3 className="text-sm font-bold text-[#2F4F4F]">Two-Factor Authentication (2FA)</h3>
             <p className="text-xs text-gray-500 mt-0.5 leading-snug">
               Add a one-time code from an authenticator app on top of your password.
             </p>
@@ -242,7 +232,11 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
       <div className="p-5 space-y-4">
         {/* Status loading */}
         {isLoadingStatus && (
-          <div role="status" aria-live="polite" className="flex items-center space-x-2 text-xs text-gray-500">
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-center space-x-2 text-xs text-gray-500"
+          >
             <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
             <span>Checking your security settings...</span>
           </div>
@@ -267,7 +261,10 @@ export const TwoFactorSettings: React.FC<TwoFactorSettingsProps> = ({
             aria-live="polite"
             className="flex items-start space-x-2.5 p-3 bg-emerald-50 border border-emerald-200 rounded-md text-emerald-800 text-xs"
           >
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" aria-hidden="true" />
+            <CheckCircle2
+              className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5"
+              aria-hidden="true"
+            />
             <span className="flex-1 font-medium leading-tight">{successMessage}</span>
           </div>
         )}

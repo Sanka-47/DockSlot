@@ -20,10 +20,7 @@ interface ErrorBoundaryState {
  * Note: error boundaries do not catch event-handler, async, or effect errors.
  * Those continue to be handled by the calling code (banners / toasts).
  */
-export class ErrorBoundary extends React.Component<
-  ErrorBoundaryProps,
-  ErrorBoundaryState
-> {
+export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   public state: ErrorBoundaryState = {
     hasError: false,
     error: null,
@@ -60,9 +57,7 @@ export class ErrorBoundary extends React.Component<
       return (
         <div className="min-h-screen bg-[#D9D9D9] flex items-center justify-center p-4">
           <div className="w-full max-w-lg rounded-xl bg-white p-8 text-center shadow-lg">
-            <h1 className="text-lg font-bold text-[#2F4F4F]">
-              Something went wrong
-            </h1>
+            <h1 className="text-lg font-bold text-[#2F4F4F]">Something went wrong</h1>
             <p className="mt-2 text-sm text-gray-600">
               DockSlot hit an unexpected error while rendering this page.
             </p>

@@ -72,10 +72,7 @@ export const UserRegisterModal: React.FC<UserRegisterModalProps> = ({
         })
         .catch((err: unknown) => {
           setErrorMessage(
-            getApiErrorMessage(
-              err,
-              'The invitation token is invalid or has expired.'
-            )
+            getApiErrorMessage(err, 'The invitation token is invalid or has expired.'),
           );
         })
         .finally(() => {
@@ -103,7 +100,7 @@ export const UserRegisterModal: React.FC<UserRegisterModalProps> = ({
     const validationError = userRegisterModalService.validateRegistration(
       activeToken,
       password,
-      confirmPassword
+      confirmPassword,
     );
     if (validationError) {
       setErrorMessage(validationError);
@@ -112,10 +109,7 @@ export const UserRegisterModal: React.FC<UserRegisterModalProps> = ({
 
     try {
       setIsLoading(true);
-      const result = await userRegisterModalService.acceptInvitation(
-        activeToken,
-        password
-      );
+      const result = await userRegisterModalService.acceptInvitation(activeToken, password);
 
       const registeredEmail = invitationInfo?.email || result.email;
       setSuccessMessage(result.message);
@@ -130,15 +124,15 @@ export const UserRegisterModal: React.FC<UserRegisterModalProps> = ({
       setTimeout(() => {
         onSuccess(
           registeredEmail,
-          'Account created successfully! Please sign in with your password.'
+          'Account created successfully! Please sign in with your password.',
         );
       }, 700);
     } catch (err: unknown) {
       setErrorMessage(
         getApiErrorMessage(
           err,
-          'Failed to complete registration. The invitation link may be invalid or expired.'
-        )
+          'Failed to complete registration. The invitation link may be invalid or expired.',
+        ),
       );
     } finally {
       setIsLoading(false);
@@ -189,7 +183,8 @@ export const UserRegisterModal: React.FC<UserRegisterModalProps> = ({
                 <span>{invitationInfo.organizationName || 'DockSlot Workspace'}</span>
               </div>
               <p className="text-gray-600">
-                Registering account for <strong className="text-gray-900">{invitationInfo.email}</strong> as{' '}
+                Registering account for{' '}
+                <strong className="text-gray-900">{invitationInfo.email}</strong> as{' '}
                 <span className="inline-block px-1.5 py-0.5 bg-[#2F4F4F]/10 text-[#2F4F4F] rounded font-medium">
                   {invitationInfo.role}
                 </span>
@@ -205,7 +200,8 @@ export const UserRegisterModal: React.FC<UserRegisterModalProps> = ({
             >
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <div className="flex-1">
-                <strong>No invitation token found.</strong> Please make sure you accessed this page from the link in your invitation email.
+                <strong>No invitation token found.</strong> Please make sure you accessed this page
+                from the link in your invitation email.
               </div>
             </div>
           )}
@@ -253,7 +249,9 @@ export const UserRegisterModal: React.FC<UserRegisterModalProps> = ({
                 hasError={Boolean(errorMessage)}
                 aria-invalid={Boolean(errorMessage)}
                 aria-describedby={
-                  errorMessage ? 'invite-register-error register-password-hint' : 'register-password-hint'
+                  errorMessage
+                    ? 'invite-register-error register-password-hint'
+                    : 'register-password-hint'
                 }
                 data-autofocus
                 rightElement={
@@ -309,23 +307,12 @@ export const UserRegisterModal: React.FC<UserRegisterModalProps> = ({
 
             {/* Actions */}
             <div className="flex items-center justify-end space-x-3 pt-3 border-t border-gray-100">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onClose}
-                disabled={isLoading}
-              >
+              <Button type="button" variant="outline" onClick={onClose} disabled={isLoading}>
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                isLoading={isLoading || isVerifyingToken}
-              >
+              <Button type="submit" variant="primary" isLoading={isLoading || isVerifyingToken}>
                 <span>Register Account</span>
-                {!isLoading && !isVerifyingToken && (
-                  <ArrowRight className="w-4 h-4 ml-1.5" />
-                )}
+                {!isLoading && !isVerifyingToken && <ArrowRight className="w-4 h-4 ml-1.5" />}
               </Button>
             </div>
           </form>

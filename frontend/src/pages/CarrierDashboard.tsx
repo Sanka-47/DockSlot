@@ -22,7 +22,11 @@ export const CarrierDashboard: React.FC = () => {
           <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 sm:pl-2">
             Carrier View:
           </span>
-          <div role="group" aria-label="Carrier view" className="grid grid-cols-2 sm:inline-flex rounded-md shadow-sm w-full sm:w-auto">
+          <div
+            role="group"
+            aria-label="Carrier view"
+            className="grid grid-cols-2 sm:inline-flex rounded-md shadow-sm w-full sm:w-auto"
+          >
             <button
               type="button"
               aria-pressed={viewMode === 'admin'}

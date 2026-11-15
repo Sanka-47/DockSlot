@@ -17,13 +17,21 @@ export const userApi = {
     return response.data;
   },
 
-  deactivateUser: async (userId: number): Promise<{ success: boolean; message: string; data?: User }> => {
-    const response = await apiClient.patch<{ success: boolean; message: string; data?: User }>(`/users/${userId}/deactivate`);
+  deactivateUser: async (
+    userId: number,
+  ): Promise<{ success: boolean; message: string; data?: User }> => {
+    const response = await apiClient.patch<{ success: boolean; message: string; data?: User }>(
+      `/users/${userId}/deactivate`,
+    );
     return response.data;
   },
 
-  reactivateUser: async (userId: number): Promise<{ success: boolean; message: string; data?: User }> => {
-    const response = await apiClient.patch<{ success: boolean; message: string; data?: User }>(`/users/${userId}/reactivate`);
+  reactivateUser: async (
+    userId: number,
+  ): Promise<{ success: boolean; message: string; data?: User }> => {
+    const response = await apiClient.patch<{ success: boolean; message: string; data?: User }>(
+      `/users/${userId}/reactivate`,
+    );
     return response.data;
   },
 
