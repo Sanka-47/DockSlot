@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { useAuth } from '../hooks/useAuth';
-import { CarrierAdminDashboard } from './CarrierAdminDashboard';
-import { DispatcherDashboard } from './DispatcherDashboard';
+import React, { lazy, useState } from 'react';
+import { useAuth } from '@/hooks/useAuth';
 import { Settings, Calendar } from 'lucide-react';
+
+const CarrierAdminDashboard = lazy(() => import('@/pages/CarrierAdminDashboard'));
+const DispatcherDashboard = lazy(() => import('@/pages/DispatcherDashboard'));
 
 export const CarrierDashboard: React.FC = () => {
   const { user } = useAuth();

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { WarehouseAdminDashboard } from './WarehouseAdminDashboard';
-import { DockManagerDashboard } from './DockManagerDashboard';
+import React, { lazy, useState } from 'react';
 import { Settings, Calendar } from 'lucide-react';
+
+const WarehouseAdminDashboard = lazy(() => import('@/pages/WarehouseAdminDashboard'));
+const DockManagerDashboard = lazy(() => import('@/pages/DockManagerDashboard'));
 
 export const WarehouseDashboard: React.FC = () => {
   const [viewMode, setViewMode] = useState<'admin' | 'operations'>('admin');

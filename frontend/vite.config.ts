@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -105,6 +106,48 @@ export default defineConfig(({ command, mode }) => {
 
   return {
     plugins: [react()],
+    resolve: {
+      alias: {
+        '@': fileURLToPath(new URL('./src', import.meta.url)),
+      },
+    },
+    build: {
+      rolldownOptions: {
+        output: {
+          // Keep large vendor families in stable chunks so route-level lazy
+          // loading does not pull them into the initial app shell.
+          codeSplitting: {
+            groups: [
+              {
+                name: (id) => {
+                  if (!id.includes('node_modules')) {
+                    return null;
+                  }
+
+                  if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) {
+                    return 'react-vendor';
+                  }
+
+                  if (/[\\/]node_modules[\\/](date-fns|date-fns-tz)[\\/]/.test(id)) {
+                    return 'date-vendor';
+                  }
+
+                  if (/[\\/]node_modules[\\/]axios[\\/]/.test(id)) {
+                    return 'http-vendor';
+                  }
+
+                  if (/[\\/]node_modules[\\/]lucide-react[\\/]/.test(id)) {
+                    return 'icons-vendor';
+                  }
+
+                  return 'vendor';
+                },
+              },
+            ],
+          },
+        },
+      },
+    },
     server: {
       headers: {
         ...commonHeaders,

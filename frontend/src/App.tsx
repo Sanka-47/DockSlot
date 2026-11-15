@@ -1,14 +1,9 @@
-import React, { useState } from 'react';
-import { AuthProvider } from './context/AuthContext';
-import { useAuth } from './hooks/useAuth';
-import { AuthPage } from './pages/AuthPage';
-import { ResetPasswordPage } from './pages/ResetPasswordPage';
-import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
-import { CarrierDashboard } from './pages/CarrierDashboard';
-import { WarehouseDashboard } from './pages/WarehouseDashboard';
-import { DockManagerDashboard } from './pages/DockManagerDashboard';
-import { TeamManagementModal } from './components/TeamManagementModal';
-import { SecuritySettingsModal } from './components/SecuritySettingsModal';
+import React, { lazy, Suspense, useState } from 'react';
+import { AuthProvider } from '@/context/AuthContext';
+import { useAuth } from '@/hooks/useAuth';
+import { AuthPage } from '@/pages/AuthPage';
+import { LoadingState } from '@/components/common/LoadingState';
+import { PageLoadingFallback } from '@/components/common/PageLoadingFallback';
 import { Warehouse, LogOut, Users, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
 import {
@@ -16,8 +11,16 @@ import {
   isAcceptInvitePath,
   isForgotPasswordPath,
   isResetPasswordPath,
-} from './utils/urlToken';
-import { resolveDashboardView } from './utils/dashboardView';
+} from '@/utils/urlToken';
+import { resolveDashboardView } from '@/utils/dashboardView';
+
+const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage'));
+const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage'));
+const CarrierDashboard = lazy(() => import('@/pages/CarrierDashboard'));
+const WarehouseDashboard = lazy(() => import('@/pages/WarehouseDashboard'));
+const DockManagerDashboard = lazy(() => import('@/pages/DockManagerDashboard'));
+const TeamManagementModal = lazy(() => import('@/components/TeamManagementModal'));
+const SecuritySettingsModal = lazy(() => import('@/components/SecuritySettingsModal'));
 
 /**
  * Email-link tokens are read and removed from the address bar exactly once,
@@ -26,6 +29,14 @@ import { resolveDashboardView } from './utils/dashboardView';
  */
 const initialAuthToken = consumeAuthTokenFromUrl();
 
+const ModalLoadingFallback: React.FC = () => (
+  <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4">
+    <div className="rounded-xl bg-white p-2 shadow-2xl">
+      <LoadingState message="Loading dialog..." />
+    </div>
+  </div>
+);
+
 const AppContent: React.FC = () => {
   const { user, isAuthenticated, logout, logoutAll, refreshUser, isLoading } = useAuth();
   const [activeView, setActiveView] = useState<'auto' | 'carrier' | 'warehouse'>('auto');
@@ -33,14 +44,7 @@ const AppContent: React.FC = () => {
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState<boolean>(false);
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-[#D9D9D9] flex items-center justify-center">
-        <div className="flex flex-col items-center space-y-3">
-          <div className="w-8 h-8 border-4 border-[#2F4F4F] border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm font-semibold text-[#2F4F4F]">Loading DockSlot...</p>
-        </div>
-      </div>
-    );
+    return <PageLoadingFallback />;
   }
 
   // Handle URL paths for Password Reset & Forgot Password
@@ -48,31 +52,35 @@ const AppContent: React.FC = () => {
 
   if (isResetPasswordPath(pathname)) {
     return (
-      <ResetPasswordPage
-        token={initialAuthToken}
-        onBackToSignIn={() => {
-          if (typeof window !== 'undefined') {
-            window.location.href = '/';
-          }
-        }}
-        onSuccess={() => {
-          if (typeof window !== 'undefined') {
-            window.location.href = '/';
-          }
-        }}
-      />
+      <Suspense fallback={<PageLoadingFallback />}>
+        <ResetPasswordPage
+          token={initialAuthToken}
+          onBackToSignIn={() => {
+            if (typeof window !== 'undefined') {
+              window.location.href = '/';
+            }
+          }}
+          onSuccess={() => {
+            if (typeof window !== 'undefined') {
+              window.location.href = '/';
+            }
+          }}
+        />
+      </Suspense>
     );
   }
 
   if (isForgotPasswordPath(pathname)) {
     return (
-      <ForgotPasswordPage
-        onBackToSignIn={() => {
-          if (typeof window !== 'undefined') {
-            window.location.href = '/';
-          }
-        }}
-      />
+      <Suspense fallback={<PageLoadingFallback />}>
+        <ForgotPasswordPage
+          onBackToSignIn={() => {
+            if (typeof window !== 'undefined') {
+              window.location.href = '/';
+            }
+          }}
+        />
+      </Suspense>
     );
   }
 
@@ -189,36 +197,44 @@ const AppContent: React.FC = () => {
         tabIndex={-1}
         className="flex-1 p-3 sm:p-6 max-w-7xl w-full mx-auto outline-none"
       >
-        {dashboardView === 'carrier' ? (
-          <CarrierDashboard />
-        ) : dashboardView === 'dock-manager' ? (
-          <DockManagerDashboard />
-        ) : (
-          <WarehouseDashboard />
-        )}
+        <Suspense
+          fallback={<LoadingState message="Loading dashboard..." className="min-h-[40vh]" />}
+        >
+          {dashboardView === 'carrier' ? (
+            <CarrierDashboard />
+          ) : dashboardView === 'dock-manager' ? (
+            <DockManagerDashboard />
+          ) : (
+            <WarehouseDashboard />
+          )}
+        </Suspense>
       </main>
 
       {/* Admin Team & Session Control Modal */}
       {isTeamModalOpen && (
-        <TeamManagementModal
-          isOpen={isTeamModalOpen}
-          onClose={() => setIsTeamModalOpen(false)}
-          currentUserId={user.id}
-          currentUserRole={user.role}
-          organizationName={user.organization?.name}
-        />
+        <Suspense fallback={<ModalLoadingFallback />}>
+          <TeamManagementModal
+            isOpen={isTeamModalOpen}
+            onClose={() => setIsTeamModalOpen(false)}
+            currentUserId={user.id}
+            currentUserRole={user.role}
+            organizationName={user.organization?.name}
+          />
+        </Suspense>
       )}
 
       {/* Account Security Settings (Two-Factor Authentication) */}
       {isSecurityModalOpen && (
-        <SecuritySettingsModal
-          isOpen={isSecurityModalOpen}
-          onClose={() => setIsSecurityModalOpen(false)}
-          user={user}
-          onStatusChange={() => {
-            refreshUser();
-          }}
-        />
+        <Suspense fallback={<ModalLoadingFallback />}>
+          <SecuritySettingsModal
+            isOpen={isSecurityModalOpen}
+            onClose={() => setIsSecurityModalOpen(false)}
+            user={user}
+            onStatusChange={() => {
+              refreshUser();
+            }}
+          />
+        </Suspense>
       )}
     </div>
   );

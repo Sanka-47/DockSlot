@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { lazy, Suspense, useState } from 'react';
 import {
   Mail,
   Lock,
@@ -23,12 +23,14 @@ import { Tabs } from '../components/ui/tabs';
 import { authPageService } from '../services/authPage.service';
 import { getApiErrorMessage } from '../services/errors';
 import { useAuth } from '../hooks/useAuth';
-import { ForgotPasswordPage } from './ForgotPasswordPage';
-import { ResetPasswordPage } from './ResetPasswordPage';
+import { PageLoadingFallback } from '@/components/common/PageLoadingFallback';
 import { UserRegisterModal } from '../components/UserRegisterModal';
 import type { OrganizationType, User } from '../types/user.types';
 
 const CURRENT_YEAR = new Date().getFullYear();
+
+const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage'));
+const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage'));
 
 export type AuthTab = 'signin' | 'register' | 'forgot' | 'reset';
 
@@ -325,16 +327,22 @@ export const AuthPage: React.FC<AuthPageProps> = ({
   };
 
   if (activeTab === 'forgot') {
-    return <ForgotPasswordPage onBackToSignIn={() => handleTabChange('signin')} />;
+    return (
+      <Suspense fallback={<PageLoadingFallback />}>
+        <ForgotPasswordPage onBackToSignIn={() => handleTabChange('signin')} />
+      </Suspense>
+    );
   }
 
   if (activeTab === 'reset') {
     return (
-      <ResetPasswordPage
-        token={resetToken}
-        onBackToSignIn={() => handleTabChange('signin')}
-        onSuccess={() => handleTabChange('signin')}
-      />
+      <Suspense fallback={<PageLoadingFallback />}>
+        <ResetPasswordPage
+          token={resetToken}
+          onBackToSignIn={() => handleTabChange('signin')}
+          onSuccess={() => handleTabChange('signin')}
+        />
+      </Suspense>
     );
   }
 
