@@ -1,7 +1,5 @@
-import dotenv from 'dotenv';
+import './env';
 import { validateEnv } from './env.validation';
-
-dotenv.config();
 
 // Fail fast before any route or middleware can use an insecure configuration.
 validateEnv(process.env);

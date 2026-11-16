@@ -12,7 +12,7 @@ import {
   isForgotPasswordPath,
   isResetPasswordPath,
 } from '@/utils/urlToken';
-import { resolveDashboardView } from '@/utils/dashboardView';
+import { canManageTeam, resolveDashboardView } from '@/utils/dashboardView';
 
 const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage'));
 const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage'));
@@ -136,7 +136,7 @@ const AppContent: React.FC = () => {
             Logged in as <strong className="text-white">{user.email}</strong>
           </span>
 
-          {(user.role === 'CARRIER_ADMIN' || user.role === 'WAREHOUSE_ADMIN') && (
+          {canManageTeam(user.role) && (
             <button
               type="button"
               onClick={() => setIsTeamModalOpen(true)}

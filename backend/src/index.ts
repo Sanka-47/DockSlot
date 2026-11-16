@@ -1,3 +1,4 @@
+import './config/env';
 import type { Server } from 'http';
 import app from './app';
 import { disconnect } from './repositories/base.repository';

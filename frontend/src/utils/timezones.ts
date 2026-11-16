@@ -1,3 +1,6 @@
+import type { Booking } from '../types/booking.types';
+import type { Warehouse } from '../types/warehouse.types';
+
 // `Intl.supportedValuesOf('timeZone')` exposes the runtime's canonical IANA
 // zone database (~400 entries), so the selector stays in sync with the tzdata
 // the browser and backend operate on instead of a hand-maintained list.
@@ -24,3 +27,21 @@ export const getTimezoneOptions = (current?: string): string[] => {
 
   return zones;
 };
+
+/** Resolves a booking's warehouse timezone, falling back to the warehouse list. */
+export function getBookingWarehouseTimezone(
+  booking: Pick<Booking, 'dock'>,
+  warehouses: Array<Pick<Warehouse, 'id' | 'timezone'>>,
+): string {
+  if (booking.dock?.warehouse?.timezone) {
+    return booking.dock.warehouse.timezone;
+  }
+
+  const warehouseId = booking.dock?.warehouseId || booking.dock?.warehouse?.id;
+  if (warehouseId) {
+    const matched = warehouses.find((warehouse) => warehouse.id === warehouseId);
+    if (matched?.timezone) return matched.timezone;
+  }
+
+  return 'UTC';
+}

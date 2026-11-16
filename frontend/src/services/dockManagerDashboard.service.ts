@@ -2,9 +2,13 @@ import { bookingApi } from '../api/booking.api';
 import { warehouseApi } from '../api/warehouse.api';
 import type { Booking, BookingStatus } from '../types/booking.types';
 import type { Dock, DockClosure, Warehouse } from '../types/warehouse.types';
-import { formatDateKey, formatDateTime } from '../utils/formatters';
+import { shiftDateKey, toDateKeyInTimeZone } from '../utils/formatters';
+import { isActiveBookingStatus } from '../utils/bookingStatus';
 import { getApiErrorMessage } from './errors';
-import { fromZonedTime } from 'date-fns-tz';
+
+export { getUpcomingDays } from '../utils/formatters';
+export { shiftDateKey, toDateKeyInTimeZone };
+export type { UpcomingDay } from '../utils/formatters';
 
 export type DockWithWarehouse = Dock & {
   warehouseName: string;
@@ -18,56 +22,9 @@ export interface DockManagerData {
   warningMessage: string | null;
 }
 
-export interface BookingFilters {
-  warehouseId: string;
-  status: string;
-  searchQuery: string;
-}
-
-export interface UpcomingDay {
-  dateStr: string;
-  dayOfWeekShort: string;
-  dayOfMonth: number;
-  monthShort: string;
-}
-
 export interface ClosureDateSuggestion {
   date: string;
   bookedDates: Set<string>;
-}
-
-/** Local `YYYY-MM-DD` key, used only as a last-resort fallback. */
-export function toLocalDateKey(date: Date): string {
-  if (Number.isNaN(date.getTime())) return '';
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-/** Calendar key in the warehouse's time zone, falling back to browser-local. */
-export function toDateKeyInTimeZone(date: Date, timeZone?: string): string {
-  if (Number.isNaN(date.getTime())) return '';
-  return formatDateKey(date, timeZone, toLocalDateKey(date));
-}
-
-/** Adds calendar days to an ISO date key without depending on the host zone. */
-export function shiftDateKey(dateKey: string, days: number): string {
-  const [year, month, day] = dateKey.split('-').map(Number);
-  if (!year || !month || !day) return '';
-
-  const shifted = new Date(Date.UTC(year, month - 1, day + days));
-  return shifted.toISOString().slice(0, 10);
-}
-
-function zonedNoon(dateKey: string, timeZone?: string): Date {
-  if (!timeZone) return new Date(`${dateKey}T12:00:00`);
-
-  try {
-    return fromZonedTime(`${dateKey}T12:00:00`, timeZone);
-  } catch {
-    return new Date(`${dateKey}T12:00:00`);
-  }
 }
 
 export function aggregateDocks(warehouses: Warehouse[]): DockWithWarehouse[] {
@@ -97,9 +54,8 @@ export function getBookedDatesForDock(
 
   bookings.forEach((booking) => {
     const bookingDockId = booking.dockId ?? booking.dock?.id;
-    const isActive = booking.status === 'BOOKED' || booking.status === 'ARRIVED';
 
-    if (bookingDockId !== dockId || !isActive) return;
+    if (bookingDockId !== dockId || !isActiveBookingStatus(booking.status)) return;
 
     const bookingTimezone = timeZone || booking.dock?.warehouse?.timezone || 'UTC';
     const dateStr = toDateKeyInTimeZone(new Date(booking.slotStartTime), bookingTimezone);
@@ -109,28 +65,6 @@ export function getBookedDatesForDock(
   });
 
   return datesMap;
-}
-
-/** Next `days` calendar days in the warehouse's time zone. */
-export function getUpcomingDays(days: number = 14, timeZone?: string): UpcomingDay[] {
-  const result: UpcomingDay[] = [];
-  const todayKey = toDateKeyInTimeZone(new Date(), timeZone);
-  if (!todayKey) return result;
-
-  for (let index = 0; index < days; index += 1) {
-    const dateStr = shiftDateKey(todayKey, index);
-    const noon = zonedNoon(dateStr, timeZone);
-    const dayOfMonth = Number(formatDateTime(noon, 'd', timeZone, '0'));
-
-    result.push({
-      dateStr,
-      dayOfWeekShort: formatDateTime(noon, 'EEE', timeZone, ''),
-      dayOfMonth: Number.isFinite(dayOfMonth) ? dayOfMonth : 0,
-      monthShort: formatDateTime(noon, 'MMM', timeZone, ''),
-    });
-  }
-
-  return result;
 }
 
 /** True when any warehouse-local day touched by the closure has a booking. */
@@ -293,36 +227,5 @@ export const dockManagerDashboardService = {
     });
 
     return response.data;
-  },
-
-  filterBookings(bookings: Booking[], filters: BookingFilters): Booking[] {
-    return bookings.filter((booking) => {
-      if (filters.warehouseId !== 'ALL') {
-        const warehouseId = booking.dock?.warehouseId || booking.dock?.warehouse?.id;
-
-        if (warehouseId !== undefined && warehouseId !== Number(filters.warehouseId)) {
-          return false;
-        }
-      }
-
-      if (filters.status !== 'ALL' && booking.status !== filters.status) {
-        return false;
-      }
-
-      const query = filters.searchQuery.trim().toLowerCase();
-      if (!query) return true;
-
-      const searchable = [
-        String(booking.id),
-        booking.carrierOrg?.name || '',
-        booking.truckPlate || '',
-        booking.driverName || '',
-        booking.driverPhone || '',
-        booking.dock?.name || '',
-        booking.cargoNote || '',
-      ];
-
-      return searchable.some((value) => value.toLowerCase().includes(query));
-    });
   },
 };

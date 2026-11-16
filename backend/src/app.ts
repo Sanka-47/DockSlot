@@ -1,6 +1,6 @@
+import './config/env';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger';
@@ -18,8 +18,6 @@ import { apiRateLimiter } from './middleware/rateLimit.middleware';
 import { errorHandler } from './middleware/error.middleware';
 import { requestLogger } from './middleware/requestLogger';
 import { parseTrustProxy } from './config/proxy.config';
-
-dotenv.config();
 
 const app = express();
 

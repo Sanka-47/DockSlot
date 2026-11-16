@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   AlertCircle,
   XCircle,
-  Clock,
   Calendar,
   CalendarX,
   Filter,
@@ -31,16 +30,23 @@ import {
   canUpdateBookingStatus,
   findFirstAvailableClosureDate,
   getBookedDatesForDock,
-  getUpcomingDays,
   hasBookingConflict as detectBookingConflict,
   validateClosureInput,
 } from '../services/dockManagerDashboard.service';
 import { getApiErrorMessage, isRequestCanceled } from '../services/errors';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import { BookingAuditLogModal } from '../components/BookingAuditLogModal';
-import type { Booking, BookingStatus } from '../types/booking.types';
+import { BookingStatusBadge } from '../components/BookingStatusBadge';
+import type { Booking } from '../types/booking.types';
 import type { Warehouse, DockClosure } from '../types/warehouse.types';
-import { formatDateKey, formatDateTime, localDateTimeToUtc } from '../utils/formatters';
+import { filterBookings } from '../utils/bookingFilters';
+import { BOOKING_STATUS_FILTERS } from '../utils/bookingStatus';
+import {
+  formatDateKey,
+  formatDateTime,
+  getUpcomingDays,
+  localDateTimeToUtc,
+} from '../utils/formatters';
 import { useNow } from '../hooks/useNow';
 
 export const DockManagerDashboard: React.FC = () => {
@@ -138,7 +144,7 @@ export const DockManagerDashboard: React.FC = () => {
 
   // Filtered Bookings
   const filteredBookings = useMemo(() => {
-    return dockManagerDashboardService.filterBookings(bookings, {
+    return filterBookings(bookings, {
       warehouseId: selectedWarehouseId,
       status: selectedStatusFilter,
       searchQuery,
@@ -339,53 +345,6 @@ export const DockManagerDashboard: React.FC = () => {
       );
     } finally {
       setIsSubmittingClosure(false);
-    }
-  };
-
-  // Helper for Status Badge styling
-  const renderStatusBadge = (status: BookingStatus) => {
-    switch (status) {
-      case 'BOOKED':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-            <Clock className="w-3 h-3 mr-1" />
-            BOOKED
-          </span>
-        );
-      case 'ARRIVED':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <CheckCircle2 className="w-3 h-3 mr-1" />
-            ARRIVED
-          </span>
-        );
-      case 'COMPLETED':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200">
-            <CheckCircle2 className="w-3 h-3 mr-1" />
-            COMPLETED
-          </span>
-        );
-      case 'NO_SHOW':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
-            <AlertCircle className="w-3 h-3 mr-1" />
-            NO-SHOW
-          </span>
-        );
-      case 'CANCELLED':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 border border-gray-300">
-            <XCircle className="w-3 h-3 mr-1" />
-            CANCELLED
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 border border-gray-300">
-            {status}
-          </span>
-        );
     }
   };
 
@@ -663,12 +622,11 @@ export const DockManagerDashboard: React.FC = () => {
                   onChange={(e) => setSelectedStatusFilter(e.target.value)}
                   className="w-full h-9 rounded-md border border-gray-300 pl-3 pr-8 text-xs bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#2F4F4F] focus:border-[#2F4F4F]"
                 >
-                  <option value="ALL">All Statuses</option>
-                  <option value="BOOKED">BOOKED (Incoming)</option>
-                  <option value="ARRIVED">ARRIVED (In Yard)</option>
-                  <option value="COMPLETED">COMPLETED</option>
-                  <option value="NO_SHOW">NO_SHOW</option>
-                  <option value="CANCELLED">CANCELLED</option>
+                  {BOOKING_STATUS_FILTERS.map(({ value, label }) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
                 </select>
                 <Filter
                   className="w-3.5 h-3.5 text-gray-400 absolute right-2.5 top-3 pointer-events-none"
@@ -842,7 +800,7 @@ export const DockManagerDashboard: React.FC = () => {
 
                         {/* 8. Current Status */}
                         <td className="py-3.5 px-4 whitespace-nowrap">
-                          {renderStatusBadge(booking.status)}
+                          <BookingStatusBadge status={booking.status} />
                         </td>
 
                         {/* 9. Actions */}
