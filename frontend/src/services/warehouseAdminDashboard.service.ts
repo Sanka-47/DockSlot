@@ -35,13 +35,62 @@ export interface PolicyForm {
 }
 
 export const DEFAULT_WEEKLY_SCHEDULE: ScheduleDay[] = [
-  { day: 'Monday', dayOfWeek: 1, isOpen: true, openTime: '08:00', closeTime: '18:00', is24h: false },
-  { day: 'Tuesday', dayOfWeek: 2, isOpen: true, openTime: '08:00', closeTime: '18:00', is24h: false },
-  { day: 'Wednesday', dayOfWeek: 3, isOpen: true, openTime: '08:00', closeTime: '18:00', is24h: false },
-  { day: 'Thursday', dayOfWeek: 4, isOpen: true, openTime: '08:00', closeTime: '18:00', is24h: false },
-  { day: 'Friday', dayOfWeek: 5, isOpen: true, openTime: '08:00', closeTime: '18:00', is24h: false },
-  { day: 'Saturday', dayOfWeek: 6, isOpen: true, openTime: '08:00', closeTime: '14:00', is24h: false },
-  { day: 'Sunday', dayOfWeek: 7, isOpen: false, openTime: '08:00', closeTime: '18:00', is24h: false },
+  {
+    day: 'Monday',
+    dayOfWeek: 1,
+    isOpen: true,
+    openTime: '08:00',
+    closeTime: '18:00',
+    is24h: false,
+  },
+  {
+    day: 'Tuesday',
+    dayOfWeek: 2,
+    isOpen: true,
+    openTime: '08:00',
+    closeTime: '18:00',
+    is24h: false,
+  },
+  {
+    day: 'Wednesday',
+    dayOfWeek: 3,
+    isOpen: true,
+    openTime: '08:00',
+    closeTime: '18:00',
+    is24h: false,
+  },
+  {
+    day: 'Thursday',
+    dayOfWeek: 4,
+    isOpen: true,
+    openTime: '08:00',
+    closeTime: '18:00',
+    is24h: false,
+  },
+  {
+    day: 'Friday',
+    dayOfWeek: 5,
+    isOpen: true,
+    openTime: '08:00',
+    closeTime: '18:00',
+    is24h: false,
+  },
+  {
+    day: 'Saturday',
+    dayOfWeek: 6,
+    isOpen: true,
+    openTime: '08:00',
+    closeTime: '14:00',
+    is24h: false,
+  },
+  {
+    day: 'Sunday',
+    dayOfWeek: 7,
+    isOpen: false,
+    openTime: '08:00',
+    closeTime: '18:00',
+    is24h: false,
+  },
 ];
 
 const DEFAULT_POLICY: PolicyForm = {
@@ -63,10 +112,7 @@ export function minutesToTime(totalMinutes: number): string {
 }
 
 /** A close time at or before the open time means the window ends the next day. */
-export function resolveScheduleWindow(
-  openTime: string,
-  closeTime: string
-): ScheduleWindow {
+export function resolveScheduleWindow(openTime: string, closeTime: string): ScheduleWindow {
   const openMin = timeToMinutes(openTime);
   let closeMin = timeToMinutes(closeTime);
 
@@ -89,9 +135,7 @@ export function cloneDefaultSchedule(): ScheduleDay[] {
 export function mergeScheduleWithHours(hours: OperatingHour[]): ScheduleDay[] {
   return DEFAULT_WEEKLY_SCHEDULE.map((day) => {
     const stored = hours.find(
-      (hour) =>
-        hour.dayOfWeek === day.dayOfWeek ||
-        (day.dayOfWeek === 7 && hour.dayOfWeek === 0)
+      (hour) => hour.dayOfWeek === day.dayOfWeek || (day.dayOfWeek === 7 && hour.dayOfWeek === 0),
     );
 
     if (!stored) {
@@ -114,16 +158,13 @@ export function adjustScheduleTime(
   item: ScheduleDay,
   field: 'openTime' | 'closeTime',
   direction: 1 | -1,
-  stepMinutes: number
+  stepMinutes: number,
 ): ScheduleDay {
   const { openMin, closeMin } = resolveScheduleWindow(item.openTime, item.closeTime);
 
   if (field === 'openTime') {
     const maxOpenMin = Math.min(1439, Math.max(0, closeMin - stepMinutes));
-    const nextOpenMin = Math.min(
-      Math.max(0, openMin + direction * stepMinutes),
-      maxOpenMin
-    );
+    const nextOpenMin = Math.min(Math.max(0, openMin + direction * stepMinutes), maxOpenMin);
     return { ...item, openTime: minutesToTime(nextOpenMin) };
   }
 
@@ -132,16 +173,13 @@ export function adjustScheduleTime(
   const maxCloseMin = closeMin > 1440 ? 2880 : 1440;
   const nextCloseMin = Math.min(
     Math.max(openMin + stepMinutes, closeMin + direction * stepMinutes),
-    maxCloseMin
+    maxCloseMin,
   );
 
   return { ...item, closeTime: minutesToTime(nextCloseMin), is24h: false };
 }
 
-export function getScheduleSlotEstimate(
-  item: ScheduleDay,
-  slotLengthMinutes: number
-): number {
+export function getScheduleSlotEstimate(item: ScheduleDay, slotLengthMinutes: number): number {
   if (!item.isOpen) return 0;
 
   const { openMin, closeMin } = resolveScheduleWindow(item.openTime, item.closeTime);
@@ -151,15 +189,13 @@ export function getScheduleSlotEstimate(
 
 export function buildOperatingHoursPayload(
   schedule: ScheduleDay[],
-  slotLengthMinutes: number
+  slotLengthMinutes: number,
 ): UpdateOperatingHoursRequest {
   return {
     hours: schedule.map((item) => ({
       dayOfWeek: item.dayOfWeek,
       isOpen: item.isOpen,
-      ...(item.isOpen
-        ? { openTime: item.openTime, closeTime: item.closeTime }
-        : {}),
+      ...(item.isOpen ? { openTime: item.openTime, closeTime: item.closeTime } : {}),
       slotLengthMinutes,
     })),
   };
@@ -177,23 +213,19 @@ export const warehouseAdminDashboardService = {
     return response.data || [];
   },
 
-  /** Policies are optional server-side; absent configuration falls back to defaults. */
   async fetchPolicy(warehouseId: number): Promise<PolicyForm> {
-    try {
-      const response = await warehouseApi.getPolicy(warehouseId);
-      return {
-        maxConcurrentBookings: response.data.maxConcurrentBookings ?? DEFAULT_POLICY.maxConcurrentBookings,
-        maxAdvanceDays: response.data.maxAdvanceDays ?? DEFAULT_POLICY.maxAdvanceDays,
-        bookingLockWindowHours:
-          response.data.bookingLockWindowHours ?? DEFAULT_POLICY.bookingLockWindowHours,
-      };
-    } catch {
-      return { ...DEFAULT_POLICY };
-    }
+    const response = await warehouseApi.getPolicy(warehouseId);
+    return {
+      maxConcurrentBookings:
+        response.data.maxConcurrentBookings ?? DEFAULT_POLICY.maxConcurrentBookings,
+      maxAdvanceDays: response.data.maxAdvanceDays ?? DEFAULT_POLICY.maxAdvanceDays,
+      bookingLockWindowHours:
+        response.data.bookingLockWindowHours ?? DEFAULT_POLICY.bookingLockWindowHours,
+    };
   },
 
   async fetchScheduleHours(
-    warehouseId: number
+    warehouseId: number,
   ): Promise<{ schedule: ScheduleDay[]; slotLengthMinutes?: number }> {
     const response = await warehouseApi.getHours(warehouseId);
 
@@ -213,10 +245,7 @@ export const warehouseAdminDashboardService = {
     return response.data;
   },
 
-  async updateWarehouse(
-    warehouseId: number,
-    data: UpdateWarehouseRequest
-  ): Promise<Warehouse> {
+  async updateWarehouse(warehouseId: number, data: UpdateWarehouseRequest): Promise<Warehouse> {
     const response = await warehouseApi.update(warehouseId, data);
     return response.data;
   },
@@ -226,11 +255,7 @@ export const warehouseAdminDashboardService = {
     return response.data;
   },
 
-  async updateDock(
-    dockId: number,
-    data: UpdateDockRequest,
-    warehouseId?: number
-  ): Promise<Dock> {
+  async updateDock(dockId: number, data: UpdateDockRequest, warehouseId?: number): Promise<Dock> {
     const response = await warehouseApi.updateDock(dockId, data, warehouseId);
     return response.data;
   },
@@ -240,10 +265,7 @@ export const warehouseAdminDashboardService = {
     return response.data;
   },
 
-  async updateSlotLength(
-    warehouseId: number,
-    slotLengthMinutes: number
-  ): Promise<Warehouse> {
+  async updateSlotLength(warehouseId: number, slotLengthMinutes: number): Promise<Warehouse> {
     const response = await warehouseApi.update(warehouseId, { slotLengthMinutes });
     return response.data;
   },
@@ -251,11 +273,11 @@ export const warehouseAdminDashboardService = {
   async saveSchedule(
     warehouseId: number,
     schedule: ScheduleDay[],
-    slotLengthMinutes: number
+    slotLengthMinutes: number,
   ): Promise<{ schedule: ScheduleDay[] }> {
     const response = await warehouseApi.updateHours(
       warehouseId,
-      buildOperatingHoursPayload(schedule, slotLengthMinutes)
+      buildOperatingHoursPayload(schedule, slotLengthMinutes),
     );
 
     return {
@@ -263,10 +285,7 @@ export const warehouseAdminDashboardService = {
     };
   },
 
-  async savePolicy(
-    warehouseId: number,
-    policy: PolicyForm
-  ): Promise<PolicyForm> {
+  async savePolicy(warehouseId: number, policy: PolicyForm): Promise<PolicyForm> {
     const payload: UpdateWarehousePolicyRequest = policy;
     const response = await warehouseApi.updatePolicy(warehouseId, payload);
 

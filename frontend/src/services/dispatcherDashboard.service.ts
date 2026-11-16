@@ -1,16 +1,9 @@
-import { bookingApi } from "../api/booking.api";
-import { warehouseApi } from "../api/warehouse.api";
-import type {
-  AvailableDockSlots,
-  AvailableSlot,
-  Warehouse,
-} from "../types/warehouse.types";
-import type {
-  Booking,
-  CreateBookingRequest,
-} from "../types/booking.types";
-import { formatDateTime } from "../utils/formatters";
-import { getApiErrorMessage } from "./errors";
+import { bookingApi } from '../api/booking.api';
+import { warehouseApi } from '../api/warehouse.api';
+import type { AvailableDockSlots, AvailableSlot, Warehouse } from '../types/warehouse.types';
+import type { Booking, CreateBookingRequest } from '../types/booking.types';
+import { formatDateKey, formatDateTime } from '../utils/formatters';
+import { getApiErrorMessage } from './errors';
 
 export interface DispatcherDashboardData {
   warehouses: Warehouse[];
@@ -36,39 +29,22 @@ export interface BookingFilters {
  * Formats a date as `YYYY-MM-DD` in the warehouse's time zone. Falls back to the
  * browser's local date when the identifier is missing or invalid.
  */
-export function formatDateInTimezone(
-  dateInput: Date | string | number,
-  timeZone?: string
-): string {
+export function formatDateInTimezone(dateInput: Date | string | number, timeZone?: string): string {
   const dateObj = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  if (Number.isNaN(dateObj.getTime())) return '';
 
-  if (timeZone) {
-    try {
-      return new Intl.DateTimeFormat("en-CA", {
-        timeZone,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }).format(dateObj);
-    } catch {
-      // Fall through to the browser-local fallback for invalid identifiers.
-    }
-  }
+  const zoned = formatDateKey(dateObj, timeZone);
+  if (zoned) return zoned;
 
-  const local = new Date(
-    dateObj.getTime() - dateObj.getTimezoneOffset() * 60000
-  );
-  return local.toISOString().slice(0, 10);
+  // Keep the UI usable if the API supplies a legacy/invalid zone identifier.
+  return formatDateKey(dateObj);
 }
 
 export function getTodayDateString(timeZone?: string): string {
   return formatDateInTimezone(new Date(), timeZone);
 }
 
-export function getMaxAdvanceDateString(
-  days: number = 14,
-  timeZone?: string
-): string {
+export function getMaxAdvanceDateString(days: number = 14, timeZone?: string): string {
   const futureInstant = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
   return formatDateInTimezone(futureInstant, timeZone);
 }
@@ -91,7 +67,7 @@ export function isFutureSlot(slot: AvailableSlot): boolean {
 export function formatSlotClock(timeStr?: string): string | null {
   if (!timeStr) return null;
 
-  const [hoursStr, minutesStr = "0"] = timeStr.split(":");
+  const [hoursStr, minutesStr = '0'] = timeStr.split(':');
   const hours = Number(hoursStr);
   const minutes = Number(minutesStr);
   if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
@@ -99,10 +75,10 @@ export function formatSlotClock(timeStr?: string): string | null {
   const totalMinutes = (((hours * 60 + minutes) % 1440) + 1440) % 1440;
   const normalizedHours = Math.floor(totalMinutes / 60);
   const normalizedMinutes = totalMinutes % 60;
-  const period = normalizedHours >= 12 ? "PM" : "AM";
+  const period = normalizedHours >= 12 ? 'PM' : 'AM';
   const twelveHour = normalizedHours % 12 === 0 ? 12 : normalizedHours % 12;
 
-  return `${twelveHour}:${String(normalizedMinutes).padStart(2, "0")} ${period}`;
+  return `${twelveHour}:${String(normalizedMinutes).padStart(2, '0')} ${period}`;
 }
 
 /**
@@ -110,21 +86,25 @@ export function formatSlotClock(timeStr?: string): string | null {
  * start/end returned by the API so a dispatcher abroad sees the dock's clock;
  * the browser's clock is only a fallback for older API responses.
  */
-export function formatSlotWindow(slot: {
-  slotStartTime: string;
-  slotEndTime: string;
-  localStartTime?: string;
-  localEndTime?: string;
-}): string {
+export function formatSlotWindow(
+  slot: {
+    slotStartTime: string;
+    slotEndTime: string;
+    localStartTime?: string;
+    localEndTime?: string;
+  },
+  timeZone?: string,
+): string {
   const localStart = formatSlotClock(slot.localStartTime);
   const localEnd = formatSlotClock(slot.localEndTime);
   if (localStart && localEnd) {
     return `${localStart} - ${localEnd}`;
   }
 
-  return `${formatDateTime(slot.slotStartTime, "h:mm a")} - ${formatDateTime(
+  return `${formatDateTime(slot.slotStartTime, 'h:mm a', timeZone)} - ${formatDateTime(
     slot.slotEndTime,
-    "h:mm a"
+    'h:mm a',
+    timeZone,
   )}`;
 }
 
@@ -134,8 +114,7 @@ export function isInsideLockWindow(booking: Booking | null): boolean {
 
   const slotTime = new Date(booking.slotStartTime).getTime();
   const hoursUntil = (slotTime - Date.now()) / (1000 * 60 * 60);
-  const lockHours =
-    booking.dock?.warehouse?.policy?.bookingLockWindowHours ?? 24;
+  const lockHours = booking.dock?.warehouse?.policy?.bookingLockWindowHours ?? 24;
 
   return hoursUntil >= 0 && hoursUntil < lockHours;
 }
@@ -146,13 +125,13 @@ export function isInsideLockWindow(booking: Booking | null): boolean {
  */
 export function normalizeSlotResponse(
   rawData: unknown,
-  dockIdFilter?: number
+  dockIdFilter?: number,
 ): AvailableDockSlots[] {
   if (!Array.isArray(rawData) || rawData.length === 0) {
     return [];
   }
 
-  if ("slots" in rawData[0]) {
+  if ('slots' in rawData[0]) {
     return (rawData as AvailableDockSlots[]).map((group) => ({
       ...group,
       slots: (dockIdFilter
@@ -164,7 +143,7 @@ export function normalizeSlotResponse(
     }));
   }
 
-  if ("slotStartTime" in rawData[0]) {
+  if ('slotStartTime' in rawData[0]) {
     const flatList = rawData as unknown as AvailableSlot[];
     const grouped: Record<number, AvailableDockSlots> = {};
 
@@ -191,7 +170,7 @@ export function normalizeSlotResponse(
 export function removeSlotFromGroups(
   groups: AvailableDockSlots[] | null,
   dockId: number,
-  slotStartTime: string
+  slotStartTime: string,
 ): AvailableDockSlots[] | null {
   if (!groups) return groups;
 
@@ -200,17 +179,12 @@ export function removeSlotFromGroups(
 
     return {
       ...dockGroup,
-      slots: dockGroup.slots.filter(
-        (slot) => slot.slotStartTime !== slotStartTime
-      ),
+      slots: dockGroup.slots.filter((slot) => slot.slotStartTime !== slotStartTime),
     };
   });
 }
 
-export function getBookingWarehouseTimezone(
-  booking: Booking,
-  warehouses: Warehouse[]
-): string {
+export function getBookingWarehouseTimezone(booking: Booking, warehouses: Warehouse[]): string {
   if (booking.dock?.warehouse?.timezone) {
     return booking.dock.warehouse.timezone;
   }
@@ -221,15 +195,16 @@ export function getBookingWarehouseTimezone(
     if (matched?.timezone) return matched.timezone;
   }
 
-  return "UTC";
+  return 'UTC';
 }
 
 export function filterBookings(
   bookings: Booking[],
   filters: BookingFilters,
-  warehouses: Warehouse[]
-): Booking[] {  return bookings.filter((booking) => {
-    if (filters.status !== "ALL" && booking.status !== filters.status) {
+  warehouses: Warehouse[],
+): Booking[] {
+  return bookings.filter((booking) => {
+    if (filters.status !== 'ALL' && booking.status !== filters.status) {
       return false;
     }
 
@@ -238,13 +213,14 @@ export function filterBookings(
 
     const searchable = [
       String(booking.id),
-      booking.truckPlate || "",
-      booking.driverName || "",
-      booking.driverPhone || "",
-      booking.dock?.name || "",
-      booking.dock?.warehouse?.name || "",
+      booking.carrierOrg?.name || '',
+      booking.truckPlate || '',
+      booking.driverName || '',
+      booking.driverPhone || '',
+      booking.dock?.name || '',
+      booking.dock?.warehouse?.name || '',
       getBookingWarehouseTimezone(booking, warehouses),
-      booking.cargoNote || "",
+      booking.cargoNote || '',
     ];
 
     return searchable.some((value) => value.toLowerCase().includes(query));
@@ -260,15 +236,15 @@ export interface BookingFormInput {
 /** Returns a user-facing validation message, or null when the form is valid. */
 export function validateBookingInput(input: BookingFormInput): string | null {
   if (!input.truckPlate.trim()) {
-    return "Truck license plate is required.";
+    return 'Truck license plate is required.';
   }
 
   if (!input.driverName.trim()) {
-    return "Driver name is required.";
+    return 'Driver name is required.';
   }
 
   if (!input.driverPhone.trim()) {
-    return "Driver phone number is required.";
+    return 'Driver phone number is required.';
   }
 
   return null;
@@ -287,8 +263,8 @@ function extractFallbackWarehouses(bookings: Booking[]): Warehouse[] {
       id: warehouse.id,
       organizationId: 0,
       name: warehouse.name,
-      address: warehouse.address || "",
-      timezone: warehouse.timezone || "UTC",
+      address: warehouse.address || '',
+      timezone: warehouse.timezone || 'UTC',
       slotLengthMinutes: 30,
       docks: [
         {
@@ -306,8 +282,8 @@ function extractFallbackWarehouses(bookings: Booking[]): Warehouse[] {
 
 /** API orchestration and slot/booking business rules for the dispatcher view. */
 export const dispatcherDashboardService = {
-  async fetchBookings(): Promise<Booking[]> {
-    const response = await bookingApi.getAll();
+  async fetchBookings(signal?: AbortSignal): Promise<Booking[]> {
+    const response = await bookingApi.getAll(signal);
     return response.data || [];
   },
 
@@ -315,25 +291,22 @@ export const dispatcherDashboardService = {
    * Loads warehouses and bookings independently so one failed request does not
    * hide the other. Warehouses are reconstructed from bookings when necessary.
    */
-  async loadDashboardData(): Promise<DispatcherDashboardData> {
+  async loadDashboardData(signal?: AbortSignal): Promise<DispatcherDashboardData> {
     const [warehousesResult, bookingsResult] = await Promise.allSettled([
-      warehouseApi.getAll(),
-      bookingApi.getAll(),
+      warehouseApi.getAll(signal),
+      bookingApi.getAll(signal),
     ]);
 
     let bookings: Booking[] = [];
     let errorMessage: string | null = null;
 
-    if (bookingsResult.status === "fulfilled") {
+    if (bookingsResult.status === 'fulfilled') {
       bookings = bookingsResult.value?.data || [];
     } else {
-      errorMessage = getApiErrorMessage(
-        bookingsResult.reason,
-        "Failed to load bookings."
-      );
+      errorMessage = getApiErrorMessage(bookingsResult.reason, 'Failed to load bookings.');
     }
 
-    if (warehousesResult.status === "fulfilled") {
+    if (warehousesResult.status === 'fulfilled') {
       return {
         warehouses: warehousesResult.value?.data || [],
         bookings,
@@ -341,40 +314,44 @@ export const dispatcherDashboardService = {
       };
     }
 
+    const warehouseError = getApiErrorMessage(
+      warehousesResult.reason,
+      'Failed to load warehouses.',
+    );
     const fallbackWarehouses = extractFallbackWarehouses(bookings);
     if (fallbackWarehouses.length > 0) {
-      return { warehouses: fallbackWarehouses, bookings, errorMessage };
+      return {
+        warehouses: fallbackWarehouses,
+        bookings,
+        errorMessage:
+          errorMessage || `${warehouseError} Showing warehouse details from bookings instead.`,
+      };
     }
 
     return {
       warehouses: [],
       bookings,
-      errorMessage: getApiErrorMessage(
-        warehousesResult.reason,
-        errorMessage || "Failed to load warehouses."
-      ),
+      errorMessage: errorMessage || warehouseError,
     };
   },
 
   async searchAvailableSlots(
     warehouseId: number,
     targetDate: string,
-    dockId?: number
+    dockId?: number,
+    signal?: AbortSignal,
   ): Promise<AvailableDockSlots[]> {
-    const response = await warehouseApi.getAvailableSlots(
-      warehouseId,
-      targetDate,
-      dockId
-    );
+    const response = await warehouseApi.getAvailableSlots(warehouseId, targetDate, dockId, signal);
 
     return normalizeSlotResponse(response.data, dockId);
   },
 
   async fetchRescheduleSlots(
     warehouseId: number,
-    date: string
+    date: string,
+    signal?: AbortSignal,
   ): Promise<AvailableDockSlots[]> {
-    const response = await warehouseApi.getAvailableSlots(warehouseId, date);
+    const response = await warehouseApi.getAvailableSlots(warehouseId, date, undefined, signal);
     return normalizeSlotResponse(response.data);
   },
 
@@ -386,7 +363,7 @@ export const dispatcherDashboardService = {
   async rescheduleBooking(
     bookingId: number,
     slot: RescheduleSlot,
-    reason?: string
+    reason?: string,
   ): Promise<Booking> {
     const response = await bookingApi.reschedule(bookingId, {
       slotStartTime: slot.slotStartTime,

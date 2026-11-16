@@ -4,11 +4,7 @@ import { validatePassword } from '../utils/passwordPolicy';
 /** Business rules and API orchestration for the reset-password page. */
 export const resetPasswordPageService = {
   /** Returns a user-facing validation message, or null when the input is valid. */
-  validateResetInput(
-    token: string,
-    newPassword: string,
-    confirmPassword: string
-  ): string | null {
+  validateResetInput(token: string, newPassword: string, confirmPassword: string): string | null {
     if (!token.trim()) {
       return 'Missing password reset token. Please use the link provided in your email or request a new one.';
     }

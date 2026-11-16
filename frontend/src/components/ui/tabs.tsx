@@ -23,7 +23,7 @@ export const Tabs: React.FC<TabsProps> = ({
 }) => {
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const tabElements = Array.from(
-      event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+      event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
     );
     const currentIndex = tabElements.indexOf(event.target as HTMLButtonElement);
     if (currentIndex === -1) return;
@@ -60,6 +60,7 @@ export const Tabs: React.FC<TabsProps> = ({
       role="tablist"
       aria-label={ariaLabel}
       aria-orientation="horizontal"
+      tabIndex={-1}
       onKeyDown={handleKeyDown}
     >
       {tabs.map((tab) => {
@@ -78,7 +79,11 @@ export const Tabs: React.FC<TabsProps> = ({
                 : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/50'
             }`}
           >
-            {tab.icon && <span className="w-4 h-4" aria-hidden="true">{tab.icon}</span>}
+            {tab.icon && (
+              <span className="w-4 h-4" aria-hidden="true">
+                {tab.icon}
+              </span>
+            )}
             <span>{tab.label}</span>
           </button>
         );

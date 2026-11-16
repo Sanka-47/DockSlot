@@ -22,16 +22,26 @@ describe('Dock Maintenance Closures & Booking Status Management Tests', () => {
   let carrierOrgId: number;
   let dispatcherToken: string;
 
-  // Time slots in UTC (Asia/Colombo UTC+5:30)
-  const slotDate = '2026-11-15';
-  const slot1Start = '2026-11-15T04:00:00.000Z';
-  const slot1End = '2026-11-15T04:30:00.000Z';
+  // Time slots in UTC (Asia/Colombo UTC+5:30). Kept in the future so the
+  // suite does not start failing as time passes.
+  const slotBase = new Date();
+  slotBase.setUTCDate(slotBase.getUTCDate() + 7);
+  slotBase.setUTCHours(4, 0, 0, 0);
 
-  const slot2Start = '2026-11-15T05:00:00.000Z';
-  const slot2End = '2026-11-15T05:30:00.000Z';
+  const slotDate = slotBase.toISOString().slice(0, 10);
+  const slot1Start = slotBase.toISOString();
+  const slot1End = new Date(slotBase.getTime() + 30 * 60 * 1000).toISOString();
 
-  const closureStart = '2026-11-15T04:45:00.000Z';
-  const closureEnd = '2026-11-15T05:45:00.000Z';
+  const slot2Start = new Date(slotBase.getTime() + 60 * 60 * 1000).toISOString();
+  const slot2End = new Date(slotBase.getTime() + 90 * 60 * 1000).toISOString();
+
+  const closureStart = new Date(slotBase.getTime() + 45 * 60 * 1000).toISOString();
+  const closureEnd = new Date(slotBase.getTime() + 105 * 60 * 1000).toISOString();
+
+  const overlappingClosureStart = new Date(slotBase.getTime() + 15 * 60 * 1000).toISOString();
+  const overlappingClosureEnd = new Date(slotBase.getTime() + 45 * 60 * 1000).toISOString();
+  const laterClosureStart = new Date(slotBase.getTime() + 4 * 60 * 60 * 1000).toISOString();
+  const laterClosureEnd = new Date(slotBase.getTime() + 6 * 60 * 60 * 1000).toISOString();
 
   beforeAll(async () => {
     // 1. Create Warehouse Operator Org A & Warehouse with 2 docks
@@ -234,8 +244,8 @@ describe('Dock Maintenance Closures & Booking Status Management Tests', () => {
       .post(`/api/docks/${dock1Id}/closures`)
       .set('Authorization', `Bearer ${dockManagerAToken}`)
       .send({
-        startTime: '2026-11-15T04:15:00.000Z',
-        endTime: '2026-11-15T04:45:00.000Z',
+        startTime: overlappingClosureStart,
+        endTime: overlappingClosureEnd,
         reason: 'Emergency crane inspection',
       });
 
@@ -250,8 +260,8 @@ describe('Dock Maintenance Closures & Booking Status Management Tests', () => {
       .post(`/api/docks/${dock1Id}/closures`)
       .set('Authorization', `Bearer ${dockManagerAToken}`)
       .send({
-        startTime: '2026-11-15T08:00:00.000Z',
-        endTime: '2026-11-15T10:00:00.000Z',
+        startTime: laterClosureStart,
+        endTime: laterClosureEnd,
         reason: 'Afternoon lift maintenance',
       });
 

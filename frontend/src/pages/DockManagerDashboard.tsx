@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Warehouse as WarehouseIcon,
   Truck,
@@ -35,12 +35,13 @@ import {
   hasBookingConflict as detectBookingConflict,
   validateClosureInput,
 } from '../services/dockManagerDashboard.service';
-import { getApiErrorMessage } from '../services/errors';
+import { getApiErrorMessage, isRequestCanceled } from '../services/errors';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import { BookingAuditLogModal } from '../components/BookingAuditLogModal';
 import type { Booking, BookingStatus } from '../types/booking.types';
 import type { Warehouse, DockClosure } from '../types/warehouse.types';
-import { formatDateTime } from '../utils/formatters';
+import { formatDateKey, formatDateTime, localDateTimeToUtc } from '../utils/formatters';
+import { useNow } from '../hooks/useNow';
 
 export const DockManagerDashboard: React.FC = () => {
   // State for Bookings & Warehouses
@@ -81,33 +82,41 @@ export const DockManagerDashboard: React.FC = () => {
     closeOnEscape: !isSubmittingClosure,
   });
 
+  const now = useNow();
+
   // Fetch initial data
-  const fetchData = async () => {
+  const fetchData = useCallback(async (signal?: AbortSignal) => {
     setErrorMessage(null);
     try {
       setIsLoadingBookings(true);
       setIsLoadingWarehouses(true);
 
-      const data = await dockManagerDashboardService.loadDashboardData();
+      const data = await dockManagerDashboardService.loadDashboardData(signal);
+      if (signal?.aborted) return;
       setBookings(data.bookings);
       setWarehouses(data.warehouses);
       setClosures(data.closures);
+      if (data.warningMessage) {
+        setErrorMessage(data.warningMessage);
+      }
     } catch (err: unknown) {
+      if (signal?.aborted || isRequestCanceled(err)) return;
       setErrorMessage(
-        getApiErrorMessage(
-          err,
-          'Failed to load dock manager dashboard data. Please try again.'
-        )
+        getApiErrorMessage(err, 'Failed to load dock manager dashboard data. Please try again.'),
       );
     } finally {
-      setIsLoadingBookings(false);
-      setIsLoadingWarehouses(false);
+      if (!signal?.aborted) {
+        setIsLoadingBookings(false);
+        setIsLoadingWarehouses(false);
+      }
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    const controller = new AbortController();
+    fetchData(controller.signal);
+    return () => controller.abort();
+  }, [fetchData]);
 
   // Clear success banner after 5 seconds
   useEffect(() => {
@@ -119,6 +128,13 @@ export const DockManagerDashboard: React.FC = () => {
 
   // Aggregate all docks from warehouses
   const allDocks = useMemo(() => aggregateDocks(warehouses), [warehouses]);
+
+  const closureTimezone = useMemo(() => {
+    return (
+      allDocks.find((dock) => dock.id === Number(selectedDockForClosure))?.warehouseTimezone ||
+      'UTC'
+    );
+  }, [allDocks, selectedDockForClosure]);
 
   // Filtered Bookings
   const filteredBookings = useMemo(() => {
@@ -132,7 +148,7 @@ export const DockManagerDashboard: React.FC = () => {
   // Handle Truck Status Update (Arrived / No-Show / Completed)
   const handleUpdateStatus = async (
     bookingId: number,
-    newStatus: 'ARRIVED' | 'NO_SHOW' | 'COMPLETED'
+    newStatus: 'ARRIVED' | 'NO_SHOW' | 'COMPLETED',
   ) => {
     setBookingErrorMessage(null);
 
@@ -140,7 +156,7 @@ export const DockManagerDashboard: React.FC = () => {
     const targetBooking = bookings.find((b) => b.id === bookingId);
     if (!canUpdateBookingStatus(targetBooking)) {
       setBookingErrorMessage(
-        `Cannot update status for booking #${bookingId} before its scheduled slot start time has passed.`
+        `Cannot update status for booking #${bookingId} before its scheduled slot start time has passed.`,
       );
       return;
     }
@@ -149,12 +165,12 @@ export const DockManagerDashboard: React.FC = () => {
     try {
       const updatedBooking = await dockManagerDashboardService.updateBookingStatus(
         bookingId,
-        newStatus
+        newStatus,
       );
 
       // Update local state smoothly
       setBookings((prev) =>
-        prev.map((b) => (b.id === bookingId ? { ...b, status: updatedBooking.status } : b))
+        prev.map((b) => (b.id === bookingId ? { ...b, status: updatedBooking.status } : b)),
       );
 
       const statusLabels: Record<string, string> = {
@@ -164,14 +180,11 @@ export const DockManagerDashboard: React.FC = () => {
       };
 
       setSuccessBanner(
-        `Booking #${bookingId} successfully ${statusLabels[newStatus] || newStatus}.`
+        `Booking #${bookingId} successfully ${statusLabels[newStatus] || newStatus}.`,
       );
     } catch (err: unknown) {
       setBookingErrorMessage(
-        getApiErrorMessage(
-          err,
-          `Failed to update status for booking #${bookingId}.`
-        )
+        getApiErrorMessage(err, `Failed to update status for booking #${bookingId}.`),
       );
     } finally {
       setStatusActionLoadingId(null);
@@ -186,32 +199,45 @@ export const DockManagerDashboard: React.FC = () => {
 
   // Map of date (YYYY-MM-DD) -> active bookings count on the selected dock bay
   const bookedDatesForSelectedDock = useMemo(() => {
-    return getBookedDatesForDock(bookings, Number(selectedDockForClosure));
-  }, [bookings, selectedDockForClosure]);
+    return getBookedDatesForDock(bookings, Number(selectedDockForClosure), closureTimezone);
+  }, [bookings, selectedDockForClosure, closureTimezone]);
 
-  // Generate next 14 calendar days starting from today for quick selection
-  const upcomingDays = useMemo(() => getUpcomingDays(14), []);
+  // Generate next 14 warehouse-local calendar days for quick selection
+  const upcomingDays = useMemo(() => getUpcomingDays(14, closureTimezone), [closureTimezone]);
 
   const isSelectedDateBooked = useMemo(() => {
     if (!selectedClosureDate) return false;
     return bookedDatesForSelectedDock.has(selectedClosureDate);
   }, [selectedClosureDate, bookedDatesForSelectedDock]);
 
+  const closureStartUtc = useMemo(
+    () => localDateTimeToUtc(closureStartTime, closureTimezone),
+    [closureStartTime, closureTimezone],
+  );
+  const closureEndUtc = useMemo(
+    () => localDateTimeToUtc(closureEndTime, closureTimezone),
+    [closureEndTime, closureTimezone],
+  );
+
   const hasBookingConflict = useMemo(() => {
     if (isSelectedDateBooked) return true;
-    if (!selectedDockForClosure) return false;
+    if (!selectedDockForClosure || !closureStartUtc || !closureEndUtc) {
+      return false;
+    }
 
     return detectBookingConflict(
-      closureStartTime,
-      closureEndTime,
-      bookedDatesForSelectedDock
+      closureStartUtc,
+      closureEndUtc,
+      bookedDatesForSelectedDock,
+      closureTimezone,
     );
   }, [
     isSelectedDateBooked,
-    closureStartTime,
-    closureEndTime,
+    closureStartUtc,
+    closureEndUtc,
     selectedDockForClosure,
     bookedDatesForSelectedDock,
+    closureTimezone,
   ]);
 
   // Open Closure Modal (optionally preselecting a dock)
@@ -220,9 +246,11 @@ export const DockManagerDashboard: React.FC = () => {
     const targetDockId = dockId !== undefined ? dockId : allDocks[0]?.id || '';
     setSelectedDockForClosure(targetDockId);
 
+    const targetDock = allDocks.find((dock) => dock.id === Number(targetDockId));
     const suggestion = findFirstAvailableClosureDate(
       bookings,
-      Number(targetDockId)
+      Number(targetDockId),
+      targetDock?.warehouseTimezone || 'UTC',
     );
 
     setSelectedClosureDate(suggestion.date);
@@ -261,29 +289,33 @@ export const DockManagerDashboard: React.FC = () => {
     setClosureError(null);
 
     const trimmedReason = closureReason.trim();
+    if (!closureStartUtc || !closureEndUtc) {
+      setClosureError(
+        'Please enter a valid closure start and end time for the warehouse time zone.',
+      );
+      return;
+    }
+
     const validationError = validateClosureInput({
       dockId: selectedDockForClosure,
       hasBookingConflict,
       reason: trimmedReason,
-      startTime: closureStartTime,
-      endTime: closureEndTime,
+      startTime: closureStartUtc,
+      endTime: closureEndUtc,
     });
     if (validationError) {
       setClosureError(validationError);
       return;
     }
 
-    const startDate = new Date(closureStartTime);
-    const endDate = new Date(closureEndTime);
-
     try {
       setIsSubmittingClosure(true);
 
       const newClosure = await dockManagerDashboardService.createDockClosure(
         Number(selectedDockForClosure),
-        startDate.toISOString(),
-        endDate.toISOString(),
-        trimmedReason
+        closureStartUtc,
+        closureEndUtc,
+        trimmedReason,
       );
 
       const targetDock = allDocks.find((d) => d.id === Number(selectedDockForClosure));
@@ -292,7 +324,7 @@ export const DockManagerDashboard: React.FC = () => {
       setSuccessBanner(
         `Maintenance closure scheduled successfully for Dock ${
           targetDock?.name || selectedDockForClosure
-        }.`
+        }.`,
       );
       setIsClosureModalOpen(false);
 
@@ -302,8 +334,8 @@ export const DockManagerDashboard: React.FC = () => {
       setClosureError(
         getApiErrorMessage(
           err,
-          'Failed to schedule dock closure. Please check for scheduling conflicts.'
-        )
+          'Failed to schedule dock closure. Please check for scheduling conflicts.',
+        ),
       );
     } finally {
       setIsSubmittingClosure(false);
@@ -371,7 +403,8 @@ export const DockManagerDashboard: React.FC = () => {
             </h1>
           </div>
           <p className="text-xs sm:text-sm text-gray-500 mt-1">
-            Real-time yard check-ins, dock availability tracking, and maintenance closure management.
+            Real-time yard check-ins, dock availability tracking, and maintenance closure
+            management.
           </p>
         </div>
 
@@ -379,7 +412,7 @@ export const DockManagerDashboard: React.FC = () => {
           <Button
             variant="outline"
             size="sm"
-            onClick={fetchData}
+            onClick={() => void fetchData()}
             isLoading={isLoadingBookings || isLoadingWarehouses}
             className="flex items-center space-x-1.5"
           >
@@ -466,12 +499,11 @@ export const DockManagerDashboard: React.FC = () => {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5">
               {allDocks.map((dock) => {
-                const now = new Date();
                 const activeClosureNow = closures.find(
                   (c) =>
                     c.dockId === dock.id &&
-                    new Date(c.startTime) <= now &&
-                    new Date(c.endTime) >= now
+                    new Date(c.startTime).getTime() <= now &&
+                    new Date(c.endTime).getTime() >= now,
                 );
                 const hasActiveClosureNow = !!activeClosureNow;
                 const isUnderMaintenance =
@@ -486,7 +518,7 @@ export const DockManagerDashboard: React.FC = () => {
                     className={`p-3.5 rounded-lg border transition-all ${
                       isUnderMaintenance
                         ? 'border-amber-300 bg-amber-50/50'
-                        : 'border-gray-200 bg-white hover:border-gray-300 shadow-xs'
+                        : 'border-gray-200 bg-white hover:border-gray-300 shadow-sm'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-2">
@@ -521,9 +553,7 @@ export const DockManagerDashboard: React.FC = () => {
                     {hasUpcomingClosures && (
                       <div className="text-[11px] text-amber-900 bg-amber-100/70 p-1.5 rounded mb-2 flex items-start space-x-1">
                         <ShieldAlert className="w-3.5 h-3.5 text-amber-700 flex-shrink-0 mt-0.5" />
-                        <span className="truncate">
-                          {dockClosures.length} scheduled closure(s)
-                        </span>
+                        <span className="truncate">{dockClosures.length} scheduled closure(s)</span>
                       </div>
                     )}
 
@@ -581,8 +611,7 @@ export const DockManagerDashboard: React.FC = () => {
             {/* Total Count Pill */}
             <div className="flex items-center space-x-2">
               <span className="text-xs text-gray-500 font-medium">
-                Showing{' '}
-                <strong className="text-gray-900">{filteredBookings.length}</strong> of{' '}
+                Showing <strong className="text-gray-900">{filteredBookings.length}</strong> of{' '}
                 <strong className="text-gray-900">{bookings.length}</strong> bookings
               </span>
             </div>
@@ -679,15 +708,33 @@ export const DockManagerDashboard: React.FC = () => {
                 <caption className="sr-only">Warehouse dock bookings</caption>
                 <thead>
                   <tr className="bg-gray-50/80 border-b border-gray-200 text-gray-600 font-semibold uppercase tracking-wider">
-                    <th scope="col" className="py-3 px-4">Booking ID</th>
-                    <th scope="col" className="py-3 px-4">Carrier Name</th>
-                    <th scope="col" className="py-3 px-4">Dock Bay</th>
-                    <th scope="col" className="py-3 px-4">Scheduled Window</th>
-                    <th scope="col" className="py-3 px-4">Truck Plate</th>
-                    <th scope="col" className="py-3 px-4">Driver Details</th>
-                    <th scope="col" className="py-3 px-4">Cargo Note</th>
-                    <th scope="col" className="py-3 px-4">Current Status</th>
-                    <th scope="col" className="py-3 px-4 text-right">Actions</th>
+                    <th scope="col" className="py-3 px-4">
+                      Booking ID
+                    </th>
+                    <th scope="col" className="py-3 px-4">
+                      Carrier Name
+                    </th>
+                    <th scope="col" className="py-3 px-4">
+                      Dock Bay
+                    </th>
+                    <th scope="col" className="py-3 px-4">
+                      Scheduled Window
+                    </th>
+                    <th scope="col" className="py-3 px-4">
+                      Truck Plate
+                    </th>
+                    <th scope="col" className="py-3 px-4">
+                      Driver Details
+                    </th>
+                    <th scope="col" className="py-3 px-4">
+                      Cargo Note
+                    </th>
+                    <th scope="col" className="py-3 px-4">
+                      Current Status
+                    </th>
+                    <th scope="col" className="py-3 px-4 text-right">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -696,14 +743,11 @@ export const DockManagerDashboard: React.FC = () => {
                     const isBooked = booking.status === 'BOOKED';
                     const isArrived = booking.status === 'ARRIVED';
                     const isSlotStarted = Boolean(
-                      booking.slotStartTime && new Date() >= new Date(booking.slotStartTime)
+                      booking.slotStartTime && now >= new Date(booking.slotStartTime).getTime(),
                     );
 
                     return (
-                      <tr
-                        key={booking.id}
-                        className="hover:bg-gray-50/70 transition-colors"
-                      >
+                      <tr key={booking.id} className="hover:bg-gray-50/70 transition-colors">
                         {/* 1. Booking ID */}
                         <td className="py-3.5 px-4 font-mono font-bold text-gray-900 whitespace-nowrap">
                           #{booking.id}
@@ -734,12 +778,25 @@ export const DockManagerDashboard: React.FC = () => {
                           <div className="flex items-center space-x-1 text-gray-800 font-medium">
                             <Calendar className="w-3.5 h-3.5 text-gray-400" />
                             <span>
-                              {formatDateTime(booking.slotStartTime, 'MMM dd, yyyy')}
+                              {formatDateTime(
+                                booking.slotStartTime,
+                                'MMM dd, yyyy',
+                                booking.dock?.warehouse?.timezone,
+                              )}
                             </span>
                           </div>
                           <div className="text-[11px] text-gray-500 font-mono">
-                            {formatDateTime(booking.slotStartTime, 'HH:mm')} –{' '}
-                            {formatDateTime(booking.slotEndTime, 'HH:mm')}
+                            {formatDateTime(
+                              booking.slotStartTime,
+                              'HH:mm',
+                              booking.dock?.warehouse?.timezone,
+                            )}{' '}
+                            –{' '}
+                            {formatDateTime(
+                              booking.slotEndTime,
+                              'HH:mm',
+                              booking.dock?.warehouse?.timezone,
+                            )}
                           </div>
                         </td>
 
@@ -893,7 +950,10 @@ export const DockManagerDashboard: React.FC = () => {
                   <Wrench className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 id="closure-dialog-title" className="font-bold text-base text-gray-900 leading-tight">
+                  <h3
+                    id="closure-dialog-title"
+                    className="font-bold text-base text-gray-900 leading-tight"
+                  >
                     Schedule Dock Maintenance Closure
                   </h3>
                   <p className="text-[11px] text-gray-500">
@@ -950,7 +1010,8 @@ export const DockManagerDashboard: React.FC = () => {
                     const isMaint = (dock.effectiveStatus || dock.status) === 'MAINTENANCE';
                     return (
                       <option key={dock.id} value={dock.id}>
-                        {dock.name} ({dock.warehouseName}) - Status: {isMaint ? 'Maintenance' : 'Active'}
+                        {dock.name} ({dock.warehouseName}) - Status:{' '}
+                        {isMaint ? 'Maintenance' : 'Active'}
                       </option>
                     );
                   })}
@@ -995,8 +1056,8 @@ export const DockManagerDashboard: React.FC = () => {
                           isSelected
                             ? 'bg-[#2F4F4F] text-white font-bold ring-2 ring-[#2F4F4F] shadow-sm'
                             : isBooked
-                            ? 'bg-rose-50 text-rose-400 border border-rose-200 cursor-not-allowed opacity-70'
-                            : 'bg-white text-gray-800 border border-gray-200 hover:border-[#2F4F4F] hover:bg-emerald-50/50'
+                              ? 'bg-rose-50 text-rose-400 border border-rose-200 cursor-not-allowed opacity-70'
+                              : 'bg-white text-gray-800 border border-gray-200 hover:border-[#2F4F4F] hover:bg-emerald-50/50'
                         }`}
                         title={
                           isBooked
@@ -1004,14 +1065,18 @@ export const DockManagerDashboard: React.FC = () => {
                             : `Select ${d.dateStr}`
                         }
                       >
-                        <span className="text-[10px] uppercase font-semibold">{d.dayOfWeekShort}</span>
+                        <span className="text-[10px] uppercase font-semibold">
+                          {d.dayOfWeekShort}
+                        </span>
                         <span className="text-xs font-bold my-0.5">{d.dayOfMonth}</span>
                         {isBooked ? (
                           <span className="text-[9px] font-semibold text-rose-600 bg-rose-100/90 px-1 rounded truncate max-w-full">
                             Booked
                           </span>
                         ) : isSelected ? (
-                          <span className="text-[9px] font-semibold text-emerald-200">Selected</span>
+                          <span className="text-[9px] font-semibold text-emerald-200">
+                            Selected
+                          </span>
                         ) : (
                           <span className="text-[9px] text-emerald-600 font-medium">Free</span>
                         )}
@@ -1026,7 +1091,7 @@ export const DockManagerDashboard: React.FC = () => {
                   <input
                     type="date"
                     aria-label="Choose a custom maintenance date"
-                    min={new Date().toISOString().slice(0, 10)}
+                    min={formatDateKey(new Date(now), closureTimezone)}
                     value={selectedClosureDate}
                     onChange={(e) => handleSelectClosureDate(e.target.value)}
                     disabled={isSubmittingClosure}
@@ -1043,11 +1108,17 @@ export const DockManagerDashboard: React.FC = () => {
                     role="alert"
                     className="mt-2 p-2.5 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-800 flex items-start space-x-2"
                   >
-                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" aria-hidden="true" />
+                    <AlertCircle
+                      className="w-4 h-4 text-rose-600 shrink-0 mt-0.5"
+                      aria-hidden="true"
+                    />
                     <span>
                       <strong>Day Blocked:</strong> Dock bay has{' '}
-                      <strong>{bookedDatesForSelectedDock.get(selectedClosureDate)} active booking(s)</strong> scheduled on{' '}
-                      {selectedClosureDate}. Maintenance cannot be scheduled on this day.
+                      <strong>
+                        {bookedDatesForSelectedDock.get(selectedClosureDate)} active booking(s)
+                      </strong>{' '}
+                      scheduled on {selectedClosureDate}. Maintenance cannot be scheduled on this
+                      day.
                     </span>
                   </div>
                 )}

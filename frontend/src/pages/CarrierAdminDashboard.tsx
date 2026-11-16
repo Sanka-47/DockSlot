@@ -13,10 +13,7 @@ import {
   Search,
 } from 'lucide-react';
 import { carrierAdminDashboardService } from '../services/carrierAdminDashboard.service';
-import type {
-  UserRoleFilter,
-  UserStatusFilter,
-} from '../services/carrierAdminDashboard.service';
+import type { UserRoleFilter, UserStatusFilter } from '../services/carrierAdminDashboard.service';
 import { getApiErrorMessage } from '../services/errors';
 import { handleTabListKeyDown } from '../utils/tabKeyboard';
 import { useAuth } from '../hooks/useAuth';
@@ -34,7 +31,7 @@ export const CarrierAdminDashboard: React.FC = () => {
 
   // User Management State
   const [organizationUsers, setOrganizationUsers] = useState<User[]>([]);
-  const [isLoadingUsers, setIsLoadingUsers] = useState<boolean>(false);
+  const [isLoadingUsers, setIsLoadingUsers] = useState<boolean>(true);
   const [deactivatingUserId, setDeactivatingUserId] = useState<number | null>(null);
   const [reactivatingUserId, setReactivatingUserId] = useState<number | null>(null);
 
@@ -66,14 +63,10 @@ export const CarrierAdminDashboard: React.FC = () => {
 
   // Fetch Users belonging to the carrier organization
   const fetchUsers = useCallback(async () => {
-    setIsLoadingUsers(true);
-    setErrorBanner(null);
     try {
       setOrganizationUsers(await carrierAdminDashboardService.fetchUsers());
     } catch (err: unknown) {
-      setErrorBanner(
-        getApiErrorMessage(err, 'Failed to load organization team members.')
-      );
+      setErrorBanner(getApiErrorMessage(err, 'Failed to load organization team members.'));
     } finally {
       setIsLoadingUsers(false);
     }
@@ -95,6 +88,7 @@ export const CarrierAdminDashboard: React.FC = () => {
       triggerSuccess(result.message);
       setInviteEmail('');
       setIsInviteModalOpen(false);
+      setIsLoadingUsers(true);
       await fetchUsers();
     } catch (err: unknown) {
       setErrorBanner(getApiErrorMessage(err, 'Failed to send invitation.'));
@@ -123,6 +117,7 @@ export const CarrierAdminDashboard: React.FC = () => {
       // A toast tracks the whole lifecycle: loading -> success/error.
       await toast.promise(
         carrierAdminDashboardService.deactivateUser(targetUser.id).then(async (res) => {
+          setIsLoadingUsers(true);
           await fetchUsers();
           return res;
         }),
@@ -130,7 +125,7 @@ export const CarrierAdminDashboard: React.FC = () => {
           loading: `Deactivating ${targetUser.email}...`,
           success: (res) => res?.message || `User ${targetUser.email} has been deactivated.`,
           error: (err: unknown) => getApiErrorMessage(err, 'Failed to deactivate user.'),
-        }
+        },
       );
     } catch {
       // The error toast already surfaced the failure; swallow to avoid an
@@ -159,6 +154,7 @@ export const CarrierAdminDashboard: React.FC = () => {
     try {
       await toast.promise(
         carrierAdminDashboardService.reactivateUser(targetUser.id).then(async (res) => {
+          setIsLoadingUsers(true);
           await fetchUsers();
           return res;
         }),
@@ -166,7 +162,7 @@ export const CarrierAdminDashboard: React.FC = () => {
           loading: `Reactivating ${targetUser.email}...`,
           success: (res) => res?.message || `User ${targetUser.email} has been reactivated.`,
           error: (err: unknown) => getApiErrorMessage(err, 'Failed to reactivate user.'),
-        }
+        },
       );
     } catch {
       // The error toast already surfaced the failure; swallow to avoid an
@@ -204,7 +200,8 @@ export const CarrierAdminDashboard: React.FC = () => {
                 Carrier Admin Management
               </h1>
               <p className="text-xs text-gray-500">
-                Manage organization dispatchers, fleet personnel access, and live warehouse dock scheduling.
+                Manage organization dispatchers, fleet personnel access, and live warehouse dock
+                scheduling.
               </p>
             </div>
           </div>
@@ -221,7 +218,11 @@ export const CarrierAdminDashboard: React.FC = () => {
           </button>
 
           <button
-            onClick={fetchUsers}
+            onClick={() => {
+              setErrorBanner(null);
+              setIsLoadingUsers(true);
+              void fetchUsers();
+            }}
             disabled={isLoadingUsers}
             className="flex items-center space-x-1.5 px-3 py-2 text-xs font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-300 rounded-lg transition-colors disabled:opacity-50"
             title="Refresh organization team list"
@@ -278,6 +279,7 @@ export const CarrierAdminDashboard: React.FC = () => {
       <div
         role="tablist"
         aria-label="Carrier administration sections"
+        tabIndex={-1}
         onKeyDown={handleTabListKeyDown}
         className="flex border-b border-gray-200 bg-white rounded-t-xl px-4 pt-2 shadow-sm space-x-1 overflow-x-auto"
       >
@@ -297,9 +299,7 @@ export const CarrierAdminDashboard: React.FC = () => {
           <span>User Management</span>
           <span
             className={`ml-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-              activeTab === 'users'
-                ? 'bg-[#2F4F4F]/10 text-[#2F4F4F]'
-                : 'bg-gray-100 text-gray-600'
+              activeTab === 'users' ? 'bg-[#2F4F4F]/10 text-[#2F4F4F]' : 'bg-gray-100 text-gray-600'
             }`}
           >
             {stats.total}
@@ -332,9 +332,7 @@ export const CarrierAdminDashboard: React.FC = () => {
               <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block">
                 Total Team Members
               </span>
-              <span className="text-2xl font-bold text-gray-900 mt-1 block">
-                {stats.total}
-              </span>
+              <span className="text-2xl font-bold text-gray-900 mt-1 block">{stats.total}</span>
             </div>
 
             <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
@@ -350,9 +348,7 @@ export const CarrierAdminDashboard: React.FC = () => {
               <span className="text-[11px] font-semibold text-blue-700 uppercase tracking-wider block">
                 Carrier Admins
               </span>
-              <span className="text-2xl font-bold text-blue-800 mt-1 block">
-                {stats.admins}
-              </span>
+              <span className="text-2xl font-bold text-blue-800 mt-1 block">{stats.admins}</span>
             </div>
 
             <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
@@ -373,7 +369,8 @@ export const CarrierAdminDashboard: React.FC = () => {
                 <span>Organization Members & Access Control</span>
               </h3>
               <p className="text-xs text-gray-500 mt-0.5">
-                Invite new dispatchers, monitor active accounts, and revoke credentials instantly using Redis token invalidation.
+                Invite new dispatchers, monitor active accounts, and revoke credentials instantly
+                using Redis token invalidation.
               </p>
             </div>
 
@@ -422,8 +419,15 @@ export const CarrierAdminDashboard: React.FC = () => {
 
           {/* User List */}
           {isLoadingUsers ? (
-            <div role="status" aria-live="polite" className="py-16 text-center text-xs text-gray-500">
-              <RefreshCw className="w-6 h-6 animate-spin mx-auto text-gray-400 mb-2" aria-hidden="true" />
+            <div
+              role="status"
+              aria-live="polite"
+              className="py-16 text-center text-xs text-gray-500"
+            >
+              <RefreshCw
+                className="w-6 h-6 animate-spin mx-auto text-gray-400 mb-2"
+                aria-hidden="true"
+              />
               Loading carrier organization members...
             </div>
           ) : filteredUsers.length === 0 ? (
@@ -557,7 +561,9 @@ export const CarrierAdminDashboard: React.FC = () => {
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between py-1 border-b border-gray-200">
                   <span className="text-gray-500">Company Name:</span>
-                  <strong className="text-gray-900">{user?.organization?.name || 'Carrier Fleet'}</strong>
+                  <strong className="text-gray-900">
+                    {user?.organization?.name || 'Carrier Fleet'}
+                  </strong>
                 </div>
 
                 <div className="flex justify-between py-1 border-b border-gray-200">
@@ -578,8 +584,6 @@ export const CarrierAdminDashboard: React.FC = () => {
                 </div>
               </div>
             </div>
-
-           
           </div>
         </div>
       )}
@@ -596,7 +600,10 @@ export const CarrierAdminDashboard: React.FC = () => {
         >
           <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden animate-in zoom-in-95 duration-150">
             <div className="px-6 py-4 bg-[#2F4F4F] text-white flex items-center justify-between">
-              <h3 id="carrier-invite-title" className="text-sm font-bold flex items-center space-x-2">
+              <h3
+                id="carrier-invite-title"
+                className="text-sm font-bold flex items-center space-x-2"
+              >
                 <UserPlus className="w-4 h-4 text-emerald-400" aria-hidden="true" />
                 <span>Invite Team Member</span>
               </h3>
@@ -612,7 +619,10 @@ export const CarrierAdminDashboard: React.FC = () => {
 
             <form onSubmit={handleInviteUser} className="p-6 space-y-4">
               <div>
-                <label htmlFor="carrier-invite-email" className="block text-xs font-semibold text-gray-700 mb-1">
+                <label
+                  htmlFor="carrier-invite-email"
+                  className="block text-xs font-semibold text-gray-700 mb-1"
+                >
                   Team Member Email Address
                 </label>
                 <input

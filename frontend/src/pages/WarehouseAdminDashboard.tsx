@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Warehouse as WarehouseIcon,
   Layers,
@@ -28,10 +28,7 @@ import {
   adjustScheduleTime,
   getScheduleSlotEstimate,
 } from '../services/warehouseAdminDashboard.service';
-import type {
-  ScheduleDay,
-  PolicyForm,
-} from '../services/warehouseAdminDashboard.service';
+import type { ScheduleDay, PolicyForm } from '../services/warehouseAdminDashboard.service';
 import { getApiErrorMessage } from '../services/errors';
 import type {
   Warehouse,
@@ -54,7 +51,9 @@ export const WarehouseAdminDashboard: React.FC = () => {
   const { confirm, dialog: confirmDialog } = useConfirm();
 
   // Active Tab: 'warehouses' | 'schedule' | 'policies' | 'users'
-  const [activeTab, setActiveTab] = useState<'warehouses' | 'schedule' | 'policies' | 'users'>('warehouses');
+  const [activeTab, setActiveTab] = useState<'warehouses' | 'schedule' | 'policies' | 'users'>(
+    'warehouses',
+  );
 
   // Warehouses & Docks state
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -141,6 +140,7 @@ export const WarehouseAdminDashboard: React.FC = () => {
   });
 
   const selectedWarehouse = warehouses.find((w) => w.id === selectedWarehouseId);
+  const initializedWarehouseIdRef = useRef<number | null>(null);
 
   // Helper to show temporary success banner
   const triggerSuccess = (msg: string) => {
@@ -156,7 +156,9 @@ export const WarehouseAdminDashboard: React.FC = () => {
       const list = await warehouseAdminDashboardService.fetchWarehouses();
       setWarehouses(list);
       if (list.length > 0) {
-        setSelectedWarehouseId((prev) => (prev && list.some((w) => w.id === prev) ? prev : list[0].id));
+        setSelectedWarehouseId((prev) =>
+          prev && list.some((w) => w.id === prev) ? prev : list[0].id,
+        );
       } else {
         setSelectedWarehouseId(null);
       }
@@ -173,12 +175,7 @@ export const WarehouseAdminDashboard: React.FC = () => {
     try {
       setDocks(await warehouseAdminDashboardService.fetchDocks(warehouseId));
     } catch (err: unknown) {
-      setErrorBanner(
-        getApiErrorMessage(
-          err,
-          'Failed to load docks for the selected warehouse.'
-        )
-      );
+      setErrorBanner(getApiErrorMessage(err, 'Failed to load docks for the selected warehouse.'));
     } finally {
       setIsLoadingDocks(false);
     }
@@ -189,6 +186,10 @@ export const WarehouseAdminDashboard: React.FC = () => {
     setIsLoadingPolicy(true);
     try {
       setPolicyForm(await warehouseAdminDashboardService.fetchPolicy(warehouseId));
+    } catch (err: unknown) {
+      setErrorBanner(
+        getApiErrorMessage(err, 'Failed to load the booking policy for the selected warehouse.'),
+      );
     } finally {
       setIsLoadingPolicy(false);
     }
@@ -205,10 +206,7 @@ export const WarehouseAdminDashboard: React.FC = () => {
       }
     } catch (err: unknown) {
       setErrorBanner(
-        getApiErrorMessage(
-          err,
-          'Failed to load the weekly operational schedule template.'
-        )
+        getApiErrorMessage(err, 'Failed to load the weekly operational schedule template.'),
       );
     } finally {
       setIsLoadingSchedule(false);
@@ -221,9 +219,7 @@ export const WarehouseAdminDashboard: React.FC = () => {
     try {
       setOrganizationUsers(await warehouseAdminDashboardService.fetchUsers());
     } catch (err: unknown) {
-      setErrorBanner(
-        getApiErrorMessage(err, 'Failed to load organization members.')
-      );
+      setErrorBanner(getApiErrorMessage(err, 'Failed to load organization members.'));
     } finally {
       setIsLoadingUsers(false);
     }
@@ -234,26 +230,40 @@ export const WarehouseAdminDashboard: React.FC = () => {
     fetchUsers();
   }, [fetchWarehouses, fetchUsers]);
 
+  // Fetch tab data only when the selected facility changes. Keeping warehouse
+  // metadata out of this dependency list prevents save operations from causing a
+  // refetch storm.
   useEffect(() => {
     if (selectedWarehouseId) {
       fetchDocks(selectedWarehouseId);
       fetchPolicy(selectedWarehouseId);
       fetchScheduleHours(selectedWarehouseId);
-
-      const currentWh = warehouses.find((w) => w.id === selectedWarehouseId);
-      if (currentWh) {
-        setEditingWarehouseForm({
-          name: currentWh.name,
-          address: currentWh.address,
-          timezone: currentWh.timezone,
-          slotLengthMinutes: currentWh.slotLengthMinutes,
-        });
-        setScheduleSlotLength(currentWh.slotLengthMinutes || 60);
-      }
     } else {
       setDocks([]);
     }
-  }, [selectedWarehouseId, warehouses, fetchDocks, fetchPolicy, fetchScheduleHours]);
+  }, [selectedWarehouseId, fetchDocks, fetchPolicy, fetchScheduleHours]);
+
+  // Initialize editable forms once per selected facility. Later warehouse list
+  // updates must not overwrite values the user is currently editing.
+  useEffect(() => {
+    if (!selectedWarehouseId) {
+      initializedWarehouseIdRef.current = null;
+      return;
+    }
+    if (initializedWarehouseIdRef.current === selectedWarehouseId) return;
+
+    const currentWh = warehouses.find((w) => w.id === selectedWarehouseId);
+    if (!currentWh) return;
+
+    initializedWarehouseIdRef.current = selectedWarehouseId;
+    setEditingWarehouseForm({
+      name: currentWh.name,
+      address: currentWh.address,
+      timezone: currentWh.timezone,
+      slotLengthMinutes: currentWh.slotLengthMinutes,
+    });
+    setScheduleSlotLength(currentWh.slotLengthMinutes || 60);
+  }, [selectedWarehouseId, warehouses]);
 
   // Tab 1 Handlers: Create & Update Warehouse
   const handleCreateWarehouse = async (e: React.FormEvent) => {
@@ -272,7 +282,7 @@ export const WarehouseAdminDashboard: React.FC = () => {
         timezone: 'Asia/Colombo',
         slotLengthMinutes: 60,
       });
-      await fetchWarehouses();
+      setWarehouses((prev) => [...prev, created]);
       if (created.id) {
         setSelectedWarehouseId(created.id);
       }
@@ -292,10 +302,21 @@ export const WarehouseAdminDashboard: React.FC = () => {
     try {
       const updated = await warehouseAdminDashboardService.updateWarehouse(
         selectedWarehouseId,
-        editingWarehouseForm
+        editingWarehouseForm,
       );
       triggerSuccess(`Warehouse '${updated.name}' details updated successfully.`);
-      await fetchWarehouses();
+      setWarehouses((prev) =>
+        prev.map((warehouse) =>
+          warehouse.id === updated.id ? { ...warehouse, ...updated } : warehouse,
+        ),
+      );
+      setEditingWarehouseForm({
+        name: updated.name,
+        address: updated.address,
+        timezone: updated.timezone,
+        slotLengthMinutes: updated.slotLengthMinutes,
+      });
+      setScheduleSlotLength(updated.slotLengthMinutes || 60);
     } catch (err: unknown) {
       setErrorBanner(getApiErrorMessage(err, 'Failed to update warehouse details.'));
     } finally {
@@ -313,7 +334,7 @@ export const WarehouseAdminDashboard: React.FC = () => {
     try {
       const created = await warehouseAdminDashboardService.createDock(
         selectedWarehouseId,
-        newDockForm
+        newDockForm,
       );
       triggerSuccess(`Loading dock '${created.name}' added to warehouse.`);
       setIsCreateDockModalOpen(false);
@@ -340,7 +361,7 @@ export const WarehouseAdminDashboard: React.FC = () => {
       const updated = await warehouseAdminDashboardService.updateDock(
         editingDock.id,
         { name: editingDockName.trim() },
-        selectedWarehouseId || undefined
+        selectedWarehouseId || undefined,
       );
       triggerSuccess(`Dock renamed to '${updated.name}'.`);
       setEditingDock(null);
@@ -351,8 +372,8 @@ export const WarehouseAdminDashboard: React.FC = () => {
       setErrorBanner(
         getApiErrorMessage(
           err,
-          'Failed to rename dock. Note: Dock name cannot be changed if active bookings with status BOOKED exist.'
-        )
+          'Failed to rename dock. Note: Dock name cannot be changed if active bookings with status BOOKED exist.',
+        ),
       );
     } finally {
       setIsSavingDock(false);
@@ -382,8 +403,17 @@ export const WarehouseAdminDashboard: React.FC = () => {
     try {
       await warehouseAdminDashboardService.updateSlotLength(selectedWarehouseId, newLength);
       setScheduleSlotLength(newLength);
-      triggerSuccess(`Slot interval updated to ${newLength} minutes. Existing bookings retain their times.`);
-      await fetchWarehouses();
+      setEditingWarehouseForm((prev) => ({ ...prev, slotLengthMinutes: newLength }));
+      setWarehouses((prev) =>
+        prev.map((warehouse) =>
+          warehouse.id === selectedWarehouseId
+            ? { ...warehouse, slotLengthMinutes: newLength }
+            : warehouse,
+        ),
+      );
+      triggerSuccess(
+        `Slot interval updated to ${newLength} minutes. Existing bookings retain their times.`,
+      );
     } catch (err: unknown) {
       setErrorBanner(getApiErrorMessage(err, 'Failed to update slot interval.'));
     } finally {
@@ -394,16 +424,14 @@ export const WarehouseAdminDashboard: React.FC = () => {
   const handleAdjustScheduleTime = (
     index: number,
     field: 'openTime' | 'closeTime',
-    direction: 1 | -1
+    direction: 1 | -1,
   ) => {
     const stepMinutes = scheduleSlotLength > 0 ? scheduleSlotLength : 60;
 
     setWeeklySchedule((current) =>
       current.map((item, itemIndex) =>
-        itemIndex === index
-          ? adjustScheduleTime(item, field, direction, stepMinutes)
-          : item
-      )
+        itemIndex === index ? adjustScheduleTime(item, field, direction, stepMinutes) : item,
+      ),
     );
   };
 
@@ -420,21 +448,25 @@ export const WarehouseAdminDashboard: React.FC = () => {
       const result = await warehouseAdminDashboardService.saveSchedule(
         selectedWarehouseId,
         weeklySchedule,
-        scheduleSlotLength
+        scheduleSlotLength,
       );
 
       setWeeklySchedule(result.schedule);
+      setEditingWarehouseForm((prev) => ({ ...prev, slotLengthMinutes: scheduleSlotLength }));
+      setWarehouses((prev) =>
+        prev.map((warehouse) =>
+          warehouse.id === selectedWarehouseId
+            ? { ...warehouse, slotLengthMinutes: scheduleSlotLength }
+            : warehouse,
+        ),
+      );
       setScheduleSavedToast(true);
       setTimeout(() => setScheduleSavedToast(false), 4000);
-      await fetchWarehouses();
     } catch (err: unknown) {
       // Surface the backend's booking-collision message verbatim, e.g.
       // "Cannot update starting/end time: bookings available in related time."
       setErrorBanner(
-        getApiErrorMessage(
-          err,
-          'Failed to update the weekly operational schedule template.'
-        )
+        getApiErrorMessage(err, 'Failed to update the weekly operational schedule template.'),
       );
     } finally {
       setIsSavingSchedule(false);
@@ -451,7 +483,7 @@ export const WarehouseAdminDashboard: React.FC = () => {
     try {
       const savedPolicy = await warehouseAdminDashboardService.savePolicy(
         selectedWarehouseId,
-        policyForm
+        policyForm,
       );
       triggerSuccess(`Booking policy updated for '${selectedWarehouse?.name || 'warehouse'}'.`);
       setPolicyForm(savedPolicy);
@@ -508,7 +540,7 @@ export const WarehouseAdminDashboard: React.FC = () => {
           loading: `Deactivating ${targetUser.email}...`,
           success: (res) => res?.message || `User ${targetUser.email} has been deactivated.`,
           error: (err: unknown) => getApiErrorMessage(err, 'Failed to deactivate user.'),
-        }
+        },
       );
     } catch {
       // The error toast already surfaced the failure; swallow to avoid an
@@ -543,7 +575,7 @@ export const WarehouseAdminDashboard: React.FC = () => {
           loading: `Reactivating ${targetUser.email}...`,
           success: (res) => res?.message || `User ${targetUser.email} has been reactivated.`,
           error: (err: unknown) => getApiErrorMessage(err, 'Failed to reactivate user.'),
-        }
+        },
       );
     } catch {
       // The error toast already surfaced the failure; swallow to avoid an
@@ -563,9 +595,12 @@ export const WarehouseAdminDashboard: React.FC = () => {
               <Building2 className="w-6 h-6 text-[#2F4F4F]" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900 tracking-tight">Warehouse Admin Management</h1>
+              <h1 className="text-xl font-bold text-gray-900 tracking-tight">
+                Warehouse Admin Management
+              </h1>
               <p className="text-xs text-gray-500">
-                Configure facilities, docks, schedules, booking policies, and manage organization team members.
+                Configure facilities, docks, schedules, booking policies, and manage organization
+                team members.
               </p>
             </div>
           </div>
@@ -574,28 +609,37 @@ export const WarehouseAdminDashboard: React.FC = () => {
         {/* Global Facility Selector & Action */}
         <div className="flex items-center space-x-3">
           {isLoadingWarehouses ? (
-            <div role="status" aria-live="polite" className="flex items-center space-x-2 text-xs text-gray-500 py-1.5 px-3">
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex items-center space-x-2 text-xs text-gray-500 py-1.5 px-3"
+            >
               <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#2F4F4F]" aria-hidden="true" />
               <span>Loading facilities...</span>
             </div>
-          ) : warehouses.length > 0 && (
-            <div className="flex items-center space-x-2">
-              <label htmlFor="facility-select" className="text-xs font-semibold text-gray-600 whitespace-nowrap">
-                Active Facility:
-              </label>
-              <select
-                id="facility-select"
-                value={selectedWarehouseId || ''}
-                onChange={(e) => setSelectedWarehouseId(Number(e.target.value))}
-                className="text-xs font-semibold bg-gray-50 border border-gray-300 rounded-lg px-3 py-1.5 text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#2F4F4F]"
-              >
-                {warehouses.map((w) => (
-                  <option key={w.id} value={w.id}>
-                    {w.name} ({w.docks?.length || 0} Docks)
-                  </option>
-                ))}
-              </select>
-            </div>
+          ) : (
+            warehouses.length > 0 && (
+              <div className="flex items-center space-x-2">
+                <label
+                  htmlFor="facility-select"
+                  className="text-xs font-semibold text-gray-600 whitespace-nowrap"
+                >
+                  Active Facility:
+                </label>
+                <select
+                  id="facility-select"
+                  value={selectedWarehouseId || ''}
+                  onChange={(e) => setSelectedWarehouseId(Number(e.target.value))}
+                  className="text-xs font-semibold bg-gray-50 border border-gray-300 rounded-lg px-3 py-1.5 text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#2F4F4F]"
+                >
+                  {warehouses.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name} ({w.docks?.length || 0} Docks)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )
           )}
 
           <button
@@ -655,6 +699,7 @@ export const WarehouseAdminDashboard: React.FC = () => {
       <div
         role="tablist"
         aria-label="Warehouse administration sections"
+        tabIndex={-1}
         onKeyDown={handleTabListKeyDown}
         className="flex border-b border-gray-200 bg-white rounded-t-xl px-4 pt-2 shadow-sm space-x-1 overflow-x-auto"
       >
@@ -741,7 +786,10 @@ export const WarehouseAdminDashboard: React.FC = () => {
             {selectedWarehouse ? (
               <form onSubmit={handleUpdateWarehouse} className="space-y-4">
                 <div>
-                  <label htmlFor="wh-name" className="block text-xs font-semibold text-gray-700 mb-1">
+                  <label
+                    htmlFor="wh-name"
+                    className="block text-xs font-semibold text-gray-700 mb-1"
+                  >
                     Warehouse Name
                   </label>
                   <input
@@ -757,7 +805,10 @@ export const WarehouseAdminDashboard: React.FC = () => {
                 </div>
 
                 <div>
-                  <label htmlFor="wh-address" className="block text-xs font-semibold text-gray-700 mb-1">
+                  <label
+                    htmlFor="wh-address"
+                    className="block text-xs font-semibold text-gray-700 mb-1"
+                  >
                     Physical Address
                   </label>
                   <input
@@ -774,7 +825,10 @@ export const WarehouseAdminDashboard: React.FC = () => {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label htmlFor="wh-timezone" className="block text-xs font-semibold text-gray-700 mb-1">
+                    <label
+                      htmlFor="wh-timezone"
+                      className="block text-xs font-semibold text-gray-700 mb-1"
+                    >
                       IANA Timezone
                     </label>
                     <select
@@ -795,7 +849,10 @@ export const WarehouseAdminDashboard: React.FC = () => {
                   </div>
 
                   <div>
-                    <label htmlFor="wh-slot-length" className="block text-xs font-semibold text-gray-700 mb-1">
+                    <label
+                      htmlFor="wh-slot-length"
+                      className="block text-xs font-semibold text-gray-700 mb-1"
+                    >
                       Slot Interval
                     </label>
                     <select
@@ -819,9 +876,9 @@ export const WarehouseAdminDashboard: React.FC = () => {
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start space-x-2 text-[11px] text-amber-800">
                   <Info className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
                   <span>
-                    <strong>Driver Confusion Rule:</strong> Name, address, and timezone can only be updated when there
-                    are no active bookings with status <code>BOOKED</code>. Existing confirmed bookings preserve their
-                    original slot times.
+                    <strong>Driver Confusion Rule:</strong> Name, address, and timezone can only be
+                    updated when there are no active bookings with status <code>BOOKED</code>.
+                    Existing confirmed bookings preserve their original slot times.
                   </span>
                 </div>
 
@@ -854,7 +911,9 @@ export const WarehouseAdminDashboard: React.FC = () => {
                   <Layers className="w-4 h-4 text-[#2F4F4F]" />
                   <span>Loading Docks for {selectedWarehouse?.name || 'Selected Warehouse'}</span>
                 </h3>
-                <p className="text-xs text-gray-500">Manage dock names and active/maintenance operational statuses.</p>
+                <p className="text-xs text-gray-500">
+                  Manage dock names and active/maintenance operational statuses.
+                </p>
               </div>
 
               {selectedWarehouseId && (
@@ -870,13 +929,21 @@ export const WarehouseAdminDashboard: React.FC = () => {
             </div>
 
             {isLoadingDocks ? (
-              <div role="status" aria-live="polite" className="py-16 text-center text-xs text-gray-500">
-                <RefreshCw className="w-6 h-6 animate-spin mx-auto text-gray-400 mb-2" aria-hidden="true" />
+              <div
+                role="status"
+                aria-live="polite"
+                className="py-16 text-center text-xs text-gray-500"
+              >
+                <RefreshCw
+                  className="w-6 h-6 animate-spin mx-auto text-gray-400 mb-2"
+                  aria-hidden="true"
+                />
                 Loading loading docks...
               </div>
             ) : docks.length === 0 ? (
               <div className="py-12 text-center text-xs text-gray-500 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-                No docks created for this warehouse yet. Click &quot;Add Dock&quot; to configure bays.
+                No docks created for this warehouse yet. Click &quot;Add Dock&quot; to configure
+                bays.
               </div>
             ) : (
               <div className="space-y-3">
@@ -959,7 +1026,10 @@ export const WarehouseAdminDashboard: React.FC = () => {
                               <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
                               <span>Maintenance</span>
                             </span>
-                            <span className="text-[9px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/60" title="Active scheduled maintenance closure window">
+                            <span
+                              className="text-[9px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/60"
+                              title="Active scheduled maintenance closure window"
+                            >
                               Active Closure
                             </span>
                           </div>
@@ -971,7 +1041,9 @@ export const WarehouseAdminDashboard: React.FC = () => {
                                 : 'bg-amber-100 text-amber-800 border border-amber-200'
                             }`}
                           >
-                            {(dock.effectiveStatus || dock.status) === 'ACTIVE' ? 'Active' : 'Maintenance'}
+                            {(dock.effectiveStatus || dock.status) === 'ACTIVE'
+                              ? 'Active'
+                              : 'Maintenance'}
                           </span>
                         )}
 
@@ -1006,7 +1078,8 @@ export const WarehouseAdminDashboard: React.FC = () => {
                 <span>Operating Hours & Slot Intervals</span>
               </h3>
               <p className="text-xs text-gray-500">
-                Configure standard warehouse shift operating hours template and default appointment duration.
+                Configure standard warehouse shift operating hours template and default appointment
+                duration.
               </p>
             </div>
           </div>
@@ -1018,7 +1091,8 @@ export const WarehouseAdminDashboard: React.FC = () => {
               <span>Default Slot Duration (Interval)</span>
             </h4>
             <p className="text-xs text-gray-600">
-              Select slot granularity for time-slot generation. Existing confirmed bookings retain their original times.
+              Select slot granularity for time-slot generation. Existing confirmed bookings retain
+              their original times.
             </p>
 
             <div className="flex flex-wrap gap-3 pt-1">
@@ -1079,14 +1153,24 @@ export const WarehouseAdminDashboard: React.FC = () => {
             )}
 
             {isLoadingSchedule ? (
-              <div role="status" aria-live="polite" className="py-8 text-center text-xs text-gray-500">
-                <RefreshCw className="w-5 h-5 animate-spin mx-auto text-gray-400 mb-2" aria-hidden="true" />
+              <div
+                role="status"
+                aria-live="polite"
+                className="py-8 text-center text-xs text-gray-500"
+              >
+                <RefreshCw
+                  className="w-5 h-5 animate-spin mx-auto text-gray-400 mb-2"
+                  aria-hidden="true"
+                />
                 Loading weekly schedule...
               </div>
             ) : (
               <div className="border border-gray-200 rounded-xl overflow-hidden divide-y divide-gray-100">
                 {weeklySchedule.map((item, index) => (
-                  <div key={item.day} className="p-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white hover:bg-gray-50/50">
+                  <div
+                    key={item.day}
+                    className="p-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white hover:bg-gray-50/50"
+                  >
                     <div className="flex items-center space-x-3 w-36">
                       <input
                         type="checkbox"
@@ -1097,13 +1181,15 @@ export const WarehouseAdminDashboard: React.FC = () => {
                           const isOpen = e.target.checked;
                           setWeeklySchedule((current) =>
                             current.map((day, dayIndex) =>
-                              dayIndex === index ? { ...day, isOpen } : day
-                            )
+                              dayIndex === index ? { ...day, isOpen } : day,
+                            ),
                           );
                         }}
                         className="rounded border-gray-300 text-[#2F4F4F] focus:ring-[#2F4F4F]"
                       />
-                      <span className={`text-xs font-bold ${item.isOpen ? 'text-gray-900' : 'text-gray-400 line-through'}`}>
+                      <span
+                        className={`text-xs font-bold ${item.isOpen ? 'text-gray-900' : 'text-gray-400 line-through'}`}
+                      >
                         {item.day}
                       </span>
                     </div>
@@ -1132,8 +1218,8 @@ export const WarehouseAdminDashboard: React.FC = () => {
                                 const openTime = e.target.value;
                                 setWeeklySchedule((current) =>
                                   current.map((day, dayIndex) =>
-                                    dayIndex === index ? { ...day, openTime } : day
-                                  )
+                                    dayIndex === index ? { ...day, openTime } : day,
+                                  ),
                                 );
                               }}
                               className="px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-[#2F4F4F]"
@@ -1175,10 +1261,8 @@ export const WarehouseAdminDashboard: React.FC = () => {
                                 const closeTime = e.target.value;
                                 setWeeklySchedule((current) =>
                                   current.map((day, dayIndex) =>
-                                    dayIndex === index
-                                      ? { ...day, closeTime, is24h: false }
-                                      : day
-                                  )
+                                    dayIndex === index ? { ...day, closeTime, is24h: false } : day,
+                                  ),
                                 );
                               }}
                               className="px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-[#2F4F4F]"
@@ -1201,9 +1285,7 @@ export const WarehouseAdminDashboard: React.FC = () => {
                     )}
 
                     <div className="text-[11px] text-gray-500 font-medium">
-                      {item.isOpen
-                        ? `${getScheduleEstimate(item)} slots/dock`
-                        : '0 slots'}
+                      {item.isOpen ? `${getScheduleEstimate(item)} slots/dock` : '0 slots'}
                     </div>
                   </div>
                 ))}
@@ -1222,8 +1304,8 @@ export const WarehouseAdminDashboard: React.FC = () => {
               <span>Anti-Hogging & Booking Reservation Policies</span>
             </h3>
             <p className="text-xs text-gray-500 mt-1">
-              Configure reservation horizons, carrier concurrency limits, and modification lock windows for{' '}
-              <strong>{selectedWarehouse?.name || 'this warehouse'}</strong>.
+              Configure reservation horizons, carrier concurrency limits, and modification lock
+              windows for <strong>{selectedWarehouse?.name || 'this warehouse'}</strong>.
             </p>
           </div>
 
@@ -1235,7 +1317,10 @@ export const WarehouseAdminDashboard: React.FC = () => {
           ) : (
             <form onSubmit={handleSavePolicy} className="space-y-5">
               <div>
-                <label htmlFor="max-concurrent-bookings" className="block text-xs font-bold text-gray-800 mb-1">
+                <label
+                  htmlFor="max-concurrent-bookings"
+                  className="block text-xs font-bold text-gray-800 mb-1"
+                >
                   Max Concurrent Active Bookings per Carrier
                 </label>
                 <input
@@ -1254,13 +1339,17 @@ export const WarehouseAdminDashboard: React.FC = () => {
                   className="w-full max-w-xs px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2F4F4F] focus:outline-none"
                 />
                 <p className="text-[11px] text-gray-500 mt-1">
-                  Default: 3. Maximum number of simultaneous uncompleted bookings (<code>BOOKED</code>, <code>ARRIVED</code>)
-                  a single carrier organization can hold at this warehouse. Prevents bay hoarding.
+                  Default: 3. Maximum number of simultaneous uncompleted bookings (
+                  <code>BOOKED</code>, <code>ARRIVED</code>) a single carrier organization can hold
+                  at this warehouse. Prevents bay hoarding.
                 </p>
               </div>
 
               <div>
-                <label htmlFor="max-advance-days" className="block text-xs font-bold text-gray-800 mb-1">
+                <label
+                  htmlFor="max-advance-days"
+                  className="block text-xs font-bold text-gray-800 mb-1"
+                >
                   Maximum Advance Reservation Window (Days)
                 </label>
                 <input
@@ -1279,12 +1368,16 @@ export const WarehouseAdminDashboard: React.FC = () => {
                   className="w-full max-w-xs px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2F4F4F] focus:outline-none"
                 />
                 <p className="text-[11px] text-gray-500 mt-1">
-                  Default: 14 days. Carriers cannot book slots further into the future than this horizon.
+                  Default: 14 days. Carriers cannot book slots further into the future than this
+                  horizon.
                 </p>
               </div>
 
               <div>
-                <label htmlFor="booking-lock-hours" className="block text-xs font-bold text-gray-800 mb-1">
+                <label
+                  htmlFor="booking-lock-hours"
+                  className="block text-xs font-bold text-gray-800 mb-1"
+                >
                   Hard-Lock Window before Slot Start (Hours)
                 </label>
                 <input
@@ -1303,8 +1396,8 @@ export const WarehouseAdminDashboard: React.FC = () => {
                   className="w-full max-w-xs px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2F4F4F] focus:outline-none"
                 />
                 <p className="text-[11px] text-gray-500 mt-1">
-                  Default: 24 hours. Prevents standard carrier cancellations inside this window. Allows emergency same-day
-                  slot transfers.
+                  Default: 24 hours. Prevents standard carrier cancellations inside this window.
+                  Allows emergency same-day slot transfers.
                 </p>
               </div>
 
@@ -1337,7 +1430,8 @@ export const WarehouseAdminDashboard: React.FC = () => {
                 <span>Organization Team Members & Access</span>
               </h3>
               <p className="text-xs text-gray-500">
-                Invite new dock managers, view active staff, and deactivate credentials instantly with Redis session revocation.
+                Invite new dock managers, view active staff, and deactivate credentials instantly
+                with Redis session revocation.
               </p>
             </div>
 
@@ -1466,7 +1560,10 @@ export const WarehouseAdminDashboard: React.FC = () => {
         >
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
             <div className="px-6 py-4 bg-[#2F4F4F] text-white flex items-center justify-between">
-              <h3 id="create-warehouse-title" className="text-sm font-bold flex items-center space-x-2">
+              <h3
+                id="create-warehouse-title"
+                className="text-sm font-bold flex items-center space-x-2"
+              >
                 <WarehouseIcon className="w-4 h-4 text-emerald-400" aria-hidden="true" />
                 <span>Create New Warehouse Facility</span>
               </h3>
@@ -1482,7 +1579,10 @@ export const WarehouseAdminDashboard: React.FC = () => {
 
             <form onSubmit={handleCreateWarehouse} className="p-6 space-y-4">
               <div>
-                <label htmlFor="create-wh-name" className="block text-xs font-semibold text-gray-700 mb-1">
+                <label
+                  htmlFor="create-wh-name"
+                  className="block text-xs font-semibold text-gray-700 mb-1"
+                >
                   Facility Name
                 </label>
                 <input
@@ -1491,7 +1591,9 @@ export const WarehouseAdminDashboard: React.FC = () => {
                   autoComplete="organization"
                   placeholder="e.g. Colombo Western Terminal"
                   value={newWarehouseForm.name}
-                  onChange={(e) => setNewWarehouseForm((prev) => ({ ...prev, name: e.target.value }))}
+                  onChange={(e) =>
+                    setNewWarehouseForm((prev) => ({ ...prev, name: e.target.value }))
+                  }
                   data-autofocus
                   required
                   className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2F4F4F] focus:outline-none"
@@ -1499,7 +1601,10 @@ export const WarehouseAdminDashboard: React.FC = () => {
               </div>
 
               <div>
-                <label htmlFor="create-wh-address" className="block text-xs font-semibold text-gray-700 mb-1">
+                <label
+                  htmlFor="create-wh-address"
+                  className="block text-xs font-semibold text-gray-700 mb-1"
+                >
                   Address
                 </label>
                 <input
@@ -1507,7 +1612,9 @@ export const WarehouseAdminDashboard: React.FC = () => {
                   type="text"
                   placeholder="e.g. 500 Port Access Rd, Colombo"
                   value={newWarehouseForm.address}
-                  onChange={(e) => setNewWarehouseForm((prev) => ({ ...prev, address: e.target.value }))}
+                  onChange={(e) =>
+                    setNewWarehouseForm((prev) => ({ ...prev, address: e.target.value }))
+                  }
                   required
                   className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2F4F4F] focus:outline-none"
                 />
@@ -1515,13 +1622,18 @@ export const WarehouseAdminDashboard: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label htmlFor="create-wh-timezone" className="block text-xs font-semibold text-gray-700 mb-1">
+                  <label
+                    htmlFor="create-wh-timezone"
+                    className="block text-xs font-semibold text-gray-700 mb-1"
+                  >
                     Timezone
                   </label>
                   <select
                     id="create-wh-timezone"
                     value={newWarehouseForm.timezone}
-                    onChange={(e) => setNewWarehouseForm((prev) => ({ ...prev, timezone: e.target.value }))}
+                    onChange={(e) =>
+                      setNewWarehouseForm((prev) => ({ ...prev, timezone: e.target.value }))
+                    }
                     required
                     className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2F4F4F] focus:outline-none bg-white"
                   >
@@ -1534,7 +1646,10 @@ export const WarehouseAdminDashboard: React.FC = () => {
                 </div>
 
                 <div>
-                  <label htmlFor="create-wh-slot-length" className="block text-xs font-semibold text-gray-700 mb-1">
+                  <label
+                    htmlFor="create-wh-slot-length"
+                    className="block text-xs font-semibold text-gray-700 mb-1"
+                  >
                     Slot Interval
                   </label>
                   <select
@@ -1608,7 +1723,10 @@ export const WarehouseAdminDashboard: React.FC = () => {
 
             <form onSubmit={handleCreateDock} className="p-6 space-y-4">
               <div>
-                <label htmlFor="dock-name" className="block text-xs font-semibold text-gray-700 mb-1">
+                <label
+                  htmlFor="dock-name"
+                  className="block text-xs font-semibold text-gray-700 mb-1"
+                >
                   Dock Bay Name
                 </label>
                 <input
@@ -1624,7 +1742,10 @@ export const WarehouseAdminDashboard: React.FC = () => {
               </div>
 
               <div>
-                <label htmlFor="dock-status" className="block text-xs font-semibold text-gray-700 mb-1">
+                <label
+                  htmlFor="dock-status"
+                  className="block text-xs font-semibold text-gray-700 mb-1"
+                >
                   Initial Status
                 </label>
                 <select
@@ -1677,7 +1798,10 @@ export const WarehouseAdminDashboard: React.FC = () => {
         >
           <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden animate-in zoom-in-95 duration-150">
             <div className="px-6 py-4 bg-[#2F4F4F] text-white flex items-center justify-between">
-              <h3 id="warehouse-invite-title" className="text-sm font-bold flex items-center space-x-2">
+              <h3
+                id="warehouse-invite-title"
+                className="text-sm font-bold flex items-center space-x-2"
+              >
                 <UserPlus className="w-4 h-4 text-emerald-400" aria-hidden="true" />
                 <span>Invite Team Member</span>
               </h3>
@@ -1693,7 +1817,10 @@ export const WarehouseAdminDashboard: React.FC = () => {
 
             <form onSubmit={handleInviteUser} className="p-6 space-y-4">
               <div>
-                <label htmlFor="invite-email" className="block text-xs font-semibold text-gray-700 mb-1">
+                <label
+                  htmlFor="invite-email"
+                  className="block text-xs font-semibold text-gray-700 mb-1"
+                >
                   Team Member Email Address
                 </label>
                 <input
@@ -1708,8 +1835,8 @@ export const WarehouseAdminDashboard: React.FC = () => {
                   className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2F4F4F] focus:outline-none"
                 />
                 <p className="text-[11px] text-gray-500 mt-1">
-                  Invited users to a Warehouse Operator organization will automatically be designated the{' '}
-                  <strong>DOCK_MANAGER</strong> role.
+                  Invited users to a Warehouse Operator organization will automatically be
+                  designated the <strong>DOCK_MANAGER</strong> role.
                 </p>
               </div>
 

@@ -4,11 +4,7 @@
 
 export type OrganizationType = 'CARRIER' | 'WAREHOUSE_OPERATOR';
 
-export type UserRole =
-  | 'WAREHOUSE_ADMIN'
-  | 'DOCK_MANAGER'
-  | 'CARRIER_ADMIN'
-  | 'DISPATCHER';
+export type UserRole = 'WAREHOUSE_ADMIN' | 'DOCK_MANAGER' | 'CARRIER_ADMIN' | 'DISPATCHER';
 
 export interface Organization {
   id: number;

@@ -29,10 +29,7 @@ export interface RegisterOrganizationInput {
 
 export type DashboardRoute = 'carrier' | 'warehouse';
 
-function extractSession(
-  response: AuthResponse,
-  incompleteMessage: string
-): AuthenticatedSession {
+function extractSession(response: AuthResponse, incompleteMessage: string): AuthenticatedSession {
   const token = response.token ?? response.data?.token;
   const user = response.user ?? response.data?.user;
 
@@ -63,7 +60,7 @@ export const authPageService = {
 
       if (!tempToken) {
         throw new Error(
-          'Two-factor authentication is required but the challenge token is missing.'
+          'Two-factor authentication is required but the challenge token is missing.',
         );
       }
 
@@ -76,7 +73,7 @@ export const authPageService = {
 
     const session = extractSession(
       response,
-      'Authentication succeeded but received an incomplete server response.'
+      'Authentication succeeded but received an incomplete server response.',
     );
     return { requiresTwoFactor: false, ...session };
   },
@@ -89,13 +86,11 @@ export const authPageService = {
 
     return extractSession(
       response,
-      'Verification succeeded but received an incomplete server response.'
+      'Verification succeeded but received an incomplete server response.',
     );
   },
 
-  async registerOrganization(
-    input: RegisterOrganizationInput
-  ): Promise<AuthenticatedSession> {
+  async registerOrganization(input: RegisterOrganizationInput): Promise<AuthenticatedSession> {
     const organizationName = input.organizationName.trim();
     const payload: RegisterRequest = {
       organizationName,
@@ -109,7 +104,7 @@ export const authPageService = {
     const response = await authApi.register(payload);
     return extractSession(
       response,
-      'Registration completed but received an incomplete server response.'
+      'Registration completed but received an incomplete server response.',
     );
   },
 

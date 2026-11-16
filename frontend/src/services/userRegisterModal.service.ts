@@ -10,11 +10,7 @@ export interface InvitationDetails {
 /** Business rules and API orchestration for the invitation registration modal. */
 export const userRegisterModalService = {
   /** Returns a user-facing validation message, or null when the input is valid. */
-  validateRegistration(
-    token: string,
-    password: string,
-    confirmPassword: string
-  ): string | null {
+  validateRegistration(token: string, password: string, confirmPassword: string): string | null {
     if (!token) {
       return 'Missing invitation token. Please ensure you clicked the full link from your invitation email.';
     }
@@ -42,13 +38,12 @@ export const userRegisterModalService = {
 
   async acceptInvitation(
     token: string,
-    password: string
+    password: string,
   ): Promise<{ message: string; email?: string }> {
     const response = await authApi.acceptInvite(token, password);
 
     return {
-      message:
-        response.message || 'Account registered successfully! Redirecting to sign in...',
+      message: response.message || 'Account registered successfully! Redirecting to sign in...',
       email: response.user?.email,
     };
   },

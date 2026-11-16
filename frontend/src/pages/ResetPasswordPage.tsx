@@ -17,6 +17,8 @@ import { Label } from '../components/ui/label';
 import { resetPasswordPageService } from '../services/resetPasswordPage.service';
 import { getApiErrorMessage } from '../services/errors';
 
+const CURRENT_YEAR = new Date().getFullYear();
+
 export interface ResetPasswordPageProps {
   token?: string;
   onSuccess?: () => void;
@@ -46,7 +48,7 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
     const validationError = resetPasswordPageService.validateResetInput(
       token,
       newPassword,
-      confirmPassword
+      confirmPassword,
     );
     if (validationError) {
       setErrorMessage(validationError);
@@ -69,8 +71,8 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
       setErrorMessage(
         getApiErrorMessage(
           err,
-          'Failed to reset password. The reset link may be invalid or expired.'
-        )
+          'Failed to reset password. The reset link may be invalid or expired.',
+        ),
       );
     } finally {
       setIsLoading(false);
@@ -93,9 +95,7 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
           <div className="p-2.5 bg-[#2F4F4F] rounded-lg text-white shadow-md">
             <Warehouse className="w-6 h-6" />
           </div>
-          <span className="text-3xl font-extrabold tracking-tight text-[#2F4F4F]">
-            DockSlot
-          </span>
+          <span className="text-3xl font-extrabold tracking-tight text-[#2F4F4F]">DockSlot</span>
         </div>
         <p className="text-sm font-medium text-gray-600">
           Smart Warehouse Dock Scheduling & Carrier Logistics
@@ -128,7 +128,8 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
             >
               <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
               <div className="flex-1">
-                <strong>No reset token detected.</strong> Please ensure you clicked the complete link from your email, or request a new password reset link below.
+                <strong>No reset token detected.</strong> Please ensure you clicked the complete
+                link from your email, or request a new password reset link below.
               </div>
             </div>
           )}
@@ -141,9 +142,7 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
               className="mb-4 flex items-start space-x-3 p-3.5 bg-red-50 border border-red-200 rounded-md text-red-800 text-sm animate-in fade-in duration-200"
             >
               <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-              <div className="flex-1 font-medium leading-tight">
-                {errorMessage}
-              </div>
+              <div className="flex-1 font-medium leading-tight">{errorMessage}</div>
             </div>
           )}
 
@@ -163,7 +162,8 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
                   Password Updated Successfully!
                 </p>
                 <p className="text-xs text-gray-600 px-2 leading-relaxed">
-                  Your new password is now active. You can proceed to sign in to your workspace with your updated credentials.
+                  Your new password is now active. You can proceed to sign in to your workspace with
+                  your updated credentials.
                 </p>
               </div>
 
@@ -223,11 +223,7 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
                       onClick={() => setShowPassword(!showPassword)}
                       className="text-gray-400 hover:text-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] rounded"
                     >
-                      {showPassword ? (
-                        <EyeOff className="w-4 h-4" />
-                      ) : (
-                        <Eye className="w-4 h-4" />
-                      )}
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   }
                 />
@@ -253,9 +249,7 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
                   rightElement={
                     <button
                       type="button"
-                      aria-label={
-                        showConfirmPassword ? 'Hide password' : 'Show password'
-                      }
+                      aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
                       onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                       className="text-gray-400 hover:text-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4F4F] rounded"
                     >
@@ -269,12 +263,7 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
                 />
               </div>
 
-              <Button
-                type="submit"
-                variant="primary"
-                className="w-full mt-2"
-                isLoading={isLoading}
-              >
+              <Button type="submit" variant="primary" className="w-full mt-2" isLoading={isLoading}>
                 <span>Reset Password</span>
                 {!isLoading && <ArrowRight className="w-4 h-4 ml-2" />}
               </Button>
@@ -297,7 +286,7 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
 
       {/* Footer Info */}
       <div className="mt-8 text-center text-xs text-gray-500">
-        &copy; {new Date().getFullYear()} DockSlot Inc. Multi-tenant Logistics Platform.
+        &copy; {CURRENT_YEAR} DockSlot Inc. Multi-tenant Logistics Platform.
       </div>
     </main>
   );

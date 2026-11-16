@@ -51,8 +51,7 @@ export const carrierAdminDashboardService = {
 
     return users.filter((user) => {
       const matchesSearch =
-        user.email.toLowerCase().includes(query) ||
-        user.role.toLowerCase().includes(query);
+        user.email.toLowerCase().includes(query) || user.role.toLowerCase().includes(query);
 
       const isDeactivated = user.isActive === false;
       const matchesStatus =
@@ -62,8 +61,7 @@ export const carrierAdminDashboardService = {
             ? !isDeactivated
             : isDeactivated;
 
-      const matchesRole =
-        filters.roleFilter === 'ALL' ? true : user.role === filters.roleFilter;
+      const matchesRole = filters.roleFilter === 'ALL' ? true : user.role === filters.roleFilter;
 
       return matchesSearch && matchesStatus && matchesRole;
     });

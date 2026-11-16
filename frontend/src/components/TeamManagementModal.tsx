@@ -49,9 +49,7 @@ export const TeamManagementModal: React.FC<TeamManagementModalProps> = ({
     try {
       setUsers(await teamManagementModalService.fetchUsers());
     } catch (err: unknown) {
-      setErrorMessage(
-        getApiErrorMessage(err, 'Failed to load organization team members.')
-      );
+      setErrorMessage(getApiErrorMessage(err, 'Failed to load organization team members.'));
     } finally {
       setIsLoading(false);
     }
@@ -94,7 +92,7 @@ export const TeamManagementModal: React.FC<TeamManagementModalProps> = ({
           loading: `Deactivating ${targetUser.email}...`,
           success: (res) => res?.message || `User ${targetUser.email} has been deactivated.`,
           error: (err: unknown) => getApiErrorMessage(err, 'Failed to deactivate user.'),
-        }
+        },
       );
     } catch {
       // The error toast already surfaced the failure; swallow to avoid an
@@ -129,7 +127,7 @@ export const TeamManagementModal: React.FC<TeamManagementModalProps> = ({
           loading: `Reactivating ${targetUser.email}...`,
           success: (res) => res?.message || `User ${targetUser.email} has been reactivated.`,
           error: (err: unknown) => getApiErrorMessage(err, 'Failed to reactivate user.'),
-        }
+        },
       );
     } catch {
       // The error toast already surfaced the failure; swallow to avoid an
@@ -274,8 +272,15 @@ export const TeamManagementModal: React.FC<TeamManagementModalProps> = ({
             </div>
 
             {isLoading && users.length === 0 ? (
-              <div role="status" aria-live="polite" className="py-8 text-center text-xs text-gray-500">
-                <RefreshCw className="w-6 h-6 animate-spin mx-auto text-gray-400 mb-2" aria-hidden="true" />
+              <div
+                role="status"
+                aria-live="polite"
+                className="py-8 text-center text-xs text-gray-500"
+              >
+                <RefreshCw
+                  className="w-6 h-6 animate-spin mx-auto text-gray-400 mb-2"
+                  aria-hidden="true"
+                />
                 Loading team members...
               </div>
             ) : users.length === 0 ? (

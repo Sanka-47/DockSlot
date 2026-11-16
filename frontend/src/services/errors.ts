@@ -18,6 +18,16 @@ interface ApiErrorLike {
 const NETWORK_OR_AXIOS_MESSAGE =
   /network error|failed to fetch|load failed|timeout|^request failed with status code \d+$/i;
 
+/** True when an Axios/fetch request was intentionally aborted. */
+export function isRequestCanceled(error: unknown): boolean {
+  const candidate = error as { code?: unknown; name?: unknown } | null | undefined;
+  return (
+    candidate?.code === 'ERR_CANCELED' ||
+    candidate?.name === 'CanceledError' ||
+    candidate?.name === 'AbortError'
+  );
+}
+
 /**
  * Extracts the most useful message from an Axios/API failure, falling back to
  * the caller-provided text when the server did not send one.
@@ -57,7 +67,5 @@ export function isSlotConflictError(error: unknown): boolean {
   const err = error as ApiErrorLike | null | undefined;
   if (err?.response?.status === 409) return true;
 
-  return /conflict|already booked|already taken|unavailable/i.test(
-    getApiErrorMessage(error, '')
-  );
+  return /conflict|already booked|already taken|unavailable/i.test(getApiErrorMessage(error, ''));
 }

@@ -16,7 +16,7 @@ export interface ConfirmDialogProps {
 
 /**
  * A small accessible confirmation modal used as a styled replacement for
- * `window.confirm`. Closes on backdrop click or Escape unless it is busy.
+ * `window.confirm`. Closes via the explicit buttons or Escape unless it is busy.
  */
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   isOpen,
@@ -48,14 +48,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       aria-modal="true"
       aria-labelledby="confirm-dialog-title"
       aria-describedby="confirm-dialog-description"
-      onClick={() => {
-        if (!isLoading) onCancel();
-      }}
     >
-      <div
-        className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150"
-        onClick={(event) => event.stopPropagation()}
-      >
+      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
         <div className="px-6 py-4 bg-[#2F4F4F] text-white flex items-center justify-between">
           <h3 id="confirm-dialog-title" className="text-sm font-bold flex items-center space-x-2">
             {isDanger ? (

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { WarehouseAdminDashboard } from './WarehouseAdminDashboard';
-import { DockManagerDashboard } from './DockManagerDashboard';
+import React, { lazy, useState } from 'react';
 import { Settings, Calendar } from 'lucide-react';
+
+const WarehouseAdminDashboard = lazy(() => import('@/pages/WarehouseAdminDashboard'));
+const DockManagerDashboard = lazy(() => import('@/pages/DockManagerDashboard'));
 
 export const WarehouseDashboard: React.FC = () => {
   const [viewMode, setViewMode] = useState<'admin' | 'operations'>('admin');
@@ -14,7 +15,11 @@ export const WarehouseDashboard: React.FC = () => {
           <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 pl-2">
             Warehouse View:
           </span>
-          <div role="group" aria-label="Warehouse view" className="inline-flex rounded-md shadow-sm">
+          <div
+            role="group"
+            aria-label="Warehouse view"
+            className="inline-flex rounded-md shadow-sm"
+          >
             <button
               type="button"
               aria-pressed={viewMode === 'admin'}
@@ -57,4 +62,3 @@ export const WarehouseDashboard: React.FC = () => {
 };
 
 export default WarehouseDashboard;
-
