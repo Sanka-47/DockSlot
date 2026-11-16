@@ -1,6 +1,4 @@
-import dotenv from 'dotenv';
-
-dotenv.config();
+import './env';
 
 export const mailConfig = {
   host: process.env.SMTP_HOST || 'localhost',

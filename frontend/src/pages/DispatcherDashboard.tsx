@@ -28,12 +28,6 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import {
   dispatcherDashboardService,
-  filterBookings,
-  formatDateInTimezone,
-  formatSlotWindow,
-  getBookingWarehouseTimezone,
-  getMaxAdvanceDateString,
-  getTodayDateString,
   isInsideLockWindow,
   removeSlotFromGroups,
   validateBookingInput,
@@ -42,9 +36,19 @@ import { getApiErrorMessage, isRequestCanceled, isSlotConflictError } from '../s
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import { useNow } from '../hooks/useNow';
 import { BookingAuditLogModal } from '../components/BookingAuditLogModal';
+import { BookingStatusBadge } from '../components/BookingStatusBadge';
 import type { Warehouse, Dock, AvailableDockSlots, AvailableSlot } from '../types/warehouse.types';
-import type { Booking, BookingStatus, CreateBookingRequest } from '../types/booking.types';
-import { formatDateTime } from '../utils/formatters';
+import type { Booking, CreateBookingRequest } from '../types/booking.types';
+import { filterBookings } from '../utils/bookingFilters';
+import { BOOKING_STATUS_FILTERS } from '../utils/bookingStatus';
+import {
+  formatDateInTimezone,
+  formatDateTime,
+  formatSlotWindow,
+  getMaxAdvanceDateString,
+  getTodayDateString,
+} from '../utils/formatters';
+import { getBookingWarehouseTimezone } from '../utils/timezones';
 
 interface SelectedSlotInfo {
   warehouseId: number;
@@ -674,56 +678,12 @@ export const DispatcherDashboard: React.FC = () => {
     return filterBookings(
       bookings,
       { status: bookingStatusFilter, searchQuery: bookingSearchQuery },
-      warehouses,
+      {
+        includeWarehouseName: true,
+        getWarehouseTimezone: (booking) => getBookingWarehouseTimezone(booking, warehouses),
+      },
     );
   }, [bookings, bookingStatusFilter, bookingSearchQuery, warehouses]);
-
-  // Helper for status badge rendering
-  const renderStatusBadge = (status: BookingStatus) => {
-    switch (status) {
-      case 'BOOKED':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-            <Clock className="w-3 h-3 mr-1" />
-            BOOKED
-          </span>
-        );
-      case 'ARRIVED':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-            <Truck className="w-3 h-3 mr-1" />
-            ARRIVED
-          </span>
-        );
-      case 'COMPLETED':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <CheckCircle2 className="w-3 h-3 mr-1" />
-            COMPLETED
-          </span>
-        );
-      case 'NO_SHOW':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
-            <AlertCircle className="w-3 h-3 mr-1" />
-            NO-SHOW
-          </span>
-        );
-      case 'CANCELLED':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 border border-gray-300">
-            <XCircle className="w-3 h-3 mr-1" />
-            CANCELLED
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 border border-gray-300">
-            {status}
-          </span>
-        );
-    }
-  };
 
   // Helper: Count total available slots in current search
   const totalSlotsCount = useMemo(() => {
@@ -1107,17 +1067,17 @@ export const DispatcherDashboard: React.FC = () => {
 
             {/* Status Tabs */}
             <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 sm:pb-0 -mx-1 px-1">
-              {['ALL', 'BOOKED', 'ARRIVED', 'COMPLETED', 'CANCELLED', 'NO_SHOW'].map((status) => (
+              {BOOKING_STATUS_FILTERS.map(({ value, shortLabel }) => (
                 <button
-                  key={status}
-                  onClick={() => setBookingStatusFilter(status)}
+                  key={value}
+                  onClick={() => setBookingStatusFilter(value)}
                   className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap touch-manipulation ${
-                    bookingStatusFilter === status
+                    bookingStatusFilter === value
                       ? 'bg-[#2F4F4F] text-white'
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
                 >
-                  {status}
+                  {shortLabel}
                 </button>
               ))}
             </div>
@@ -1178,7 +1138,9 @@ export const DispatcherDashboard: React.FC = () => {
                             </span>
                           </div>
                         </div>
-                        <div className="shrink-0">{renderStatusBadge(b.status)}</div>
+                        <div className="shrink-0">
+                          <BookingStatusBadge status={b.status} />
+                        </div>
                       </div>
 
                       {/* Middle Details Grid */}
@@ -1404,7 +1366,9 @@ export const DispatcherDashboard: React.FC = () => {
                           </td>
 
                           {/* Status */}
-                          <td className="px-4 py-3">{renderStatusBadge(b.status)}</td>
+                          <td className="px-4 py-3">
+                            <BookingStatusBadge status={b.status} />
+                          </td>
 
                           {/* Actions */}
                           <td className="px-4 py-3 text-right">

@@ -1,4 +1,5 @@
 import { authApi } from '../api/auth.api';
+import { isCarrierRole } from '../utils/dashboardView';
 import { validatePassword } from '../utils/passwordPolicy';
 import { getApiErrorMessage } from './errors';
 import type {
@@ -110,12 +111,9 @@ export const authPageService = {
 
   /** Role/organization rule used to choose the post-login dashboard. */
   getDashboardRoute(user: User): DashboardRoute {
-    const isCarrier =
-      user.role === 'CARRIER_ADMIN' ||
-      user.role === 'DISPATCHER' ||
-      user.organization?.type === 'CARRIER';
-
-    return isCarrier ? 'carrier' : 'warehouse';
+    return isCarrierRole(user.role) || user.organization?.type === 'CARRIER'
+      ? 'carrier'
+      : 'warehouse';
   },
 
   /** True when a 401 means the short-lived 2FA temp token expired. */

@@ -2,6 +2,65 @@
 
 Multi-tenant dock slot booking platform for warehouse operators and carriers.
 
+## Engineering principles
+
+DockSlot is structured as a production-shaped reference implementation, not a
+demo-only prototype. The same boundaries, configuration rules, and verification
+steps are used locally, in tests, and in the containerized stack.
+
+### Clean by construction
+
+- The backend follows route → controller → service → repository boundaries, with
+  Prisma as the only database access layer.
+- Configuration is centralized and validated at startup; secrets, CORS, cookie
+  flags, and TOTP keys fail fast instead of degrading silently.
+- `backend/src/config/env.ts` loads `.env` exactly once, avoiding duplicate
+  environment parsing across modules and entry points.
+- TypeScript is used end to end, with typed API contracts and the `@/*` path
+  alias shared by TypeScript, Vite, and Vitest.
+- Shared frontend primitives centralize booking status rendering, filtering,
+  timezone/date handling, and role routing instead of duplicating them per
+  dashboard.
+- Refactors remove unused code and consolidate duplicated UI/service logic behind
+  shared utilities.
+
+### Scalable by design
+
+- The HTTP API is designed to be stateless and can run behind a load balancer;
+  proxy trust is configurable so rate limiting and request logs see the real
+  client IP.
+- Redis backs distributed rate limiting and the `tokenVersion` revocation cache,
+  while MySQL remains the source of truth. The in-memory Redis fallback is
+  disabled in production.
+- Rotating refresh sessions support server-side revocation, absolute and idle
+  family lifetimes, and replay detection.
+- The transactional outbox worker moves webhook delivery off the request path,
+  and graceful shutdown drains in-flight work before exit.
+- The frontend lazy-loads dashboards, recovery pages, and modals behind
+  accessible fallbacks, with stable vendor chunks keeping the initial shell
+  small.
+- Docker Compose provides a reproducible local stack with health checks, schema
+  sync, and seeded demo data.
+
+### Industry standards
+
+- Authentication follows OWASP ASVS and OWASP Cheat Sheet guidance plus NIST
+  SP 800-63B patterns: bcrypt password hashes, short-lived access JWTs, HttpOnly
+  rotating refresh cookies, optional TOTP MFA with AES-256-GCM, rate limiting,
+  account lockout, strict CSP/HSTS, a credentialed CORS allowlist, and `no-store`
+  auth responses.
+- The API is documented with OpenAPI 3.0/Swagger and uses consistent error
+  handling and security headers.
+- UI interactions use semantic controls, keyboard/focus management, dialog
+  accessibility helpers, and responsive layouts.
+- Backend tests boot the real Express app against MySQL; frontend tests use
+  Vitest and Testing Library for shared utilities, services, and UI primitives.
+- Type checking, linting, formatting, Tailwind class validation, tests, and
+  production builds are treated as required quality gates.
+
+The authentication section below documents the security controls in detail.
+These alignments are not a formal certification.
+
 ## UI
 
 Screenshots captured from the running app with the seeded demo data. See
@@ -59,6 +118,11 @@ The backend container applies the schema and loads the demo data on boot
 (`prisma db push` + `prisma db seed`). See `docker-compose.yml` for the services
 and host port overrides.
 
+The backend loads `backend/.env` exactly once through
+`backend/src/config/env.ts`. Config modules and entry points import that loader
+instead of calling `dotenv.config()` directly, so startup does not parse or
+report the same environment multiple times.
+
 ### Frontend
 
 ```sh
@@ -78,6 +142,27 @@ reverse proxy must apply the same headers to the built `dist/` files. It should
 also avoid logging query strings for `/reset-password` and `/accept-invite`
 (or redact `token=`); the SPA scrubs the token immediately, but the initial
 document request still reaches the static host.
+
+## Frontend architecture
+
+The SPA is split so the initial shell stays small and shared domain behavior is
+implemented once:
+
+- `@/*` maps to `frontend/src/*` in TypeScript, Vite, and Vitest.
+- Dashboards, password-recovery pages, and team/security modals are lazy-loaded
+  behind accessible Suspense fallbacks (`PageLoadingFallback` / `LoadingState`).
+- `frontend/vite.config.ts` groups React, Axios, date libraries, Lucide icons,
+  and remaining dependencies into stable vendor chunks.
+- Booking status metadata and rendering live in
+  `frontend/src/utils/bookingStatus.ts` and
+  `frontend/src/components/BookingStatusBadge.tsx`; the Dispatcher and Dock
+  Manager dashboards share the same badge and filter options.
+- Booking status, warehouse, and text-search filtering lives in
+  `frontend/src/utils/bookingFilters.ts`.
+- Timezone, date-key, and slot-window helpers live in
+  `frontend/src/utils/formatters.ts` and `frontend/src/utils/timezones.ts`.
+- Dashboard role routing and role capability helpers live in
+  `frontend/src/utils/dashboardView.ts`.
 
 ## Seeded demo accounts
 
@@ -229,9 +314,11 @@ Docker Compose requires `TOTP_ENCRYPTION_KEY` alongside the JWT secrets.
 
 ## Running tests
 
-The suite is integration-level: it boots the real Express app and exercises a
-real MySQL database through Prisma — nothing is mocked. One command applies the
-schema and runs **all** tests against that database:
+### Backend
+
+The backend suite is integration-level: it boots the real Express app and
+exercises a real MySQL database through Prisma — nothing is mocked. One command
+applies the schema and runs **all** backend tests against that database:
 
 ```sh
 cd backend
@@ -253,6 +340,29 @@ Prerequisites: installed dependencies (`npm ci`), a generated Prisma client
 uses (see `backend/.env`). The tests are stateful, so point `DATABASE_URL` at a
 dedicated test database for deterministic results; the bundled stack's database
 can be reset with `docker compose down -v`.
+
+### Frontend
+
+The frontend suite uses Vitest and Testing Library and covers the API client,
+shared booking/status/timezone helpers, dashboard services, and UI primitives:
+
+```sh
+cd frontend
+npm test
+```
+
+Additional validation commands:
+
+```sh
+npm run typecheck
+npm run lint
+npm run format:check
+npm run check:tailwind
+npm run build
+```
+
+`npm run build` requires the same explicit HTTPS `VITE_API_URL` described in the
+Frontend section above.
 
 ## Final System Architecture diagram
 

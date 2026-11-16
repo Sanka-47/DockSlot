@@ -2,8 +2,18 @@ import { bookingApi } from '../api/booking.api';
 import { warehouseApi } from '../api/warehouse.api';
 import type { AvailableDockSlots, AvailableSlot, Warehouse } from '../types/warehouse.types';
 import type { Booking, CreateBookingRequest } from '../types/booking.types';
-import { formatDateKey, formatDateTime } from '../utils/formatters';
+import { filterBookings as filterBookingsShared } from '../utils/bookingFilters';
+import type { BookingFilterCriteria } from '../utils/bookingFilters';
+import { getBookingWarehouseTimezone } from '../utils/timezones';
 import { getApiErrorMessage } from './errors';
+
+export {
+  formatDateInTimezone,
+  formatSlotWindow,
+  getMaxAdvanceDateString,
+  getTodayDateString,
+} from '../utils/formatters';
+export { getBookingWarehouseTimezone } from '../utils/timezones';
 
 export interface DispatcherDashboardData {
   warehouses: Warehouse[];
@@ -20,34 +30,7 @@ export interface RescheduleSlot {
   localEndTime?: string;
 }
 
-export interface BookingFilters {
-  status: string;
-  searchQuery: string;
-}
-
-/**
- * Formats a date as `YYYY-MM-DD` in the warehouse's time zone. Falls back to the
- * browser's local date when the identifier is missing or invalid.
- */
-export function formatDateInTimezone(dateInput: Date | string | number, timeZone?: string): string {
-  const dateObj = dateInput instanceof Date ? dateInput : new Date(dateInput);
-  if (Number.isNaN(dateObj.getTime())) return '';
-
-  const zoned = formatDateKey(dateObj, timeZone);
-  if (zoned) return zoned;
-
-  // Keep the UI usable if the API supplies a legacy/invalid zone identifier.
-  return formatDateKey(dateObj);
-}
-
-export function getTodayDateString(timeZone?: string): string {
-  return formatDateInTimezone(new Date(), timeZone);
-}
-
-export function getMaxAdvanceDateString(days: number = 14, timeZone?: string): string {
-  const futureInstant = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-  return formatDateInTimezone(futureInstant, timeZone);
-}
+export type BookingFilters = BookingFilterCriteria;
 
 /** Checks that a slot's UTC start instant is still in the future. */
 export function isFutureSlot(slot: AvailableSlot): boolean {
@@ -57,55 +40,6 @@ export function isFutureSlot(slot: AvailableSlot): boolean {
   if (Number.isNaN(slotStartMs)) return false;
 
   return slotStartMs > Date.now();
-}
-
-/**
- * Renders a warehouse-local `HH:mm` boundary as a 12-hour clock label.
- * Overnight windows roll past midnight ("25:30"), so the value is wrapped back
- * into the same day before formatting.
- */
-export function formatSlotClock(timeStr?: string): string | null {
-  if (!timeStr) return null;
-
-  const [hoursStr, minutesStr = '0'] = timeStr.split(':');
-  const hours = Number(hoursStr);
-  const minutes = Number(minutesStr);
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
-
-  const totalMinutes = (((hours * 60 + minutes) % 1440) + 1440) % 1440;
-  const normalizedHours = Math.floor(totalMinutes / 60);
-  const normalizedMinutes = totalMinutes % 60;
-  const period = normalizedHours >= 12 ? 'PM' : 'AM';
-  const twelveHour = normalizedHours % 12 === 0 ? 12 : normalizedHours % 12;
-
-  return `${twelveHour}:${String(normalizedMinutes).padStart(2, '0')} ${period}`;
-}
-
-/**
- * Slots are generated in the warehouse's own time zone. Prefer the local
- * start/end returned by the API so a dispatcher abroad sees the dock's clock;
- * the browser's clock is only a fallback for older API responses.
- */
-export function formatSlotWindow(
-  slot: {
-    slotStartTime: string;
-    slotEndTime: string;
-    localStartTime?: string;
-    localEndTime?: string;
-  },
-  timeZone?: string,
-): string {
-  const localStart = formatSlotClock(slot.localStartTime);
-  const localEnd = formatSlotClock(slot.localEndTime);
-  if (localStart && localEnd) {
-    return `${localStart} - ${localEnd}`;
-  }
-
-  return `${formatDateTime(slot.slotStartTime, 'h:mm a', timeZone)} - ${formatDateTime(
-    slot.slotEndTime,
-    'h:mm a',
-    timeZone,
-  )}`;
 }
 
 /** True while a booking is inside the warehouse's cancellation lock window. */
@@ -184,46 +118,14 @@ export function removeSlotFromGroups(
   });
 }
 
-export function getBookingWarehouseTimezone(booking: Booking, warehouses: Warehouse[]): string {
-  if (booking.dock?.warehouse?.timezone) {
-    return booking.dock.warehouse.timezone;
-  }
-
-  const whId = booking.dock?.warehouseId || booking.dock?.warehouse?.id;
-  if (whId) {
-    const matched = warehouses.find((warehouse) => warehouse.id === whId);
-    if (matched?.timezone) return matched.timezone;
-  }
-
-  return 'UTC';
-}
-
 export function filterBookings(
   bookings: Booking[],
   filters: BookingFilters,
   warehouses: Warehouse[],
 ): Booking[] {
-  return bookings.filter((booking) => {
-    if (filters.status !== 'ALL' && booking.status !== filters.status) {
-      return false;
-    }
-
-    const query = filters.searchQuery.toLowerCase().trim();
-    if (!query) return true;
-
-    const searchable = [
-      String(booking.id),
-      booking.carrierOrg?.name || '',
-      booking.truckPlate || '',
-      booking.driverName || '',
-      booking.driverPhone || '',
-      booking.dock?.name || '',
-      booking.dock?.warehouse?.name || '',
-      getBookingWarehouseTimezone(booking, warehouses),
-      booking.cargoNote || '',
-    ];
-
-    return searchable.some((value) => value.toLowerCase().includes(query));
+  return filterBookingsShared(bookings, filters, {
+    includeWarehouseName: true,
+    getWarehouseTimezone: (booking) => getBookingWarehouseTimezone(booking, warehouses),
   });
 }
 

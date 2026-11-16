@@ -1,5 +1,6 @@
 import React, { lazy, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { isDispatcherRole } from '@/utils/dashboardView';
 import { Settings, Calendar } from 'lucide-react';
 
 const CarrierAdminDashboard = lazy(() => import('@/pages/CarrierAdminDashboard'));
@@ -10,7 +11,7 @@ export const CarrierDashboard: React.FC = () => {
   const [viewMode, setViewMode] = useState<'admin' | 'operations'>('admin');
 
   // If user is a standard DISPATCHER, render DispatcherDashboard directly
-  if (user?.role === 'DISPATCHER') {
+  if (user && isDispatcherRole(user.role)) {
     return <DispatcherDashboard />;
   }
 
