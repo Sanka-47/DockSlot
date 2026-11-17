@@ -83,9 +83,10 @@ const commonHeaders = {
 };
 
 /**
- * Cloudflare Pages reads security headers from a static `_headers` file in the
- * build output. Generate that file from the same validated API origin used by
- * the bundle so the production CSP cannot drift from `VITE_API_URL`.
+ * Cloudflare Workers static assets (and Pages) read security headers from a
+ * static `_headers` file in the build output. Generate that file from the same
+ * validated API origin used by the bundle so the production CSP cannot drift
+ * from `VITE_API_URL`.
  */
 function buildCloudflareHeaders(apiOrigin: string): string {
   const headers = {
@@ -99,9 +100,9 @@ function buildCloudflareHeaders(apiOrigin: string): string {
     .join('\n')}\n`;
 }
 
-function cloudflarePagesHeadersPlugin(apiOrigin: string): Plugin {
+function cloudflareAssetsHeadersPlugin(apiOrigin: string): Plugin {
   return {
-    name: 'dockslot-cloudflare-pages-headers',
+    name: 'dockslot-cloudflare-assets-headers',
     apply: 'build',
     async closeBundle() {
       await writeFile(
@@ -138,7 +139,7 @@ export default defineConfig(({ command, mode }) => {
   }
 
   return {
-    plugins: [react(), cloudflarePagesHeadersPlugin(apiUrl.origin)],
+    plugins: [react(), cloudflareAssetsHeadersPlugin(apiUrl.origin)],
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
