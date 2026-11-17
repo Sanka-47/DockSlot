@@ -102,6 +102,19 @@ describe('Authentication environment validation', () => {
     ).toThrow(/COOKIE_SECURE must be true/i);
   });
 
+  it('rejects wildcard CORS origins when credentials are enabled', () => {
+    expect(() =>
+      validateEnv({
+        NODE_ENV: 'production',
+        CORS_ORIGIN: '*',
+        COOKIE_SECURE: 'true',
+        JWT_ACCESS_SECRET: strongSecret('access'),
+        JWT_REFRESH_SECRET: strongSecret('refresh'),
+        TOTP_ENCRYPTION_KEY: validTotpConfigValue,
+      })
+    ).toThrow(/CORS_ORIGIN must list explicit origins/i);
+  });
+
   it('requires a 32-byte TOTP encryption key in production', () => {
     expect(() =>
       validateEnv({

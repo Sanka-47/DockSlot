@@ -56,6 +56,15 @@ export function validateEnv(
     }
     if (!corsOrigin) {
       errors.push('CORS_ORIGIN is required when NODE_ENV=production.');
+    } else if (
+      corsOrigin
+        .split(',')
+        .map((origin) => origin.trim())
+        .includes('*')
+    ) {
+      errors.push(
+        'CORS_ORIGIN must list explicit origins; "*" is not allowed when credentials are enabled.'
+      );
     }
     if (cookieSecure && cookieSecure !== 'true' && cookieSecure !== '1') {
       errors.push('COOKIE_SECURE must be true when NODE_ENV=production.');

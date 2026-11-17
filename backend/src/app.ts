@@ -46,16 +46,34 @@ app.use(requestLogger);
 
 // CORS: credentials must be enabled so the browser sends/stores the HttpOnly
 // refresh-token cookie. Origins may be restricted via a comma-separated
-// CORS_ORIGIN env var; otherwise the request origin is reflected.
-const corsOrigins = process.env.CORS_ORIGIN?.split(',')
+// CORS_ORIGIN env var; otherwise the request origin is reflected in local
+// development. Never emit `*` here: browsers reject wildcard origins when
+// credentials are included.
+const corsOrigins = (process.env.CORS_ORIGIN ?? '')
+  .split(',')
   .map((origin) => origin.trim())
-  .filter(Boolean);
+  .filter(Boolean)
+  .map((origin) => {
+    try {
+      return new URL(origin).origin;
+    } catch {
+      return origin;
+    }
+  });
 
 app.use(
   cors({
-    origin: corsOrigins && corsOrigins.length > 0 ? corsOrigins : true,
+    origin: (requestOrigin, callback) => {
+      // Non-browser clients (curl, health checks) do not send an Origin header.
+      if (!requestOrigin) return callback(null, true);
+
+      // Local development without an allowlist reflects the caller's origin.
+      if (corsOrigins.length === 0) return callback(null, true);
+
+      return callback(null, corsOrigins.includes(requestOrigin));
+    },
     credentials: true,
-  })
+  }),
 );
 app.use(express.json());
 
@@ -68,7 +86,6 @@ app.use('/api-docs', (_req, res, next) => {
 
 // Swagger Documentation UI
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-
 
 app.get('/swagger.json', (req, res) => {
   res.setHeader('Content-Type', 'application/json');
