@@ -147,6 +147,22 @@ services:
       # Credentialed CORS allowlist. Required in production; override for your UI.
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
       APP_URL: http://localhost:${BACKEND_HOST_PORT:-5000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      # Email transport: smtp | resend | brevo. SMTP is the local default; use
+      # an HTTPS provider on hosts that block outbound SMTP.
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-smtp}
+      EMAIL_FROM: "${EMAIL_FROM:-}"
+      SMTP_FROM: "${SMTP_FROM:-}"
+      SMTP_HOST: ${SMTP_HOST:-localhost}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_IGNORE_TLS: ${SMTP_IGNORE_TLS:-true}
+      SMTP_REQUIRE_TLS: ${SMTP_REQUIRE_TLS:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      EMAIL_HTTP_TIMEOUT_MS: ${EMAIL_HTTP_TIMEOUT_MS:-10000}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       HEALTH_CHECK_TIMEOUT_MS: "3000"
       # Transactional outbox worker -> mock carrier inside the compose network.
