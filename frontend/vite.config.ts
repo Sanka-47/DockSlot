@@ -1,5 +1,7 @@
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 
 const DEV_API_FALLBACK = 'http://localhost:5000/api';
@@ -80,6 +82,37 @@ const commonHeaders = {
   'X-Frame-Options': 'DENY',
 };
 
+/**
+ * Cloudflare Pages reads security headers from a static `_headers` file in the
+ * build output. Generate that file from the same validated API origin used by
+ * the bundle so the production CSP cannot drift from `VITE_API_URL`.
+ */
+function buildCloudflareHeaders(apiOrigin: string): string {
+  const headers = {
+    ...commonHeaders,
+    'Content-Security-Policy': buildContentSecurityPolicy(apiOrigin, false),
+    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
+  };
+
+  return `/*\n${Object.entries(headers)
+    .map(([name, value]) => `  ${name}: ${value}`)
+    .join('\n')}\n`;
+}
+
+function cloudflarePagesHeadersPlugin(apiOrigin: string): Plugin {
+  return {
+    name: 'dockslot-cloudflare-pages-headers',
+    apply: 'build',
+    async closeBundle() {
+      await writeFile(
+        join(process.cwd(), 'dist', '_headers'),
+        buildCloudflareHeaders(apiOrigin),
+        'utf8',
+      );
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
   // Any build is a deployable artifact; `vite preview` also runs in production
@@ -105,7 +138,7 @@ export default defineConfig(({ command, mode }) => {
   }
 
   return {
-    plugins: [react()],
+    plugins: [react(), cloudflarePagesHeadersPlugin(apiUrl.origin)],
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),

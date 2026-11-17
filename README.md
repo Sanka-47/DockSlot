@@ -137,11 +137,27 @@ npm run dev
 explicit HTTPS value; `npm run build` fails fast if it is missing or insecure.
 `vite.config.ts` also applies CSP, HSTS (preview/production), frame denial,
 `nosniff`, `Referrer-Policy: no-referrer`, and a restrictive
-`Permissions-Policy` to the dev and preview servers. A production static host or
-reverse proxy must apply the same headers to the built `dist/` files. It should
-also avoid logging query strings for `/reset-password` and `/accept-invite`
-(or redact `token=`); the SPA scrubs the token immediately, but the initial
-document request still reaches the static host.
+`Permissions-Policy` to the dev and preview servers. Production builds generate
+`dist/_headers` for Cloudflare Pages from the same validated API origin, and
+`frontend/public/_redirects` provides the SPA fallback for deep links. A
+different static host or reverse proxy must apply equivalent headers to the
+built `dist/` files. It should also avoid logging query strings for
+`/reset-password` and `/accept-invite` (or redact `token=`); the SPA scrubs the
+token immediately, but the initial document request still reaches the static
+host.
+
+### Free demo deployment
+
+[`DEPLOYMENT.md`](DEPLOYMENT.md) documents a zero-cost demo topology:
+Cloudflare Pages for the SPA, Render Free for the API, TiDB Cloud Starter for
+MySQL, and Render Key Value for Redis. The backend keeps the outbox worker
+in-process, and the mock carrier can run in the same container.
+
+Production email is provider-agnostic. Set `EMAIL_PROVIDER=smtp` for an
+authenticated SMTP relay, or `EMAIL_PROVIDER=resend` / `EMAIL_PROVIDER=brevo` to
+use HTTPS APIs. The HTTPS providers are required on hosts that block outbound
+SMTP, such as Render free web services. Seeded demo accounts are pre-verified,
+so login works even when email delivery is disabled.
 
 ## Frontend architecture
 

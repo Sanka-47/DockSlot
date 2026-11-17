@@ -1,30 +1,53 @@
 import nodemailer, { Transporter } from 'nodemailer';
 import { mailConfig } from '../config/mail.config';
 
+type MailOptions = {
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+};
+
+type Sender = {
+  name?: string;
+  email: string;
+};
+
+/** Parse `"Name <email@example.com>"` into the shape Brevo expects. */
+function parseSender(from: string): Sender {
+  const match = /^\s*(.*?)\s*<([^>]+)>\s*$/.exec(from);
+  if (!match) return { email: from.trim() };
+
+  const name = match[1].trim();
+  return name ? { name, email: match[2].trim() } : { email: match[2].trim() };
+}
+
 export class EmailService {
-  private transporter: Transporter;
+  private readonly transporter: Transporter | null;
 
   constructor() {
-    this.transporter = nodemailer.createTransport({
-      host: mailConfig.host,
-      port: mailConfig.port,
-      ignoreTLS: true, // For local dev with Mailhog
-      secure: false,
-    });
+    this.transporter =
+      mailConfig.provider === 'smtp'
+        ? nodemailer.createTransport({
+            host: mailConfig.host,
+            port: mailConfig.port,
+            secure: mailConfig.secure,
+            ignoreTLS: mailConfig.ignoreTls,
+            requireTLS: mailConfig.requireTls,
+            auth:
+              mailConfig.user && mailConfig.pass
+                ? { user: mailConfig.user, pass: mailConfig.pass }
+                : undefined,
+          })
+        : null;
   }
 
   /**
    * Send an email with error handling.
    */
-  public async sendMail(options: { to: string; subject: string; html: string; text?: string }): Promise<boolean> {
+  public async sendMail(options: MailOptions): Promise<boolean> {
     try {
-      await this.transporter.sendMail({
-        from: mailConfig.from,
-        to: options.to,
-        subject: options.subject,
-        html: options.html,
-        text: options.text,
-      });
+      await this.deliver(options);
       if (process.env.NODE_ENV !== 'production') {
         console.log(`[EmailService] Email sent to ${options.to}: ${options.subject}`);
       }
@@ -35,14 +58,87 @@ export class EmailService {
         error?.cause?.code === 'ECONNREFUSED' ||
         (typeof error?.message === 'string' && error.message.includes('ECONNREFUSED'));
 
-      if (isConnRefused) {
+      if (mailConfig.provider === 'smtp' && isConnRefused) {
         console.warn(
-          `[EmailService:LocalDev] SMTP server is not running on ${mailConfig.host}:${mailConfig.port}. (Email dispatched to console in dev mode).`
+          `[EmailService:LocalDev] SMTP server is not running on ${mailConfig.host}:${mailConfig.port}. (Email dispatched to console in dev mode).`,
         );
       } else {
-        console.error(`[EmailService] Failed to send email to ${options.to}:`, error?.message || error);
+        console.error(
+          `[EmailService] Failed to send email to ${options.to}:`,
+          error?.message || error,
+        );
       }
       return false;
+    }
+  }
+
+  private async deliver(options: MailOptions): Promise<void> {
+    if (mailConfig.provider === 'resend') {
+      await this.sendWithResend(options);
+      return;
+    }
+
+    if (mailConfig.provider === 'brevo') {
+      await this.sendWithBrevo(options);
+      return;
+    }
+
+    if (!this.transporter) {
+      throw new Error('SMTP transport is not configured.');
+    }
+
+    await this.transporter.sendMail({
+      from: mailConfig.from,
+      to: options.to,
+      subject: options.subject,
+      html: options.html,
+      text: options.text,
+    });
+  }
+
+  private async sendWithResend(options: MailOptions): Promise<void> {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${mailConfig.resendApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: mailConfig.from,
+        to: [options.to],
+        subject: options.subject,
+        html: options.html,
+        text: options.text,
+      }),
+      signal: AbortSignal.timeout(mailConfig.httpTimeoutMs),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Resend API returned ${response.status} ${response.statusText}`);
+    }
+  }
+
+  private async sendWithBrevo(options: MailOptions): Promise<void> {
+    const sender = parseSender(mailConfig.from);
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': mailConfig.brevoApiKey,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        sender: { email: sender.email, ...(sender.name ? { name: sender.name } : {}) },
+        to: [{ email: options.to }],
+        subject: options.subject,
+        htmlContent: options.html,
+        textContent: options.text,
+      }),
+      signal: AbortSignal.timeout(mailConfig.httpTimeoutMs),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Brevo API returned ${response.status} ${response.statusText}`);
     }
   }
 
@@ -120,7 +216,7 @@ export class EmailService {
     email: string,
     organizationName: string,
     role: string,
-    token: string
+    token: string,
   ): Promise<boolean> {
     const inviteUrl = `${mailConfig.frontendUrl}/accept-invite?token=${token}`;
 
