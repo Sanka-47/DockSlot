@@ -1,7 +1,7 @@
 # Keep the build context small and keep local secrets / host-built artifacts
 # out of the image. The Dockerfile only COPYs backend/package*.json,
-# backend/prisma and backend/src, but everything here would otherwise still be
-# uploaded to the daemon on every build.
+# backend/prisma, backend/src and backend/scripts, but everything here would
+# otherwise still be uploaded to the daemon on every build.
 **/node_modules
 **/dist
 **/coverage
