@@ -57,11 +57,15 @@ COPY --chown=node:node backend/package.json backend/package-lock.json ./
 # ts-node (used by `prisma db seed`) needs the compiler options - notably
 # esModuleInterop, which the seed's default imports rely on.
 COPY --chown=node:node backend/tsconfig.json ./tsconfig.json
+# Normalize line endings in case the repository is checked out on Windows.
+COPY --chown=node:node backend/scripts/start.sh ./start.sh
+RUN sed -i 's/\r$//' ./start.sh && chmod +x ./start.sh
 
 USER node
 
 # 5000 = API, 4001 = mock carrier
 EXPOSE 5000 4001
 
-# Starts the HTTP server and the transactional outbox worker (src/index.ts).
-CMD ["node", "dist/index.js"]
+# Starts the API and outbox worker. Set START_MOCK_CARRIER=true to also start
+# the internal mock carrier on port 4001.
+CMD ["sh", "./start.sh"]
