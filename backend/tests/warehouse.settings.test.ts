@@ -20,10 +20,38 @@ describe('Warehouse Settings Update & Slot Length Safeguarding Integration Tests
   let carrierOrgId: number;
   let dispatcherToken: string;
 
-  const targetDate = '2026-11-20';
+  // Use tomorrow in Asia/Colombo (UTC+5:30, no DST) so this suite does not
+  // expire. The warehouse is open 00:00-24:00 every day.
+  const settingsSlot = (() => {
+    const now = new Date();
+    const colomboNow = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+    const target = new Date(
+      Date.UTC(
+        colomboNow.getUTCFullYear(),
+        colomboNow.getUTCMonth(),
+        colomboNow.getUTCDate() + 1,
+        4,
+        30,
+        0,
+        0,
+      ),
+    );
+
+    return {
+      date: target.toISOString().slice(0, 10),
+      start60: target.toISOString(),
+      end60: new Date(target.getTime() + 60 * 60 * 1000).toISOString(),
+      start30: new Date(target.getTime() + 60 * 60 * 1000).toISOString(),
+      end30: new Date(target.getTime() + 90 * 60 * 1000).toISOString(),
+    };
+  })();
+
+  const targetDate = settingsSlot.date;
   // 60-minute slot: 04:30 to 05:30 UTC (10:00 to 11:00 Asia/Colombo)
-  const slot60Start = '2026-11-20T04:30:00.000Z';
-  const slot60End = '2026-11-20T05:30:00.000Z';
+  const slot60Start = settingsSlot.start60;
+  const slot60End = settingsSlot.end60;
+  const slot30Start = settingsSlot.start30;
+  const slot30End = settingsSlot.end30;
 
   beforeAll(async () => {
     // 1. Warehouse Operator Org A & Warehouse Admin A
@@ -307,18 +335,19 @@ describe('Warehouse Settings Update & Slot Length Safeguarding Integration Tests
     // Slot A: 04:30 - 05:00
     // Slot B: 05:00 - 05:30
     // BOTH of these slots MUST be filtered out / unavailable!
-    const slotA = dockSlots.find((s: any) => s.slotStartTime === '2026-11-20T04:30:00.000Z');
+    const slotA = dockSlots.find((s: any) => s.slotStartTime === slot60Start);
     expect(slotA).toBeUndefined();
 
-    const slotB = dockSlots.find((s: any) => s.slotStartTime === '2026-11-20T05:00:00.000Z');
+    const slotBStart = new Date(
+      new Date(slot60Start).getTime() + 30 * 60 * 1000
+    ).toISOString();
+    const slotB = dockSlots.find((s: any) => s.slotStartTime === slotBStart);
     expect(slotB).toBeUndefined();
 
     // The adjacent slot right after the booking (05:30 - 06:00 UTC) MUST be available!
-    const slotAfter = dockSlots.find(
-      (s: any) => s.slotStartTime === '2026-11-20T05:30:00.000Z'
-    );
+    const slotAfter = dockSlots.find((s: any) => s.slotStartTime === slot30Start);
     expect(slotAfter).toBeDefined();
-    expect(slotAfter.slotEndTime).toBe('2026-11-20T06:00:00.000Z');
+    expect(slotAfter.slotEndTime).toBe(slot30End);
   });
 
   it('allows creating a new 30-minute booking matching the updated slot length', async () => {
@@ -328,8 +357,8 @@ describe('Warehouse Settings Update & Slot Length Safeguarding Integration Tests
       .set('Authorization', `Bearer ${dispatcherToken}`)
       .send({
         dockId: testDockId,
-        slotStartTime: '2026-11-20T05:30:00.000Z',
-        slotEndTime: '2026-11-20T06:00:00.000Z',
+        slotStartTime: slot30Start,
+        slotEndTime: slot30End,
         truckPlate: 'TRK-30MIN-02',
         driverName: 'New 30 Min Driver',
         driverPhone: '+94773332211',
