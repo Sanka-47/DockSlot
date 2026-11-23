@@ -24,7 +24,12 @@
 #
 # Required secrets (no defaults are committed):
 #   JWT_ACCESS_SECRET=... JWT_REFRESH_SECRET=... TOTP_ENCRYPTION_KEY=... \
+#   STRIPE_SECRET_KEY=sk_test_... STRIPE_WEBHOOK_SECRET=whsec_... \
 #     docker compose up --build
+#
+# Every slot booking is paid through Stripe-hosted Checkout. Use Stripe TEST
+# mode locally; the webhook is reachable from the host with:
+#   stripe listen --forward-to localhost:5000/api/payments/webhook
 # Generate each value independently:
 #   node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 # The TOTP key must be base64 for exactly 32 bytes:
@@ -130,6 +135,16 @@ services:
       TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY:?TOTP_ENCRYPTION_KEY must be set}
       JWT_ISSUER: ${JWT_ISSUER:-dockslot-api}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-dockslot-web}
+      # Stripe-hosted Checkout. Test-mode keys are free; production must use
+      # live keys and the dashboard webhook secret.
+      PAYMENTS_MODE: ${PAYMENTS_MODE:-stripe}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:?STRIPE_SECRET_KEY must be set}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:?STRIPE_WEBHOOK_SECRET must be set}
+      PAYMENT_HOLD_MINUTES: ${PAYMENT_HOLD_MINUTES:-30}
+      PAYMENT_MIN_LEAD_MINUTES: ${PAYMENT_MIN_LEAD_MINUTES:-30}
+      PAYMENT_EXPIRY_SWEEP_INTERVAL_MS: ${PAYMENT_EXPIRY_SWEEP_INTERVAL_MS:-60000}
+      STRIPE_SUCCESS_URL: ${STRIPE_SUCCESS_URL:-http://localhost:5173/?checkout=success&session_id={CHECKOUT_SESSION_ID}}
+      STRIPE_CANCEL_URL: ${STRIPE_CANCEL_URL:-http://localhost:5173/?checkout=cancelled}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
       JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
       REFRESH_SESSION_ABSOLUTE_TTL: ${REFRESH_SESSION_ABSOLUTE_TTL:-30d}

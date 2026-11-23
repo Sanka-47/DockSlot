@@ -144,8 +144,37 @@ describe('Authentication environment validation', () => {
         JWT_ACCESS_SECRET: strongSecret('access'),
         JWT_REFRESH_SECRET: strongSecret('refresh'),
         TOTP_ENCRYPTION_KEY: validTotpConfigValue,
+        PAYMENTS_MODE: 'stripe',
+        STRIPE_SECRET_KEY: 'sk_test_example',
+        STRIPE_WEBHOOK_SECRET: 'whsec_example',
       })
     ).not.toThrow();
+  });
+
+  it('requires Stripe configuration when payments are enabled in production', () => {
+    expect(() =>
+      validateEnv({
+        NODE_ENV: 'production',
+        CORS_ORIGIN: 'https://app.dockslot.example',
+        JWT_ACCESS_SECRET: strongSecret('access'),
+        JWT_REFRESH_SECRET: strongSecret('refresh'),
+        TOTP_ENCRYPTION_KEY: validTotpConfigValue,
+        PAYMENTS_MODE: 'stripe',
+      })
+    ).toThrow(/STRIPE_SECRET_KEY is required/i);
+  });
+
+  it('rejects disabled payments in production', () => {
+    expect(() =>
+      validateEnv({
+        NODE_ENV: 'production',
+        CORS_ORIGIN: 'https://app.dockslot.example',
+        JWT_ACCESS_SECRET: strongSecret('access'),
+        JWT_REFRESH_SECRET: strongSecret('refresh'),
+        TOTP_ENCRYPTION_KEY: validTotpConfigValue,
+        PAYMENTS_MODE: 'disabled',
+      })
+    ).toThrow(/PAYMENTS_MODE=disabled is only allowed outside production/i);
   });
 
   it('allows the legacy JWT_SECRET outside production', () => {

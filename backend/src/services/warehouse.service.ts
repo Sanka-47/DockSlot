@@ -19,6 +19,8 @@ export interface CreateWarehouseInput {
   address: string;
   timezone: string;
   slotLengthMinutes?: number;
+  slotPriceCents?: number;
+  currency?: string;
 }
 
 export interface UpdateWarehouseInput {
@@ -26,6 +28,8 @@ export interface UpdateWarehouseInput {
   address?: string;
   timezone?: string;
   slotLengthMinutes?: number;
+  slotPriceCents?: number;
+  currency?: string;
 }
 
 export interface UpdateWarehouseSettingsInput {
@@ -33,6 +37,8 @@ export interface UpdateWarehouseSettingsInput {
   name?: string;
   address?: string;
   timezone?: string;
+  slotPriceCents?: number;
+  currency?: string;
 }
 
 export interface UpdateWarehousePolicyInput {
@@ -107,6 +113,32 @@ function normalizeDayOfWeek(dayOfWeek: number): number {
   return dayOfWeek === 0 ? 7 : dayOfWeek;
 }
 
+/** Validates a fixed slot price in minor units (e.g. cents/paise/fils). */
+function validateSlotPriceCents(value: unknown): number {
+  if (
+    typeof value !== 'number' ||
+    !Number.isInteger(value) ||
+    value <= 0 ||
+    value > 99_999_999
+  ) {
+    throw {
+      status: 400,
+      message:
+        'slotPriceCents must be a positive integer amount in minor currency units ' +
+        'no greater than 99,999,999.',
+    };
+  }
+  return value;
+}
+
+/** Validates and normalizes an ISO 4217 presentment currency. */
+function validateCurrency(value: unknown): string {
+  if (typeof value !== 'string' || !/^[A-Za-z]{3}$/.test(value.trim())) {
+    throw { status: 400, message: 'currency must be a 3-letter ISO 4217 code.' };
+  }
+  return value.trim().toUpperCase();
+}
+
 interface OperatingWindowMinutes {
   openMin: number;
   closeMin: number;
@@ -154,6 +186,10 @@ export class WarehouseService {
       throw { status: 400, message: `Invalid IANA timezone string: '${trimmedTimezone}'.` };
     }
 
+    const slotPriceCents =
+      data.slotPriceCents === undefined ? 250000 : validateSlotPriceCents(data.slotPriceCents);
+    const currency = data.currency === undefined ? 'LKR' : validateCurrency(data.currency);
+
     // Verify organization exists
     const organization = await warehouseRepository.findOrganizationById(organizationId);
 
@@ -167,6 +203,8 @@ export class WarehouseService {
       address: data.address.trim(),
       timezone: trimmedTimezone,
       slotLengthMinutes: data.slotLengthMinutes || 30,
+      slotPriceCents,
+      currency,
       policy: {
         create: {
           maxConcurrentBookings: 3,
@@ -293,6 +331,13 @@ export class WarehouseService {
       }
     }
 
+    if (data.slotPriceCents !== undefined) {
+      validateSlotPriceCents(data.slotPriceCents);
+    }
+    if (data.currency !== undefined) {
+      validateCurrency(data.currency);
+    }
+
     const isNameChanging = data.name !== undefined && data.name.trim() !== warehouse.name;
     const isAddressChanging = data.address !== undefined && data.address.trim() !== warehouse.address;
     const isTimezoneChanging = data.timezone !== undefined && data.timezone.trim() !== warehouse.timezone;
@@ -304,7 +349,9 @@ export class WarehouseService {
       if (activeBookedCount > 0) {
         throw {
           status: 400,
-          message: `Cannot update warehouse name, address, or timezone while there are active bookings with status 'BOOKED'.`,
+          message:
+            'Cannot update warehouse name, address, or timezone while there are active ' +
+            "bookings with status 'PENDING_PAYMENT', 'BOOKED', or 'ARRIVED'.",
         };
       }
     }
@@ -317,6 +364,8 @@ export class WarehouseService {
           ...(data.address && { address: data.address.trim() }),
           ...(data.timezone && { timezone: data.timezone.trim() }),
           ...(data.slotLengthMinutes !== undefined && { slotLengthMinutes: data.slotLengthMinutes }),
+          ...(data.slotPriceCents !== undefined && { slotPriceCents: data.slotPriceCents }),
+          ...(data.currency !== undefined && { currency: validateCurrency(data.currency) }),
         },
         tx
       );
@@ -364,6 +413,13 @@ export class WarehouseService {
       }
     }
 
+    if (data.slotPriceCents !== undefined) {
+      validateSlotPriceCents(data.slotPriceCents);
+    }
+    if (data.currency !== undefined) {
+      validateCurrency(data.currency);
+    }
+
     // Determine if core identification fields (name, address, timezone) are changing
     const isNameChanging = data.name !== undefined && data.name.trim() !== existing.name;
     const isAddressChanging = data.address !== undefined && data.address.trim() !== existing.address;
@@ -376,7 +432,9 @@ export class WarehouseService {
       if (activeBookedCount > 0) {
         throw {
           status: 400,
-          message: `Cannot update warehouse name, address, or timezone while there are active bookings with status 'BOOKED'.`,
+          message:
+            'Cannot update warehouse name, address, or timezone while there are active ' +
+            "bookings with status 'PENDING_PAYMENT', 'BOOKED', or 'ARRIVED'.",
         };
       }
     }
@@ -385,6 +443,8 @@ export class WarehouseService {
       ...(data.name && { name: data.name.trim() }),
       ...(data.address && { address: data.address.trim() }),
       ...(data.timezone && { timezone: data.timezone.trim() }),
+      ...(data.slotPriceCents !== undefined && { slotPriceCents: data.slotPriceCents }),
+      ...(data.currency !== undefined && { currency: validateCurrency(data.currency) }),
     });
 
     return updated;
@@ -776,7 +836,7 @@ export class WarehouseService {
   /**
    * Updates a dock's name (and optional status), strictly verifying organization ownership.
    * To prevent driver and carrier confusion, the dock name can only be updated if there are
-   * no active bookings with status 'BOOKED' for this dock.
+   * no active bookings (PENDING_PAYMENT, BOOKED, or ARRIVED) for this dock.
    */
   async updateDock(dockId: number, organizationId: number, data: UpdateDockInput, warehouseId?: number) {
     if (!dockId || isNaN(dockId)) {
@@ -813,7 +873,9 @@ export class WarehouseService {
       if (activeBookedCount > 0) {
         throw {
           status: 400,
-          message: `Cannot update dock name while there are active bookings with status 'BOOKED'.`,
+          message:
+            'Cannot update dock name while there are active bookings with status ' +
+            "'PENDING_PAYMENT', 'BOOKED', or 'ARRIVED'.",
         };
       }
     }

@@ -29,6 +29,7 @@ import {
   getScheduleSlotEstimate,
 } from '../services/warehouseAdminDashboard.service';
 import type { ScheduleDay, PolicyForm } from '../services/warehouseAdminDashboard.service';
+import { organizationUsersService } from '../services/organizationUsers.service';
 import { getApiErrorMessage } from '../services/errors';
 import type {
   Warehouse,
@@ -44,7 +45,10 @@ import { useDialogA11y } from '../hooks/useDialogA11y';
 import { getTimezoneOptions } from '../utils/timezones';
 import { handleTabListKeyDown } from '../utils/tabKeyboard';
 import { useConfirm } from '../hooks/useConfirm';
+import { useOrganizationUsers } from '../hooks/useOrganizationUsers';
 import toast from 'react-hot-toast';
+
+const CURRENCY_OPTIONS = ['LKR', 'AED', 'EUR', 'USD', 'GBP', 'INR', 'SGD'];
 
 export const WarehouseAdminDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -69,6 +73,8 @@ export const WarehouseAdminDashboard: React.FC = () => {
     address: '',
     timezone: 'Asia/Colombo',
     slotLengthMinutes: 60,
+    slotPriceCents: 250000,
+    currency: 'LKR',
   });
   const [isSubmittingWarehouse, setIsSubmittingWarehouse] = useState<boolean>(false);
 
@@ -78,6 +84,8 @@ export const WarehouseAdminDashboard: React.FC = () => {
     address: '',
     timezone: 'Asia/Colombo',
     slotLengthMinutes: 60,
+    slotPriceCents: 250000,
+    currency: 'LKR',
   });
   const [isSavingWarehouse, setIsSavingWarehouse] = useState<boolean>(false);
 
@@ -110,18 +118,28 @@ export const WarehouseAdminDashboard: React.FC = () => {
   const [isLoadingPolicy, setIsLoadingPolicy] = useState<boolean>(false);
   const [isSavingPolicy, setIsSavingPolicy] = useState<boolean>(false);
 
-  // Tab 4: Users
-  const [organizationUsers, setOrganizationUsers] = useState<User[]>([]);
-  const [isLoadingUsers, setIsLoadingUsers] = useState<boolean>(false);
-  const [isInviteModalOpen, setIsInviteModalOpen] = useState<boolean>(false);
-  const [inviteEmail, setInviteEmail] = useState<string>('');
-  const [isSendingInvite, setIsSendingInvite] = useState<boolean>(false);
-  const [deactivatingUserId, setDeactivatingUserId] = useState<number | null>(null);
-  const [reactivatingUserId, setReactivatingUserId] = useState<number | null>(null);
-
   // Feedback Notifications
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
+
+  const {
+    organizationUsers,
+    isLoadingUsers,
+    deactivatingUserId,
+    reactivatingUserId,
+    isInviteModalOpen,
+    setIsInviteModalOpen,
+    inviteEmail,
+    setInviteEmail,
+    isSendingInvite,
+    inviteUser,
+    deactivateUser,
+    reactivateUser,
+  } = useOrganizationUsers({
+    service: organizationUsersService,
+    setErrorBanner,
+    initialLoading: false,
+  });
 
   const createWarehouseDialogRef = useDialogA11y<HTMLDivElement>({
     isOpen: isCreateWarehouseModalOpen,
@@ -213,22 +231,9 @@ export const WarehouseAdminDashboard: React.FC = () => {
     }
   }, []);
 
-  // 5. Fetch Organization Users
-  const fetchUsers = useCallback(async () => {
-    setIsLoadingUsers(true);
-    try {
-      setOrganizationUsers(await warehouseAdminDashboardService.fetchUsers());
-    } catch (err: unknown) {
-      setErrorBanner(getApiErrorMessage(err, 'Failed to load organization members.'));
-    } finally {
-      setIsLoadingUsers(false);
-    }
-  }, []);
-
   useEffect(() => {
     fetchWarehouses();
-    fetchUsers();
-  }, [fetchWarehouses, fetchUsers]);
+  }, [fetchWarehouses]);
 
   // Fetch tab data only when the selected facility changes. Keeping warehouse
   // metadata out of this dependency list prevents save operations from causing a
@@ -261,6 +266,8 @@ export const WarehouseAdminDashboard: React.FC = () => {
       address: currentWh.address,
       timezone: currentWh.timezone,
       slotLengthMinutes: currentWh.slotLengthMinutes,
+      slotPriceCents: currentWh.slotPriceCents,
+      currency: currentWh.currency,
     });
     setScheduleSlotLength(currentWh.slotLengthMinutes || 60);
   }, [selectedWarehouseId, warehouses]);
@@ -281,6 +288,8 @@ export const WarehouseAdminDashboard: React.FC = () => {
         address: '',
         timezone: 'Asia/Colombo',
         slotLengthMinutes: 60,
+        slotPriceCents: 250000,
+        currency: 'LKR',
       });
       setWarehouses((prev) => [...prev, created]);
       if (created.id) {
@@ -315,6 +324,8 @@ export const WarehouseAdminDashboard: React.FC = () => {
         address: updated.address,
         timezone: updated.timezone,
         slotLengthMinutes: updated.slotLengthMinutes,
+        slotPriceCents: updated.slotPriceCents,
+        currency: updated.currency,
       });
       setScheduleSlotLength(updated.slotLengthMinutes || 60);
     } catch (err: unknown) {
@@ -499,18 +510,12 @@ export const WarehouseAdminDashboard: React.FC = () => {
     e.preventDefault();
     if (!inviteEmail.trim()) return;
 
-    setIsSendingInvite(true);
     setErrorBanner(null);
     try {
-      const result = await warehouseAdminDashboardService.inviteUser(inviteEmail);
+      const result = await inviteUser(inviteEmail);
       triggerSuccess(result.message);
-      setInviteEmail('');
-      setIsInviteModalOpen(false);
-      await fetchUsers();
     } catch (err: unknown) {
       setErrorBanner(getApiErrorMessage(err, 'Failed to send invitation.'));
-    } finally {
-      setIsSendingInvite(false);
     }
   };
 
@@ -528,25 +533,16 @@ export const WarehouseAdminDashboard: React.FC = () => {
     });
     if (!ok) return;
 
-    setDeactivatingUserId(targetUser.id);
     try {
       // A toast tracks the whole lifecycle: loading -> success/error.
-      await toast.promise(
-        warehouseAdminDashboardService.deactivateUser(targetUser.id).then(async (res) => {
-          await fetchUsers();
-          return res;
-        }),
-        {
-          loading: `Deactivating ${targetUser.email}...`,
-          success: (res) => res?.message || `User ${targetUser.email} has been deactivated.`,
-          error: (err: unknown) => getApiErrorMessage(err, 'Failed to deactivate user.'),
-        },
-      );
+      await toast.promise(deactivateUser(targetUser.id), {
+        loading: `Deactivating ${targetUser.email}...`,
+        success: (res) => res?.message || `User ${targetUser.email} has been deactivated.`,
+        error: (err: unknown) => getApiErrorMessage(err, 'Failed to deactivate user.'),
+      });
     } catch {
       // The error toast already surfaced the failure; swallow to avoid an
       // unhandled rejection from the click handler.
-    } finally {
-      setDeactivatingUserId(null);
     }
   };
 
@@ -564,24 +560,15 @@ export const WarehouseAdminDashboard: React.FC = () => {
     });
     if (!ok) return;
 
-    setReactivatingUserId(targetUser.id);
     try {
-      await toast.promise(
-        warehouseAdminDashboardService.reactivateUser(targetUser.id).then(async (res) => {
-          await fetchUsers();
-          return res;
-        }),
-        {
-          loading: `Reactivating ${targetUser.email}...`,
-          success: (res) => res?.message || `User ${targetUser.email} has been reactivated.`,
-          error: (err: unknown) => getApiErrorMessage(err, 'Failed to reactivate user.'),
-        },
-      );
+      await toast.promise(reactivateUser(targetUser.id), {
+        loading: `Reactivating ${targetUser.email}...`,
+        success: (res) => res?.message || `User ${targetUser.email} has been reactivated.`,
+        error: (err: unknown) => getApiErrorMessage(err, 'Failed to reactivate user.'),
+      });
     } catch {
       // The error toast already surfaced the failure; swallow to avoid an
       // unhandled rejection from the click handler.
-    } finally {
-      setReactivatingUserId(null);
     }
   };
 
@@ -873,12 +860,62 @@ export const WarehouseAdminDashboard: React.FC = () => {
                   </div>
                 </div>
 
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label
+                      htmlFor="wh-price"
+                      className="block text-xs font-semibold text-gray-700 mb-1"
+                    >
+                      Slot Price
+                    </label>
+                    <input
+                      id="wh-price"
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      required
+                      value={(editingWarehouseForm.slotPriceCents ?? 0) / 100}
+                      onChange={(e) =>
+                        setEditingWarehouseForm((prev) => ({
+                          ...prev,
+                          slotPriceCents: Math.round(Number(e.target.value) * 100),
+                        }))
+                      }
+                      className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2F4F4F] focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="wh-currency"
+                      className="block text-xs font-semibold text-gray-700 mb-1"
+                    >
+                      Currency
+                    </label>
+                    <select
+                      id="wh-currency"
+                      value={editingWarehouseForm.currency || 'LKR'}
+                      onChange={(e) =>
+                        setEditingWarehouseForm((prev) => ({ ...prev, currency: e.target.value }))
+                      }
+                      className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2F4F4F] focus:outline-none bg-white"
+                    >
+                      {CURRENCY_OPTIONS.map((currency) => (
+                        <option key={currency} value={currency}>
+                          {currency}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start space-x-2 text-[11px] text-amber-800">
                   <Info className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
                   <span>
                     <strong>Driver Confusion Rule:</strong> Name, address, and timezone can only be
                     updated when there are no active bookings with status <code>BOOKED</code>.
-                    Existing confirmed bookings preserve their original slot times.
+                    Existing confirmed bookings preserve their original slot times. Price changes
+                    apply only to new bookings.
                   </span>
                 </div>
 
@@ -1340,8 +1377,8 @@ export const WarehouseAdminDashboard: React.FC = () => {
                 />
                 <p className="text-[11px] text-gray-500 mt-1">
                   Default: 3. Maximum number of simultaneous uncompleted bookings (
-                  <code>BOOKED</code>, <code>ARRIVED</code>) a single carrier organization can hold
-                  at this warehouse. Prevents bay hoarding.
+                  <code>PENDING_PAYMENT</code>, <code>BOOKED</code>, <code>ARRIVED</code>) a single
+                  carrier organization can hold at this warehouse. Prevents bay hoarding.
                 </p>
               </div>
 
@@ -1666,6 +1703,55 @@ export const WarehouseAdminDashboard: React.FC = () => {
                     <option value={30}>30 Minutes</option>
                     <option value={45}>45 Minutes</option>
                     <option value={60}>60 Minutes</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label
+                    htmlFor="create-wh-price"
+                    className="block text-xs font-semibold text-gray-700 mb-1"
+                  >
+                    Slot Price
+                  </label>
+                  <input
+                    id="create-wh-price"
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    required
+                    value={(newWarehouseForm.slotPriceCents ?? 0) / 100}
+                    onChange={(e) =>
+                      setNewWarehouseForm((prev) => ({
+                        ...prev,
+                        slotPriceCents: Math.round(Number(e.target.value) * 100),
+                      }))
+                    }
+                    className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2F4F4F] focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="create-wh-currency"
+                    className="block text-xs font-semibold text-gray-700 mb-1"
+                  >
+                    Currency
+                  </label>
+                  <select
+                    id="create-wh-currency"
+                    value={newWarehouseForm.currency || 'LKR'}
+                    onChange={(e) =>
+                      setNewWarehouseForm((prev) => ({ ...prev, currency: e.target.value }))
+                    }
+                    className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2F4F4F] focus:outline-none bg-white"
+                  >
+                    {CURRENCY_OPTIONS.map((currency) => (
+                      <option key={currency} value={currency}>
+                        {currency}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>

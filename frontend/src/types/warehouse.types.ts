@@ -69,6 +69,8 @@ export interface CreateWarehouseRequest {
   address: string;
   timezone: string;
   slotLengthMinutes?: number;
+  slotPriceCents?: number;
+  currency?: string;
 }
 
 export interface UpdateWarehouseRequest {
@@ -76,6 +78,8 @@ export interface UpdateWarehouseRequest {
   address?: string;
   timezone?: string;
   slotLengthMinutes?: number;
+  slotPriceCents?: number;
+  currency?: string;
 }
 
 export interface CreateDockRequest {
@@ -95,6 +99,8 @@ export interface Warehouse {
   address: string;
   timezone: string;
   slotLengthMinutes: number;
+  slotPriceCents?: number;
+  currency?: string;
   createdAt?: string;
   updatedAt?: string;
   docks?: Dock[];

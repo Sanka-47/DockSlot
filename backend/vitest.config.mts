@@ -9,5 +9,11 @@ export default defineConfig({
     fileParallelism: false,
     testTimeout: 20000,
     hookTimeout: 30000,
+    // Keep the existing booking/outbox suite on the immediate-BOOKED path.
+    // Stripe-specific unit tests exercise payment logic without network calls.
+    env: {
+      NODE_ENV: 'test',
+      PAYMENTS_MODE: 'disabled',
+    },
   },
 });

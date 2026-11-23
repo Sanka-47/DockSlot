@@ -44,6 +44,9 @@ export function validateEnv(
   const legacySecret = readEnv(env, 'JWT_SECRET');
   const corsOrigin = readEnv(env, 'CORS_ORIGIN');
   const cookieSecure = readEnv(env, 'COOKIE_SECURE').toLowerCase();
+  const paymentsMode = (readEnv(env, 'PAYMENTS_MODE') || 'stripe').toLowerCase();
+  const stripeSecretKey = readEnv(env, 'STRIPE_SECRET_KEY');
+  const stripeWebhookSecret = readEnv(env, 'STRIPE_WEBHOOK_SECRET');
 
   const errors: string[] = [];
 
@@ -98,6 +101,30 @@ export function validateEnv(
       errors.push('TOTP_ENCRYPTION_KEY must not use an example/placeholder value.');
     } else if (decodeTotpKey(totpKey).length !== 32) {
       errors.push('TOTP_ENCRYPTION_KEY must decode to exactly 32 bytes.');
+    }
+
+    if (paymentsMode === 'disabled') {
+      errors.push(
+        'PAYMENTS_MODE=disabled is only allowed outside production; slot bookings must be paid for.'
+      );
+    } else if (paymentsMode !== 'stripe') {
+      errors.push('PAYMENTS_MODE must be either "stripe" or "disabled".');
+    }
+
+    if (paymentsMode !== 'disabled') {
+      if (!stripeSecretKey) {
+        errors.push('STRIPE_SECRET_KEY is required when payments are enabled in production.');
+      } else if (!stripeSecretKey.startsWith('sk_')) {
+        errors.push('STRIPE_SECRET_KEY must be a Stripe secret key (starts with "sk_").');
+      }
+      if (!stripeWebhookSecret) {
+        errors.push('STRIPE_WEBHOOK_SECRET is required when payments are enabled in production.');
+      } else if (!stripeWebhookSecret.startsWith('whsec_')) {
+        errors.push('STRIPE_WEBHOOK_SECRET must be a Stripe webhook signing secret (starts with "whsec_").');
+      }
+      if (!readEnv(env, 'FRONTEND_URL') && !corsOrigin) {
+        errors.push('FRONTEND_URL (or CORS_ORIGIN) is required for Stripe redirect URLs.');
+      }
     }
   } else {
     // Local development and tests may keep the legacy single secret until the

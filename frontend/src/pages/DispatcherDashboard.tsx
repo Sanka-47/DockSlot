@@ -49,6 +49,8 @@ import {
   getTodayDateString,
 } from '../utils/formatters';
 import { getBookingWarehouseTimezone } from '../utils/timezones';
+import { paymentApi } from '../api/payment.api';
+import { formatMoney } from '../utils/money';
 
 interface SelectedSlotInfo {
   warehouseId: number;
@@ -61,6 +63,8 @@ interface SelectedSlotInfo {
   slotEndTime: string;
   localStartTime?: string;
   localEndTime?: string;
+  slotPriceCents?: number;
+  currency?: string;
 }
 
 export const DispatcherDashboard: React.FC = () => {
@@ -75,6 +79,7 @@ export const DispatcherDashboard: React.FC = () => {
   const [isLoadingBookings, setIsLoadingBookings] = useState<boolean>(false);
   const [isSearchingSlots, setIsSearchingSlots] = useState<boolean>(false);
   const [isSubmittingBooking, setIsSubmittingBooking] = useState<boolean>(false);
+  const [payingBookingId, setPayingBookingId] = useState<number | null>(null);
 
   // Global Feedback Banners
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -378,6 +383,8 @@ export const DispatcherDashboard: React.FC = () => {
       slotEndTime: slot.slotEndTime,
       localStartTime: slot.localStartTime,
       localEndTime: slot.localEndTime,
+      slotPriceCents: wh?.slotPriceCents,
+      currency: wh?.currency,
     });
     setBookingFormData({
       truckPlate: '',
@@ -422,10 +429,16 @@ export const DispatcherDashboard: React.FC = () => {
 
       const createdBooking = await dispatcherDashboardService.createBooking(payload);
 
-      // Update bookings list
-      setBookings((prev) => [createdBooking, ...prev]);
+      // The slot is held as PENDING_PAYMENT until Stripe confirms payment.
+      // Hosted Checkout is a full-page redirect, so do not mutate the local
+      // list first: the page is about to leave this document.
+      if (createdBooking.checkout?.url) {
+        window.location.assign(createdBooking.checkout.url);
+        return;
+      }
 
-      // Remove the booked slot locally from searchedSlots for instant visual feedback
+      // Payments disabled (local/test mode): preserve the confirmed-booking UI.
+      setBookings((prev) => [createdBooking, ...prev]);
       setSearchedSlots((prev) =>
         removeSlotFromGroups(
           prev,
@@ -466,6 +479,19 @@ export const DispatcherDashboard: React.FC = () => {
       }
     } finally {
       setIsSubmittingBooking(false);
+    }
+  };
+
+  const handlePayNow = async (booking: Booking) => {
+    setPayingBookingId(booking.id);
+    setErrorMessage(null);
+    try {
+      const response = await paymentApi.createCheckout(booking.id);
+      window.location.assign(response.data.url);
+    } catch (err: unknown) {
+      setErrorMessage(getApiErrorMessage(err, 'Could not start the payment. Please try again.'));
+    } finally {
+      setPayingBookingId(null);
     }
   };
 
@@ -1105,6 +1131,7 @@ export const DispatcherDashboard: React.FC = () => {
               <div className="md:hidden space-y-3">
                 {filteredBookings.map((b) => {
                   const isActionable = b.status === 'BOOKED';
+                  const isPendingPayment = b.status === 'PENDING_PAYMENT';
                   const insideLock = isActionable ? isInsideLockWindow(b) : false;
                   const bookingWarehouseTz = getBookingWarehouseTimezone(b, warehouses);
 
@@ -1200,7 +1227,29 @@ export const DispatcherDashboard: React.FC = () => {
                           <span>View Audit Log</span>
                         </Button>
 
-                        {isActionable ? (
+                        {isPendingPayment ? (
+                          <div className="grid grid-cols-2 gap-2">
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() => handlePayNow(b)}
+                              isLoading={payingBookingId === b.id}
+                              className="w-full min-h-[38px] text-xs px-2.5 flex items-center justify-center space-x-1"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                              <span>Pay now</span>
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleOpenCancelModal(b)}
+                              className="w-full min-h-[38px] text-xs px-2.5 flex items-center justify-center space-x-1 border-rose-200 text-rose-700 hover:bg-rose-50"
+                            >
+                              <X className="w-3.5 h-3.5 shrink-0 text-rose-600" />
+                              <span>Cancel</span>
+                            </Button>
+                          </div>
+                        ) : isActionable ? (
                           <div className="grid grid-cols-2 gap-2">
                             <Button
                               variant="outline"
@@ -1288,6 +1337,7 @@ export const DispatcherDashboard: React.FC = () => {
                   <tbody className="bg-white divide-y divide-gray-200">
                     {filteredBookings.map((b) => {
                       const isActionable = b.status === 'BOOKED';
+                      const isPendingPayment = b.status === 'PENDING_PAYMENT';
                       const bookingWarehouseTz = getBookingWarehouseTimezone(b, warehouses);
 
                       return (
@@ -1385,7 +1435,29 @@ export const DispatcherDashboard: React.FC = () => {
                                 <span>History</span>
                               </Button>
 
-                              {isActionable ? (
+                              {isPendingPayment ? (
+                                <>
+                                  <Button
+                                    variant="primary"
+                                    size="sm"
+                                    onClick={() => handlePayNow(b)}
+                                    isLoading={payingBookingId === b.id}
+                                    className="h-7 text-xs px-2.5 flex items-center space-x-1"
+                                  >
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    <span>Pay now</span>
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleOpenCancelModal(b)}
+                                    className="h-7 text-xs px-2.5 flex items-center space-x-1 border-rose-200 text-rose-700 hover:bg-rose-50"
+                                  >
+                                    <X className="w-3 h-3 text-rose-600" />
+                                    <span>Cancel</span>
+                                  </Button>
+                                </>
+                              ) : isActionable ? (
                                 <>
                                   {(() => {
                                     const insideLock = isInsideLockWindow(b);
@@ -1518,7 +1590,24 @@ export const DispatcherDashboard: React.FC = () => {
                       : ''}
                   </span>
                 </div>
+                {selectedSlotForBooking.slotPriceCents !== undefined &&
+                  selectedSlotForBooking.currency && (
+                    <div className="flex flex-col sm:flex-row sm:justify-between font-medium gap-0.5 pt-1 border-t border-gray-200">
+                      <span className="text-gray-500">Slot price:</span>
+                      <span className="font-bold text-emerald-700">
+                        {formatMoney(
+                          selectedSlotForBooking.slotPriceCents,
+                          selectedSlotForBooking.currency,
+                        )}
+                      </span>
+                    </div>
+                  )}
               </div>
+
+              <p className="text-[11px] text-gray-500 leading-relaxed">
+                You will be redirected to Stripe&apos;s secure checkout. The slot is held for a
+                short time and confirmed only after payment succeeds.
+              </p>
 
               {bookingModalError && (
                 <div

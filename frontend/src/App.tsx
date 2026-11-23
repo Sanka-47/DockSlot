@@ -19,6 +19,7 @@ const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage'));
 const CarrierDashboard = lazy(() => import('@/pages/CarrierDashboard'));
 const WarehouseDashboard = lazy(() => import('@/pages/WarehouseDashboard'));
 const DockManagerDashboard = lazy(() => import('@/pages/DockManagerDashboard'));
+const CheckoutReturnPage = lazy(() => import('@/pages/CheckoutReturnPage'));
 const TeamManagementModal = lazy(() => import('@/components/TeamManagementModal'));
 const SecuritySettingsModal = lazy(() => import('@/components/SecuritySettingsModal'));
 
@@ -49,6 +50,9 @@ const AppContent: React.FC = () => {
 
   // Handle URL paths for Password Reset & Forgot Password
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+  const searchParams =
+    typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const isCheckoutReturn = Boolean(searchParams?.get('checkout'));
 
   if (isResetPasswordPath(pathname)) {
     return (
@@ -98,6 +102,14 @@ const AppContent: React.FC = () => {
 
   if (!isAuthenticated || !user) {
     return <AuthPage onNavigate={(route) => setActiveView(route)} />;
+  }
+
+  if (isCheckoutReturn) {
+    return (
+      <Suspense fallback={<PageLoadingFallback />}>
+        <CheckoutReturnPage />
+      </Suspense>
+    );
   }
 
   // A view requested before sign-in must never override the authenticated

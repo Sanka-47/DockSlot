@@ -3,6 +3,7 @@ import type {
   Booking,
   UpdateBookingStatusRequest,
   CreateBookingRequest,
+  CreateBookingResponse,
   BookingAuditLog,
 } from '../types/booking.types';
 
@@ -14,8 +15,13 @@ export const bookingApi = {
     return response.data;
   },
 
-  create: async (data: CreateBookingRequest): Promise<{ success: boolean; data: Booking }> => {
-    const response = await apiClient.post<{ success: boolean; data: Booking }>('/bookings', data);
+  create: async (
+    data: CreateBookingRequest,
+  ): Promise<{ success: boolean; data: CreateBookingResponse }> => {
+    const response = await apiClient.post<{ success: boolean; data: CreateBookingResponse }>(
+      '/bookings',
+      data,
+    );
     return response.data;
   },
 

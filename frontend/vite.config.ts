@@ -153,6 +153,7 @@ export default defineConfig(({ command, mode }) => {
           codeSplitting: {
             groups: [
               {
+                debugName: 'vendor-splitting',
                 name: (id) => {
                   if (!id.includes('node_modules')) {
                     return null;

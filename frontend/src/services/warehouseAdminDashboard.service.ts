@@ -1,5 +1,4 @@
 import { warehouseApi } from '../api/warehouse.api';
-import { userApi } from '../api/user.api';
 import type {
   CreateDockRequest,
   CreateWarehouseRequest,
@@ -12,7 +11,6 @@ import type {
   UpdateWarehouseRequest,
   Warehouse,
 } from '../types/warehouse.types';
-import type { User } from '../types/user.types';
 
 export interface ScheduleDay {
   day: string;
@@ -235,11 +233,6 @@ export const warehouseAdminDashboardService = {
     };
   },
 
-  async fetchUsers(): Promise<User[]> {
-    const response = await userApi.getUsers();
-    return response.data || [];
-  },
-
   async createWarehouse(data: CreateWarehouseRequest): Promise<Warehouse> {
     const response = await warehouseApi.create(data);
     return response.data;
@@ -294,22 +287,5 @@ export const warehouseAdminDashboardService = {
       maxAdvanceDays: response.data.maxAdvanceDays,
       bookingLockWindowHours: response.data.bookingLockWindowHours,
     };
-  },
-
-  async inviteUser(email: string): Promise<{ message: string }> {
-    const response = await userApi.inviteUser({ email: email.trim() });
-    return {
-      message: response.message || `Invitation successfully sent to ${email.trim()}.`,
-    };
-  },
-
-  async deactivateUser(userId: number): Promise<{ message: string }> {
-    const response = await userApi.deactivateUser(userId);
-    return { message: response.message || 'User has been deactivated.' };
-  },
-
-  async reactivateUser(userId: number): Promise<{ message: string }> {
-    const response = await userApi.reactivateUser(userId);
-    return { message: response.message || 'User has been reactivated.' };
   },
 };

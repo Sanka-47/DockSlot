@@ -9,6 +9,7 @@ import {
 describe('booking status metadata', () => {
   it('exposes one display definition per known status', () => {
     expect(Object.keys(BOOKING_STATUS_META)).toEqual([
+      'PENDING_PAYMENT',
       'BOOKED',
       'ARRIVED',
       'COMPLETED',
@@ -29,7 +30,8 @@ describe('booking status metadata', () => {
     expect(getBookingStatusMeta('PENDING').icon).toBeUndefined();
   });
 
-  it('marks only booked and arrived as active', () => {
+  it('marks pending-payment, booked, and arrived as active', () => {
+    expect(isActiveBookingStatus('PENDING_PAYMENT')).toBe(true);
     expect(isActiveBookingStatus('BOOKED')).toBe(true);
     expect(isActiveBookingStatus('ARRIVED')).toBe(true);
     expect(isActiveBookingStatus('COMPLETED')).toBe(false);
@@ -40,6 +42,7 @@ describe('booking status metadata', () => {
   it('keeps the filter order and labels stable for both dashboards', () => {
     expect(BOOKING_STATUS_FILTERS.map(({ value }) => value)).toEqual([
       'ALL',
+      'PENDING_PAYMENT',
       'BOOKED',
       'ARRIVED',
       'COMPLETED',

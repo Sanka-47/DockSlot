@@ -352,7 +352,9 @@ describe('Warehouse Settings Update & Slot Length Safeguarding Integration Tests
 
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
-    expect(res.body.message).toMatch(/active bookings with status 'BOOKED'/i);
+    expect(res.body.message).toMatch(
+      /active bookings with status 'PENDING_PAYMENT', 'BOOKED', or 'ARRIVED'/i
+    );
   });
 
   it('allows warehouse name, address, or timezone update once there are no active BOOKED bookings', async () => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Truck,
   Users,
@@ -14,11 +14,13 @@ import {
 } from 'lucide-react';
 import { carrierAdminDashboardService } from '../services/carrierAdminDashboard.service';
 import type { UserRoleFilter, UserStatusFilter } from '../services/carrierAdminDashboard.service';
+import { organizationUsersService } from '../services/organizationUsers.service';
 import { getApiErrorMessage } from '../services/errors';
 import { handleTabListKeyDown } from '../utils/tabKeyboard';
 import { useAuth } from '../hooks/useAuth';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import { useConfirm } from '../hooks/useConfirm';
+import { useOrganizationUsers } from '../hooks/useOrganizationUsers';
 import type { User } from '../types/user.types';
 import toast from 'react-hot-toast';
 
@@ -28,22 +30,6 @@ export const CarrierAdminDashboard: React.FC = () => {
 
   // Active Tab: 'users' | 'profile'
   const [activeTab, setActiveTab] = useState<'users' | 'profile'>('users');
-
-  // User Management State
-  const [organizationUsers, setOrganizationUsers] = useState<User[]>([]);
-  const [isLoadingUsers, setIsLoadingUsers] = useState<boolean>(true);
-  const [deactivatingUserId, setDeactivatingUserId] = useState<number | null>(null);
-  const [reactivatingUserId, setReactivatingUserId] = useState<number | null>(null);
-
-  // Invite Modal State
-  const [isInviteModalOpen, setIsInviteModalOpen] = useState<boolean>(false);
-  const [inviteEmail, setInviteEmail] = useState<string>('');
-  const [isSendingInvite, setIsSendingInvite] = useState<boolean>(false);
-  const inviteDialogRef = useDialogA11y<HTMLDivElement>({
-    isOpen: isInviteModalOpen,
-    onClose: () => setIsInviteModalOpen(false),
-    closeOnEscape: !isSendingInvite,
-  });
 
   // Filter & Search State
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -61,39 +47,42 @@ export const CarrierAdminDashboard: React.FC = () => {
     }, 4500);
   };
 
-  // Fetch Users belonging to the carrier organization
-  const fetchUsers = useCallback(async () => {
-    try {
-      setOrganizationUsers(await carrierAdminDashboardService.fetchUsers());
-    } catch (err: unknown) {
-      setErrorBanner(getApiErrorMessage(err, 'Failed to load organization team members.'));
-    } finally {
-      setIsLoadingUsers(false);
-    }
-  }, []);
+  const {
+    organizationUsers,
+    isLoadingUsers,
+    deactivatingUserId,
+    reactivatingUserId,
+    isInviteModalOpen,
+    setIsInviteModalOpen,
+    inviteEmail,
+    setInviteEmail,
+    isSendingInvite,
+    fetchUsers,
+    inviteUser,
+    deactivateUser,
+    reactivateUser,
+  } = useOrganizationUsers({
+    service: organizationUsersService,
+    setErrorBanner,
+  });
 
-  useEffect(() => {
-    fetchUsers();
-  }, [fetchUsers]);
+  const inviteDialogRef = useDialogA11y<HTMLDivElement>({
+    isOpen: isInviteModalOpen,
+    onClose: () => setIsInviteModalOpen(false),
+    closeOnEscape: !isSendingInvite,
+  });
 
   // Invite Dispatcher / Staff Handler
   const handleInviteUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inviteEmail.trim()) return;
 
-    setIsSendingInvite(true);
     setErrorBanner(null);
     try {
-      const result = await carrierAdminDashboardService.inviteUser(inviteEmail);
+      const result = await inviteUser(inviteEmail);
       triggerSuccess(result.message);
-      setInviteEmail('');
-      setIsInviteModalOpen(false);
-      setIsLoadingUsers(true);
-      await fetchUsers();
     } catch (err: unknown) {
       setErrorBanner(getApiErrorMessage(err, 'Failed to send invitation.'));
-    } finally {
-      setIsSendingInvite(false);
     }
   };
 
@@ -112,26 +101,16 @@ export const CarrierAdminDashboard: React.FC = () => {
     });
     if (!confirmed) return;
 
-    setDeactivatingUserId(targetUser.id);
     try {
       // A toast tracks the whole lifecycle: loading -> success/error.
-      await toast.promise(
-        carrierAdminDashboardService.deactivateUser(targetUser.id).then(async (res) => {
-          setIsLoadingUsers(true);
-          await fetchUsers();
-          return res;
-        }),
-        {
-          loading: `Deactivating ${targetUser.email}...`,
-          success: (res) => res?.message || `User ${targetUser.email} has been deactivated.`,
-          error: (err: unknown) => getApiErrorMessage(err, 'Failed to deactivate user.'),
-        },
-      );
+      await toast.promise(deactivateUser(targetUser.id), {
+        loading: `Deactivating ${targetUser.email}...`,
+        success: (res) => res?.message || `User ${targetUser.email} has been deactivated.`,
+        error: (err: unknown) => getApiErrorMessage(err, 'Failed to deactivate user.'),
+      });
     } catch {
       // The error toast already surfaced the failure; swallow to avoid an
       // unhandled rejection from the click handler.
-    } finally {
-      setDeactivatingUserId(null);
     }
   };
 
@@ -150,25 +129,15 @@ export const CarrierAdminDashboard: React.FC = () => {
     });
     if (!confirmed) return;
 
-    setReactivatingUserId(targetUser.id);
     try {
-      await toast.promise(
-        carrierAdminDashboardService.reactivateUser(targetUser.id).then(async (res) => {
-          setIsLoadingUsers(true);
-          await fetchUsers();
-          return res;
-        }),
-        {
-          loading: `Reactivating ${targetUser.email}...`,
-          success: (res) => res?.message || `User ${targetUser.email} has been reactivated.`,
-          error: (err: unknown) => getApiErrorMessage(err, 'Failed to reactivate user.'),
-        },
-      );
+      await toast.promise(reactivateUser(targetUser.id), {
+        loading: `Reactivating ${targetUser.email}...`,
+        success: (res) => res?.message || `User ${targetUser.email} has been reactivated.`,
+        error: (err: unknown) => getApiErrorMessage(err, 'Failed to reactivate user.'),
+      });
     } catch {
       // The error toast already surfaced the failure; swallow to avoid an
       // unhandled rejection from the click handler.
-    } finally {
-      setReactivatingUserId(null);
     }
   };
 
@@ -220,7 +189,6 @@ export const CarrierAdminDashboard: React.FC = () => {
           <button
             onClick={() => {
               setErrorBanner(null);
-              setIsLoadingUsers(true);
               void fetchUsers();
             }}
             disabled={isLoadingUsers}

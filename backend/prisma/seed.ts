@@ -24,6 +24,8 @@ async function main() {
   // 1. Clean up existing data in reverse relation order
   console.log('🧹 Cleaning existing data...');
   await prisma.outboxEvent.deleteMany();
+  await prisma.stripeWebhookEvent.deleteMany();
+  await prisma.payment.deleteMany();
   await prisma.booking.deleteMany();
   await prisma.operatingHour.deleteMany();
   await prisma.dock.deleteMany();
@@ -176,6 +178,8 @@ async function main() {
       address: 'Port Access Road, Peliyagoda, Colombo 11010, Sri Lanka',
       timezone: 'Asia/Colombo',
       slotLengthMinutes: 60,
+      slotPriceCents: 250000,
+      currency: 'LKR',
       docks: {
         create: [
           { name: 'Dock C1 (Inbound General)', status: DockStatus.ACTIVE },
@@ -199,6 +203,8 @@ async function main() {
       address: 'Gate 4, JAFZA North, Jebel Ali Freezone, Dubai, UAE',
       timezone: 'Asia/Dubai',
       slotLengthMinutes: 30,
+      slotPriceCents: 15000,
+      currency: 'AED',
       docks: {
         create: [
           { name: 'Dock J1 (Fast Freight)', status: DockStatus.ACTIVE },
@@ -221,6 +227,8 @@ async function main() {
       address: 'Maasvlakte 2, Europaweg 905, 3199 LC Rotterdam, Netherlands',
       timezone: 'Europe/Amsterdam',
       slotLengthMinutes: 60,
+      slotPriceCents: 4500,
+      currency: 'EUR',
       docks: {
         create: [
           { name: 'Dock R1 (Deep Sea Container Bay)', status: DockStatus.ACTIVE },

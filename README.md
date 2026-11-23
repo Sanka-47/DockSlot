@@ -36,6 +36,9 @@ steps are used locally, in tests, and in the containerized stack.
   family lifetimes, and replay detection.
 - The transactional outbox worker moves webhook delivery off the request path,
   and graceful shutdown drains in-flight work before exit.
+- Slot bookings are paid through Stripe-hosted Checkout. Payment confirmation is
+  webhook-driven and idempotent, while unpaid holds are released by a background
+  expiry worker.
 - The frontend lazy-loads dashboards, recovery pages, and modals behind
   accessible fallbacks, with stable vendor chunks keeping the initial shell
   small.
@@ -105,8 +108,21 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 export JWT_ACCESS_SECRET="<first generated value>"
 export JWT_REFRESH_SECRET="<second generated value>"
 export TOTP_ENCRYPTION_KEY="<third generated value>"
+# Stripe TEST mode keys. Never use or commit live keys in local demos.
+export STRIPE_SECRET_KEY="sk_test_..."
+export STRIPE_WEBHOOK_SECRET="whsec_..."
 docker compose up --build
 ```
+
+Forward Stripe test events to the local API:
+
+```sh
+stripe listen --forward-to localhost:5000/api/payments/webhook
+```
+
+The `whsec_...` printed by `stripe listen` is the local webhook secret. For a
+deployed API, create a webhook endpoint in the Stripe Dashboard pointing at
+`https://<api-host>/api/payments/webhook` and use that endpoint's signing secret.
 
 For a non-Docker backend, copy `backend/.env.example` to `backend/.env` and fill
 in the same values. Production requires both JWT secrets (at least 32 characters
@@ -179,6 +195,9 @@ implemented once:
   `frontend/src/utils/formatters.ts` and `frontend/src/utils/timezones.ts`.
 - Dashboard role routing and role capability helpers live in
   `frontend/src/utils/dashboardView.ts`.
+- Carrier and warehouse admins share user-management state and API calls through
+  `frontend/src/hooks/useOrganizationUsers.ts` and
+  `frontend/src/services/organizationUsers.service.ts`.
 
 ## Seeded demo accounts
 
@@ -201,11 +220,94 @@ All seeded accounts are pre-verified and share the same password: `12345678`
 
 ## Seeded warehouses
 
-| Warehouse | Operator | Timezone | Operating hours | Slot length | Docks |
-| --- | --- | --- | --- | --- | --- |
-| Colombo DC | Lanka Logistics Parks | `Asia/Colombo` | Mon–Sat 06:00–22:00 | 60 min | 4 |
-| Jebel Ali Hub | Lanka Logistics Parks | `Asia/Dubai` | Every day 07:00–19:00 | 30 min | 3 |
-| Rotterdam Port DC | Maas Distribution | `Europe/Amsterdam` | 24/7 | 60 min | 6 |
+| Warehouse | Operator | Timezone | Operating hours | Slot length | Slot price | Docks |
+| --- | --- | --- | --- | --- | --- | --- |
+| Colombo DC | Lanka Logistics Parks | `Asia/Colombo` | Mon–Sat 06:00–22:00 | 60 min | LKR 2,500.00 | 4 |
+| Jebel Ali Hub | Lanka Logistics Parks | `Asia/Dubai` | Every day 07:00–19:00 | 30 min | AED 150.00 | 3 |
+| Rotterdam Port DC | Maas Distribution | `Europe/Amsterdam` | 24/7 | 60 min | EUR 45.00 | 6 |
+
+Prices are stored in minor units (`slotPriceCents`) with an ISO 4217 currency
+on each warehouse. Existing payments keep the amount snapshot they were created
+with, so changing a warehouse price never changes an in-flight charge.
+
+## Payments
+
+Every warehouse slot has a fixed price and a booking is only confirmed after
+payment succeeds. DockSlot uses **Stripe-hosted Checkout**, so card data never
+touches the application and the frontend does not need Stripe.js or a
+publishable key.
+
+### Why there is no Stripe publishable key
+
+The publishable key (`pk_test_...` / `pk_live_...`) is only needed when a client
+loads Stripe.js, Elements, or a Stripe mobile SDK. Here the API creates a Checkout
+Session and returns its `url`; the SPA only redirects to that URL. There is no
+`VITE_STRIPE_PUBLISHABLE_KEY` because no browser-side Stripe SDK is bundled.
+If the project later switches to embedded Checkout or Elements, a publishable key
+would become necessary then.
+
+The webhook endpoint is `POST /api/payments/webhook`. It is mounted directly in
+`backend/src/app.ts` with `express.raw()` before `express.json()` so Stripe's
+signature is verified against the raw bytes. In test mode, use the test-mode
+endpoint's `whsec_...` signing secret; live mode uses a separate endpoint and
+secret.
+
+### Booking and payment lifecycle
+
+1. A dispatcher selects a slot. The API creates the booking as
+   `PENDING_PAYMENT` and snapshots the warehouse price/currency into a
+   `Payment` row. The booking's active lock holds the slot.
+2. The API creates a Stripe Checkout Session server-side with
+   `client_reference_id`, metadata, an expiry, and a stable idempotency key.
+   The browser is redirected to the returned Stripe URL.
+3. Stripe sends signed webhooks. `checkout.session.completed` (and the async
+   payment variants) mark the payment `PAID`, flip the booking to `BOOKED`, and
+   enqueue the existing outbox carrier notification in the same transaction.
+4. `checkout.session.expired`, `checkout.session.async_payment_failed`, and a
+   background sweeper release unpaid holds by cancelling the booking and
+   marking the payment `EXPIRED`/`FAILED`.
+5. Cancelling a paid booking issues a full Stripe refund when the warehouse's
+   existing lock-window rule allows the cancellation. Pending bookings can be
+   cancelled without a refund. A payment that arrives after its slot was
+   released is recorded and refunded instead of reviving the booking.
+
+The success redirect is UX only. A booking is treated as paid only after a
+signed Stripe webhook (or a direct server-side Stripe status check) confirms the
+payment, and webhook events are deduplicated by Stripe event ID in
+`stripe_webhook_events`.
+
+### Payment endpoints
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/payments/bookings/:bookingId/checkout` | Create or retry a Checkout Session for the caller's pending booking |
+| `GET` | `/api/payments/bookings/:bookingId` | Tenant-scoped payment status for a booking |
+| `GET` | `/api/payments/sessions/:sessionId` | Tenant-scoped status used by the Checkout return page |
+| `POST` | `/api/payments/webhook` | Stripe webhook; mounted with `express.raw()` before JSON parsing and the global rate limiter |
+
+`PAYMENTS_MODE=stripe` is required in production. `PAYMENTS_MODE=disabled` is
+available for unit tests and local UI work only; it preserves the original
+immediate-`BOOKED` behavior and is rejected by production env validation.
+
+## Local read-only MCP server
+
+`tools/db-mcp` is a small stdio MCP server that lets an MCP client ask
+natural-language questions about the TiDB/MySQL data without giving it write
+access. It exposes narrow tools such as `db_count_rows`, `db_describe_table`,
+and `db_sample_rows`; `db_query` is limited to guarded `SELECT` statements with
+row caps, and sensitive-looking columns are redacted.
+
+```sh
+cd tools/db-mcp
+npm install
+# Prefer a SELECT-only database user:
+DB_MCP_DATABASE_URL="mysql://readonly:...@host:4000/dockslot_db" \
+  node --no-warnings --experimental-strip-types src/index.ts
+```
+
+OpenCode configuration uses the same command with
+`DB_MCP_ENV_FILE=backend/.env` as a fallback. The server is local-only and is
+not part of the deployed API.
 
 ## Authentication model
 
@@ -323,6 +425,14 @@ Relevant environment variables:
 | `RATE_LIMIT_PASSWORD_RESET_WINDOW_MS` | `3600000` | Forgot-password limiter window |
 | `RATE_LIMIT_PASSWORD_RESET_MAX` | `5` | Forgot-password requests per email+IP per window |
 | `PASSWORD_BREACH_CHECK_ENABLED` | `false` | Optional HIBP k-anonymity password check |
+| `PAYMENTS_MODE` | `stripe` | `stripe` in production; `disabled` only for tests/local UI |
+| `STRIPE_SECRET_KEY` | required when payments are enabled | Server-side Stripe secret key (`sk_test_...` for the demo) |
+| `STRIPE_WEBHOOK_SECRET` | required when payments are enabled | Stripe endpoint signing secret (`whsec_...`) |
+| `PAYMENT_HOLD_MINUTES` | `30` | How long an unpaid booking holds its slot (Stripe range 30–1440) |
+| `PAYMENT_MIN_LEAD_MINUTES` | `30` | Minimum advance time required to start a paid booking |
+| `PAYMENT_EXPIRY_SWEEP_INTERVAL_MS` | `60000` | Safety-net sweep for expired unpaid holds |
+| `STRIPE_SUCCESS_URL` | frontend `/?checkout=success&session_id={CHECKOUT_SESSION_ID}` | Checkout return URL |
+| `STRIPE_CANCEL_URL` | frontend `/?checkout=cancelled` | Checkout cancel URL |
 
 Generate a TOTP key with
 `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`.

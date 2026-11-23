@@ -3,6 +3,7 @@ import type { Server } from 'http';
 import app from './app';
 import { disconnect } from './repositories/base.repository';
 import { outboxWorker } from './workers/outbox.worker';
+import { paymentExpiryWorker } from './workers/paymentExpiry.worker';
 
 const PORT = process.env.PORT || 5000;
 
@@ -18,6 +19,10 @@ if (process.env.NODE_ENV !== 'test') {
   // Start the transactional outbox drain loop. It runs entirely outside the
   // request path, so booking endpoints return as soon as the DB transaction commits.
   outboxWorker.start();
+
+  // Release slots whose Stripe Checkout Session was never paid. The webhook is
+  // the primary signal; this worker is the delayed/missed-webhook safety net.
+  paymentExpiryWorker.start();
 
   let shuttingDown = false;
 
@@ -38,6 +43,7 @@ if (process.env.NODE_ENV !== 'test') {
       // 1. Stop dispatching and let any in-flight webhook cycle settle so no
       //    event is left stranded in PROCESSING.
       await outboxWorker.stop();
+      await paymentExpiryWorker.stop();
 
       // 2. Stop accepting new connections and finish in-flight HTTP responses.
       await new Promise<void>((resolve) => server.close(() => resolve()));
