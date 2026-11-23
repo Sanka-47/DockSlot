@@ -13,7 +13,9 @@ import bookingRoutes from './routes/booking.routes';
 import warehouseRoutes from './routes/warehouse.routes';
 import dockRoutes from './routes/dock.routes';
 import userRoutes from './routes/user.routes';
+import paymentRoutes from './routes/payment.routes';
 import healthRoutes from './routes/health.route';
+import { handleStripeWebhook } from './controllers/payment.controller';
 import { apiRateLimiter } from './middleware/rateLimit.middleware';
 import { errorHandler } from './middleware/error.middleware';
 import { requestLogger } from './middleware/requestLogger';
@@ -75,6 +77,16 @@ app.use(
     credentials: true,
   }),
 );
+// Stripe signs the exact raw request bytes. This route MUST be registered
+// before express.json() and before the global API rate limiter: a parsed body
+// would invalidate the signature, and Stripe's retries must not be throttled
+// by user/IP budgets.
+app.post(
+  '/api/payments/webhook',
+  express.raw({ type: 'application/json' }),
+  handleStripeWebhook
+);
+
 app.use(express.json());
 
 // Swagger UI needs inline scripts/styles, so give only the docs routes a
@@ -113,6 +125,7 @@ app.use('/api/auth', (_req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/bookings', bookingRoutes);
+app.use('/api/payments', paymentRoutes);
 app.use('/api/warehouses', warehouseRoutes);
 app.use('/api/docks', dockRoutes);
 

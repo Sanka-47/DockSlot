@@ -27,11 +27,16 @@ export const createWarehouse = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    const { name, address, timezone } = req.body;
+    const { name, address, timezone, slotPriceCents, currency } = req.body;
     const warehouse = await warehouseService.createWarehouse(organizationId, {
       name,
       address,
       timezone,
+      slotPriceCents:
+        slotPriceCents === undefined || slotPriceCents === null
+          ? undefined
+          : Number(slotPriceCents),
+      currency,
     });
 
     res.status(201).json({
@@ -133,7 +138,13 @@ export const updateWarehouse = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    const updated = await warehouseService.updateWarehouse(warehouseId, organizationId, req.body);
+    const { slotPriceCents, ...rest } = req.body;
+    const updated = await warehouseService.updateWarehouse(warehouseId, organizationId, {
+      ...rest,
+      ...(slotPriceCents === undefined || slotPriceCents === null
+        ? {}
+        : { slotPriceCents: Number(slotPriceCents) }),
+    });
     res.status(200).json({
       success: true,
       message: 'Warehouse updated successfully',
@@ -169,7 +180,7 @@ export const updateWarehouseSettings = async (req: Request, res: Response): Prom
       return;
     }
 
-    const { slotLengthMinutes, name, address, timezone } = req.body;
+    const { slotLengthMinutes, name, address, timezone, slotPriceCents, currency } = req.body;
     const updated = await warehouseService.updateWarehouseSettings(
       warehouseId,
       organizationId,
@@ -178,6 +189,11 @@ export const updateWarehouseSettings = async (req: Request, res: Response): Prom
         name,
         address,
         timezone,
+        slotPriceCents:
+          slotPriceCents === undefined || slotPriceCents === null
+            ? undefined
+            : Number(slotPriceCents),
+        currency,
       }
     );
 

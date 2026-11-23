@@ -173,6 +173,28 @@ export const bookingRateLimiter = rateLimit({
 });
 
 /**
+ * Payment Rate Limiter:
+ * Checkout creation is cheap but reaches Stripe, so cap retries per user/IP.
+ */
+export const paymentRateLimiter = rateLimit({
+  windowMs: securityConfig.rateLimitWindowMs,
+  limit: () => securityConfig.rateLimitBookingMax,
+  standardHeaders: true,
+  legacyHeaders: true,
+  statusCode: 429,
+  keyGenerator: (req: Request) => resolveRateLimitKey(req),
+  store: new ConfigurableRedisStore({
+    sendCommand: (...args: string[]) => redis.call(...args),
+    prefix: 'rl:payment:',
+  }),
+  validate: false,
+  message: {
+    success: false,
+    message: 'Too many payment attempts. Please wait before trying again.',
+  },
+});
+
+/**
  * Authentication Rate Limiter:
  * Applies `RATE_LIMIT_AUTH_MAX` (default 10/min) to credential endpoints. The
  * key includes the route, account/token when available, and IP so one account

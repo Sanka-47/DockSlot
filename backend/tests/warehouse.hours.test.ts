@@ -23,10 +23,32 @@ describe('Weekly Operational Schedule Template Integration Tests', () => {
   let testWarehouseId: number;
   let testDockId: number;
 
-  // 2026-11-20 is a Friday (dayOfWeek 5). Asia/Colombo is UTC+5:30.
-  // Local 09:00 - 10:00 -> UTC 03:30 - 04:30.
-  const bookingStart = '2026-11-20T03:30:00.000Z';
-  const bookingEnd = '2026-11-20T04:30:00.000Z';
+  // Pick a future Friday in Asia/Colombo (UTC+5:30, no DST) so this suite does
+  // not expire. Local 09:00 - 10:00 -> UTC 03:30 - 04:30.
+  const bookingSlot = (() => {
+    const now = new Date();
+    const colomboNow = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+    const daysUntilFriday = (5 - colomboNow.getUTCDay() + 7) % 7 || 7;
+    const target = new Date(
+      Date.UTC(
+        colomboNow.getUTCFullYear(),
+        colomboNow.getUTCMonth(),
+        colomboNow.getUTCDate() + daysUntilFriday,
+        3,
+        30,
+        0,
+        0,
+      ),
+    );
+
+    return {
+      start: target.toISOString(),
+      end: new Date(target.getTime() + 60 * 60 * 1000).toISOString(),
+    };
+  })();
+
+  const bookingStart = bookingSlot.start;
+  const bookingEnd = bookingSlot.end;
 
   const signToken = (user: { id: number; organizationId: number; role: UserRole; email: string }) =>
     jwt.sign(

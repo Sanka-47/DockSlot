@@ -261,7 +261,9 @@ describe('Warehouse Admin Dock Name Update & Driver Confusion Prevention Tests',
 
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
-      expect(res.body.message).toMatch(/active bookings with status 'BOOKED'/i);
+      expect(res.body.message).toMatch(
+        /active bookings with status 'PENDING_PAYMENT', 'BOOKED', or 'ARRIVED'/i
+      );
 
       // Clean up this booking
       await prisma.booking.delete({ where: { id: booking.id } });

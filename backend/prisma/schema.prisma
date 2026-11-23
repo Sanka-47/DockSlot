@@ -25,11 +25,21 @@ enum DockStatus {
 }
 
 enum BookingStatus {
+  PENDING_PAYMENT
   BOOKED
   CANCELLED
   ARRIVED
   NO_SHOW
   COMPLETED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+  REFUNDED
+  PARTIALLY_REFUNDED
 }
 
 model Organization {
@@ -110,6 +120,10 @@ model Warehouse {
   address           String
   timezone          String
   slotLengthMinutes Int      @default(30)
+  /// Fixed price charged for one dock slot at this warehouse, in minor units.
+  slotPriceCents    Int      @default(250000)
+  /// ISO 4217 presentment currency for slotPriceCents (e.g. LKR, AED, EUR).
+  currency          String   @default("LKR") @db.VarChar(3)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -170,28 +184,78 @@ model OperatingHour {
 }
 
 model Booking {
-  id            Int           @id @default(autoincrement())
-  dockId        Int
-  carrierOrgId  Int
-  slotStartTime DateTime
-  slotEndTime   DateTime
-  truckPlate    String?
-  driverName    String?
-  driverPhone   String?
-  cargoNote     String?       @db.Text
-  status        BookingStatus @default(BOOKED)
-  activeLock    String?       @default("ACTIVE") @db.VarChar(50)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id               Int           @id @default(autoincrement())
+  dockId           Int
+  carrierOrgId     Int
+  slotStartTime    DateTime
+  slotEndTime      DateTime
+  truckPlate       String?
+  driverName       String?
+  driverPhone      String?
+  cargoNote        String?       @db.Text
+  status           BookingStatus @default(BOOKED)
+  activeLock       String?       @default("ACTIVE") @db.VarChar(50)
+  /// Deadline for completing payment while status is PENDING_PAYMENT.
+  paymentExpiresAt DateTime?
+  /// Actor who created the booking; retained for system/webhook audit entries.
+  createdByUserId  Int?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
   dock       Dock         @relation(fields: [dockId], references: [id], onDelete: Cascade)
   carrierOrg Organization @relation("CarrierBookings", fields: [carrierOrgId], references: [id], onDelete: Cascade)
   auditLogs  AuditLog[]
+  payments   Payment[]
 
   @@unique([dockId, slotStartTime, activeLock])
   @@index([dockId])
   @@index([carrierOrgId])
+  @@index([status, paymentExpiresAt])
   @@map("bookings")
+}
+
+/// One payment attempt for a booking. A booking may have several attempts
+/// (for example after an expired Checkout Session); at most one can be PAID.
+model Payment {
+  id                    Int           @id @default(autoincrement())
+  bookingId             Int
+  status                PaymentStatus @default(PENDING)
+  amountCents           Int
+  currency              String        @db.VarChar(3)
+  provider              String        @default("STRIPE") @db.VarChar(20)
+  stripeSessionId       String?       @unique
+  stripePaymentIntentId String?       @unique
+  checkoutUrl           String?       @db.Text
+  /// Stable key passed to Stripe so a retried create call cannot double-charge.
+  idempotencyKey        String        @unique
+  expiresAt             DateTime
+  paidAt                DateTime?
+  failedAt              DateTime?
+  refundedAt            DateTime?
+  failureReason         String?       @db.Text
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@index([status, expiresAt])
+  @@map("payments")
+}
+
+/// Idempotency ledger for Stripe webhook deliveries. Stripe retries events, so
+/// the event id is persisted before processing and checked on every delivery.
+model StripeWebhookEvent {
+  id            Int       @id @default(autoincrement())
+  stripeEventId String    @unique
+  type          String
+  status        String    @default("PROCESSING") // PROCESSING, PROCESSED, FAILED
+  payload       Json
+  error         String?   @db.Text
+  createdAt     DateTime  @default(now())
+  processedAt   DateTime?
+
+  @@map("stripe_webhook_events")
 }
 
 model AuditLog {

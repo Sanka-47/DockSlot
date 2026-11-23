@@ -77,7 +77,7 @@ export const warehouseRepository = {
     return db.booking.count({
       where: {
         dock: { warehouseId },
-        status: BookingStatus.BOOKED,
+        status: { in: [BookingStatus.PENDING_PAYMENT, BookingStatus.BOOKED, BookingStatus.ARRIVED] },
       },
     });
   },
@@ -146,7 +146,7 @@ export const warehouseRepository = {
     return db.booking.findMany({
       where: {
         dock: { warehouseId },
-        status: { in: [BookingStatus.BOOKED, BookingStatus.ARRIVED] },
+        status: { in: [BookingStatus.PENDING_PAYMENT, BookingStatus.BOOKED, BookingStatus.ARRIVED] },
         slotEndTime: { gt: now },
       },
       select: {
@@ -222,7 +222,7 @@ export const warehouseRepository = {
     return db.booking.findMany({
       where: {
         dockId: { in: dockIds },
-        status: { in: [BookingStatus.BOOKED, BookingStatus.ARRIVED] },
+        status: { in: [BookingStatus.PENDING_PAYMENT, BookingStatus.BOOKED, BookingStatus.ARRIVED] },
         slotStartTime: {
           gte: startOfDayUtc,
           lt: lookupEndUtc,
@@ -348,7 +348,7 @@ export const warehouseRepository = {
     return db.booking.count({
       where: {
         dockId,
-        status: BookingStatus.BOOKED,
+        status: { in: [BookingStatus.PENDING_PAYMENT, BookingStatus.BOOKED, BookingStatus.ARRIVED] },
       },
     });
   },
@@ -357,7 +357,7 @@ export const warehouseRepository = {
     return db.booking.findFirst({
       where: {
         dockId,
-        status: { in: [BookingStatus.BOOKED, BookingStatus.ARRIVED] },
+        status: { in: [BookingStatus.PENDING_PAYMENT, BookingStatus.BOOKED, BookingStatus.ARRIVED] },
         slotStartTime: { lt: endOfDayUtc },
         slotEndTime: { gt: startOfDayUtc },
       },

@@ -1,7 +1,7 @@
 import { bookingApi } from '../api/booking.api';
 import { warehouseApi } from '../api/warehouse.api';
 import type { AvailableDockSlots, AvailableSlot, Warehouse } from '../types/warehouse.types';
-import type { Booking, CreateBookingRequest } from '../types/booking.types';
+import type { Booking, CreateBookingRequest, CreateBookingResponse } from '../types/booking.types';
 import { filterBookings as filterBookingsShared } from '../utils/bookingFilters';
 import type { BookingFilterCriteria } from '../utils/bookingFilters';
 import { getBookingWarehouseTimezone } from '../utils/timezones';
@@ -257,7 +257,7 @@ export const dispatcherDashboardService = {
     return normalizeSlotResponse(response.data);
   },
 
-  async createBooking(payload: CreateBookingRequest): Promise<Booking> {
+  async createBooking(payload: CreateBookingRequest): Promise<CreateBookingResponse> {
     const response = await bookingApi.create(payload);
     return response.data;
   },

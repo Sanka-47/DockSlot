@@ -1,5 +1,6 @@
-import { BookingStatus, DockStatus } from '@prisma/client';
+import { BookingStatus, DockStatus, PaymentStatus } from '@prisma/client';
 import { bookingRepository } from '../repositories/booking.repository';
+import { paymentRepository } from '../repositories/payment.repository';
 import {
   formatInTimeZone,
   getDayOfWeekInTimeZone,
@@ -9,6 +10,11 @@ import {
 import { auditLogService } from './audit.service';
 import { outboxService, OUTBOX_EVENT_TYPE } from './outbox.service';
 import { getRequestId } from '../utils/requestContext';
+import { childLogger } from '../utils/logger';
+import { paymentsConfig } from '../config/payments.config';
+import { paymentService } from './payment.service';
+
+const log = childLogger({ component: 'bookings' });
 
 export interface CreateBookingInput {
   dockId: number;
@@ -106,7 +112,12 @@ export class BookingService {
   /**
    * Creates a booking with atomic outbox event insertion, audit logging, and double-booking concurrency protection.
    */
-  async createBooking(dispatcherOrgId: number, data: CreateBookingInput, userId?: number) {
+  async createBooking(
+    dispatcherOrgId: number,
+    data: CreateBookingInput,
+    userId?: number,
+    userEmail?: string
+  ) {
     if (!dispatcherOrgId) {
       throw { status: 400, message: 'Dispatcher organization ID is required.' };
     }
@@ -157,6 +168,16 @@ export class BookingService {
     const slotEnd = new Date(data.slotEndTime);
     this.validateSlotOperatingHours(dock.warehouse, slotStart, slotEnd);
 
+    if (
+      paymentsConfig.enabled &&
+      slotStart.getTime() - Date.now() < paymentsConfig.minLeadMinutes * 60 * 1000
+    ) {
+      throw {
+        status: 400,
+        message: `Slots must be booked at least ${paymentsConfig.minLeadMinutes} minutes in advance so payment can be completed.`,
+      };
+    }
+
     // Enforce configurable warehouse booking & anti-hogging policies
     const policy = dock.warehouse.policy;
     if (policy) {
@@ -173,7 +194,7 @@ export class BookingService {
       const activeBookingsCount = await bookingRepository.countActiveCarrierBookingsAtWarehouse(
         dispatcherOrgId,
         dock.warehouseId,
-        [BookingStatus.BOOKED, BookingStatus.ARRIVED]
+        [BookingStatus.PENDING_PAYMENT, BookingStatus.BOOKED, BookingStatus.ARRIVED]
       );
 
       if (activeBookingsCount >= policy.maxConcurrentBookings) {
@@ -200,11 +221,12 @@ export class BookingService {
     // c. Execute the booking inside a Prisma transaction guaranteeing atomicity
     try {
       const result = await bookingRepository.transaction(async (tx) => {
-        // Pre-check active booking for concurrency
+        // Pre-check active booking for concurrency. A PENDING_PAYMENT row is
+        // still holding the slot, so it must participate in the conflict check.
         const existing = await bookingRepository.findActiveBookingAtDockSlot(
           data.dockId,
           slotStart,
-          [BookingStatus.BOOKED, BookingStatus.ARRIVED],
+          [BookingStatus.PENDING_PAYMENT, BookingStatus.BOOKED, BookingStatus.ARRIVED],
           undefined,
           tx
         );
@@ -213,7 +235,9 @@ export class BookingService {
           throw { status: 409, message: 'Conflict. The requested dock slot is already booked.' };
         }
 
-        // Insert new Booking record
+        // Insert new Booking record. When payments are enabled the slot is held
+        // as PENDING_PAYMENT; the outbox notification is only enqueued after
+        // Stripe confirms the payment (see payment.service.ts).
         const booking = await bookingRepository.createBooking(
           {
             dockId: data.dockId,
@@ -224,8 +248,11 @@ export class BookingService {
             driverName: data.driverName.trim(),
             driverPhone: data.driverPhone.trim(),
             cargoNote: data.cargoNote ? data.cargoNote.trim() : null,
-            status: BookingStatus.BOOKED,
+            status: paymentsConfig.enabled
+              ? BookingStatus.PENDING_PAYMENT
+              : BookingStatus.BOOKED,
             activeLock: 'ACTIVE',
+            createdByUserId: userId ?? null,
           },
           tx
         );
@@ -242,15 +269,20 @@ export class BookingService {
               slotEndTime: booking.slotEndTime.toISOString(),
               truckPlate: booking.truckPlate,
               driverName: booking.driverName,
+              paymentRequired: paymentsConfig.enabled,
             },
             tx,
           });
         }
 
-        // Simultaneously create an OutboxEvent record in the same transaction, so the
-        // booking and its carrier notification either both commit or both roll back.
-        // The originating request id rides along in the payload so the background
-        // worker can trace the delivery back to this HTTP request.
+        if (paymentsConfig.enabled) {
+          const payment = await paymentService.createPendingPayment(tx, booking);
+          booking.paymentExpiresAt = payment.expiresAt;
+          return booking;
+        }
+
+        // Payments disabled (tests/local UI mode): preserve the original
+        // immediately-confirmed booking behavior and outbox notification.
         const summary = outboxService.toBookingSummary(booking);
         await outboxService.enqueue(tx, {
           aggregateType: 'BOOKING',
@@ -267,7 +299,34 @@ export class BookingService {
         return booking;
       });
 
-      return result;
+      if (!paymentsConfig.enabled) {
+        return result;
+      }
+
+      try {
+        const checkout = await paymentService.createCheckoutForBooking(
+          result.id,
+          dispatcherOrgId,
+          userEmail
+        );
+        return { ...result, checkout };
+      } catch (error) {
+        // Do not strand an unpaid slot if Stripe Checkout could not be created.
+        // Preserve the original Stripe/network error if the cleanup also fails.
+        try {
+          await paymentService.expireUnpaidBooking(
+            result.id,
+            'Could not start the payment session.',
+            PaymentStatus.FAILED
+          );
+        } catch (cleanupError) {
+          log.error(
+            { err: cleanupError, bookingId: result.id },
+            'failed to release an unpaid slot after Checkout creation failed'
+          );
+        }
+        throw error;
+      }
     } catch (error: any) {
       // d. Catch Prisma unique constraint violation (P2002 on @@unique([dockId, slotStartTime, activeLock]))
       if (error.code === 'P2002' || error.status === 409) {
@@ -311,6 +370,10 @@ export class BookingService {
 
     if (booking.status === BookingStatus.CANCELLED) {
       throw { status: 400, message: 'Cannot reschedule a cancelled booking.' };
+    }
+
+    if (booking.status === BookingStatus.PENDING_PAYMENT) {
+      throw { status: 400, message: 'Complete payment before rescheduling this booking.' };
     }
 
     if (booking.status === BookingStatus.ARRIVED) {
@@ -397,7 +460,7 @@ export class BookingService {
         const existing = await bookingRepository.findActiveBookingAtDockSlot(
           targetDockId,
           slotStart,
-          [BookingStatus.BOOKED, BookingStatus.ARRIVED],
+          [BookingStatus.PENDING_PAYMENT, BookingStatus.BOOKED, BookingStatus.ARRIVED],
           bookingId,
           tx
         );
@@ -513,9 +576,12 @@ export class BookingService {
       throw { status: 400, message: 'Cannot cancel a booking that has already arrived.' };
     }
 
-    // Enforce lock window restriction on cancellations
+    const isPendingPayment = booking.status === BookingStatus.PENDING_PAYMENT;
+
+    // Enforce the lock window only for confirmed bookings. An unpaid hold can
+    // always be released immediately.
     const policy = booking.dock.warehouse.policy;
-    if (policy) {
+    if (policy && !isPendingPayment) {
       const hoursUntilSlot = (booking.slotStartTime.getTime() - Date.now()) / (60 * 60 * 1000);
       if (hoursUntilSlot < policy.bookingLockWindowHours) {
         throw {
@@ -525,9 +591,25 @@ export class BookingService {
       }
     }
 
+    // Refund first: if Stripe fails we must not cancel a paid booking without
+    // returning the money. Pending (unpaid) bookings have nothing to refund.
+    if (!isPendingPayment) {
+      await paymentService.refundBookingIfPaid(bookingId);
+    }
+
     const result = await bookingRepository.transaction(async (tx) => {
       // Update booking to CANCELLED and clear activeLock to release slot in unique index
       const updatedBooking = await bookingRepository.cancelBooking(bookingId, tx);
+
+      if (isPendingPayment) {
+        await paymentRepository.markPendingPayments(
+          bookingId,
+          PaymentStatus.EXPIRED,
+          'Booking cancelled before payment completed.',
+          undefined,
+          tx
+        );
+      }
 
       // Record AuditLog
       await auditLogService.recordLog({
@@ -539,9 +621,16 @@ export class BookingService {
           dockId: booking.dockId,
           slotStartTime: booking.slotStartTime.toISOString(),
           cancelledAt: new Date().toISOString(),
+          refunded: !isPendingPayment,
         },
         tx,
       });
+
+      // A pending booking was never confirmed, so it must not emit a
+      // BOOKING_CANCELLED carrier notification.
+      if (isPendingPayment) {
+        return updatedBooking;
+      }
 
       // Simultaneously create OutboxEvent for the cancellation notification
       const summary = outboxService.toBookingSummary(updatedBooking);
@@ -666,6 +755,13 @@ export class BookingService {
       throw {
         status: 400,
         message: 'Cannot update status of a cancelled booking.',
+      };
+    }
+
+    if (booking.status === BookingStatus.PENDING_PAYMENT) {
+      throw {
+        status: 400,
+        message: 'Cannot update status of a booking that has not been paid.',
       };
     }
 

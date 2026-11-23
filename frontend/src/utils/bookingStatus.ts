@@ -17,6 +17,11 @@ export interface BookingStatusFilterOption {
 }
 
 export const BOOKING_STATUS_META: Record<BookingStatus, BookingStatusMeta> = {
+  PENDING_PAYMENT: {
+    label: 'PAYMENT PENDING',
+    badgeClassName: 'bg-violet-50 text-violet-700 border-violet-200',
+    icon: 'clock',
+  },
   BOOKED: {
     label: 'BOOKED',
     badgeClassName: 'bg-blue-50 text-blue-700 border-blue-200',
@@ -46,6 +51,7 @@ export const BOOKING_STATUS_META: Record<BookingStatus, BookingStatusMeta> = {
 
 export const BOOKING_STATUS_FILTERS: readonly BookingStatusFilterOption[] = [
   { value: 'ALL', shortLabel: 'ALL', label: 'All Statuses' },
+  { value: 'PENDING_PAYMENT', shortLabel: 'PAYMENT', label: 'PAYMENT PENDING' },
   { value: 'BOOKED', shortLabel: 'BOOKED', label: 'BOOKED (Incoming)' },
   { value: 'ARRIVED', shortLabel: 'ARRIVED', label: 'ARRIVED (In Yard)' },
   { value: 'COMPLETED', shortLabel: 'COMPLETED', label: 'COMPLETED' },
@@ -65,5 +71,5 @@ export function getBookingStatusMeta(status: BookingStatus | string): BookingSta
 
 /** Statuses that still occupy a dock slot for conflict detection. */
 export function isActiveBookingStatus(status: BookingStatus): boolean {
-  return status === 'BOOKED' || status === 'ARRIVED';
+  return status === 'PENDING_PAYMENT' || status === 'BOOKED' || status === 'ARRIVED';
 }

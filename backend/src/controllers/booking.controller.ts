@@ -55,12 +55,16 @@ export const createBooking = async (req: Request, res: Response): Promise<void> 
         driverPhone,
         cargoNote,
       },
-      req.user?.userId
+      req.user?.userId,
+      req.user?.email
     );
 
     res.status(201).json({
       success: true,
-      message: 'Booking created successfully',
+      message:
+        (booking as any).checkout
+          ? 'Booking created. Complete payment to confirm your slot.'
+          : 'Booking created successfully',
       data: booking,
     });
   } catch (error: any) {

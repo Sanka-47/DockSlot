@@ -2,9 +2,30 @@
  * Booking Types derived from OpenAPI 3.0 Specification
  */
 
-export type BookingStatus = 'BOOKED' | 'ARRIVED' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
+export type BookingStatus =
+  'PENDING_PAYMENT' | 'BOOKED' | 'ARRIVED' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
+
+export type PaymentStatus =
+  'PENDING' | 'PAID' | 'FAILED' | 'EXPIRED' | 'REFUNDED' | 'PARTIALLY_REFUNDED';
 
 import type { WarehousePolicy } from './warehouse.types';
+
+export interface PaymentSummary {
+  id: number;
+  status: PaymentStatus;
+  amountCents: number;
+  currency: string;
+  checkoutUrl: string | null;
+  expiresAt: string;
+  paidAt: string | null;
+  refundedAt: string | null;
+}
+
+export interface CheckoutSession {
+  url: string;
+  sessionId: string;
+  expiresAt: string;
+}
 
 export interface BookingDockWarehouse {
   id: number;
@@ -39,10 +60,24 @@ export interface Booking {
   driverPhone: string | null;
   cargoNote: string | null;
   status: BookingStatus;
+  paymentExpiresAt?: string | null;
+  payment?: PaymentSummary | null;
+  checkout?: CheckoutSession;
   createdAt: string;
   updatedAt?: string;
   dock: BookingDock;
   carrierOrg: BookingCarrierOrg;
+}
+
+export interface CreateBookingResponse extends Booking {
+  checkout?: CheckoutSession;
+}
+
+export interface PaymentStatusResponse {
+  bookingId: number;
+  bookingStatus: BookingStatus;
+  paymentExpiresAt: string | null;
+  payment: PaymentSummary | null;
 }
 
 export interface UpdateBookingStatusRequest {
